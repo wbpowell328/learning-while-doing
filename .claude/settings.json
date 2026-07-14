@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -c \"import sys,json,subprocess; d=json.load(sys.stdin); fp=d.get('file_path',''); r=subprocess.run(['.venv/Scripts/pytest.exe','tests/','-x','-q','--tb=short'],capture_output=True,text=True) if fp.endswith('.py') else None; print(r.stdout[-800:]) if r and r.stdout else None\""
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -c \"import sys,json; d=json.load(sys.stdin); fp=d.get('file_path',''); exit(2) if 'package-lock.json' in fp else exit(0)\""
+          }
+        ]
+      }
+    ]
+  }
+}

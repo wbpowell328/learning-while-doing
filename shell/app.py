@@ -1,0 +1,200 @@
+from uuid import uuid4
+
+import numpy as np
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+
+from sim import SimConfig, simulate
+from policy import (
+    BeliefConfig, AcquisitionConfig, SessionConfig,
+    RandomPolicy, IEPolicy, KGPolicy, Session,
+)
+from .models import (
+    CreateSessionRequest, CreateSessionResponse,
+    StepResponse, JumpEventOut,
+    EvaluateRequest,
+    ObserveRequest, ObserveResponse,
+    StateResponse, PosteriorResponse,
+    RevealResponse,
+)
+
+app = FastAPI(title="learning-while-doing")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],  # Vite dev server
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# In-memory session store: session_id -> Session
+_sessions: dict[str, Session] = {}
+
+
+def _make_step_response(result, session: Session) -> StepResponse:
+    return StepResponse(
+        c_star=result.c_star,
+        total_cost=result.total_cost,
+        opportunity_cost=result.opportunity_cost,
+        shortfall_cost=result.shortfall_cost,
+        days=result.days,
+        n_steps=session.n_steps,
+        best_c_star=session.best_c_star(),
+        cash_series=result.cash_series.tolist(),
+        event_log=[
+            JumpEventOut(day=e.day, size_fraction=e.size_fraction, direction=e.direction)
+            for e in result.event_log
+        ],
+        initial_aum=session._sim_config.initial_aum,
+    )
+
+
+def _make_policy(name: str, acq_cfg: AcquisitionConfig):
+    if name == "ie":
+        return IEPolicy(acq_cfg)
+    if name == "kg":
+        return KGPolicy(acq_cfg)
+    return RandomPolicy(acq_cfg)  # "random" and "human" both use RandomPolicy
+
+
+# ---------------------------------------------------------------------------
+# Health
+# ---------------------------------------------------------------------------
+
+@app.get("/health")
+def health() -> dict:
+    return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Sessions
+# ---------------------------------------------------------------------------
+
+@app.post("/sessions", status_code=201)
+def create_session(req: CreateSessionRequest) -> CreateSessionResponse:
+    sim_cfg    = SimConfig(**req.sim_config.model_dump())
+    belief_cfg = BeliefConfig(**req.belief_config.model_dump())
+    acq_cfg    = AcquisitionConfig(**req.acq_config.model_dump())
+    ses_cfg    = SessionConfig(**req.session_config.model_dump())
+    policy     = _make_policy(req.policy, acq_cfg)
+
+    session = Session(sim_cfg, belief_cfg, acq_cfg, ses_cfg, policy, req.session_seed)
+    sid = str(uuid4())
+    _sessions[sid] = session
+
+    return CreateSessionResponse(session_id=sid, policy=req.policy)
+
+
+@app.post("/sessions/{sid}/step")
+def step(sid: str) -> StepResponse:
+    session = _get_or_404(sid)
+    result = session.step()
+    return _make_step_response(result, session)
+
+
+@app.post("/sessions/{sid}/observe")
+def observe(sid: str, body: ObserveRequest) -> ObserveResponse:
+    session = _get_or_404(sid)
+    session.observe(body.c_star, body.total_cost)
+    return ObserveResponse(
+        n_observations=session.belief.n_observations,
+        best_c_star=session.best_c_star(),
+    )
+
+
+@app.get("/sessions/{sid}/state")
+def state(sid: str) -> StateResponse:
+    session = _get_or_404(sid)
+    return StateResponse(
+        n_steps=session.n_steps,
+        n_observations=session.belief.n_observations,
+        best_c_star=session.best_c_star(),
+        history=session.history,
+    )
+
+
+@app.post("/sessions/{sid}/evaluate")
+def evaluate(sid: str, body: EvaluateRequest) -> StepResponse:
+    session = _get_or_404(sid)
+    result = session.evaluate(body.c_star)
+    return _make_step_response(result, session)
+
+
+@app.get("/sessions/{sid}/reveal")
+def reveal(sid: str, grid_size: int = 30, n_reps: int = 12) -> RevealResponse:
+    session = _get_or_404(sid)
+    cfg = session._sim_config
+    sc = session._sc
+    base_seed = session._session_seed + 999_000
+
+    grid = np.linspace(cfg.c_star_min, cfg.c_star_max, grid_size)
+    mean_costs: list[float] = []
+    for c in grid:
+        costs = [
+            simulate(
+                config=cfg,
+                c_star=float(c),
+                horizon_weeks=sc.horizon_weeks,
+                session_seed=base_seed,
+                experiment_index=i,
+            ).total_cost
+            for i in range(n_reps)
+        ]
+        mean_costs.append(float(np.mean(costs)))
+
+    true_best_idx = int(np.argmin(mean_costs))
+    player_c = session.best_c_star()
+    player_idx = int(np.argmin(np.abs(grid - player_c)))
+
+    naive_c = float(np.clip(0.10, cfg.c_star_min, cfg.c_star_max))
+    naive_costs = [
+        simulate(
+            config=cfg,
+            c_star=naive_c,
+            horizon_weeks=sc.horizon_weeks,
+            session_seed=base_seed,
+            experiment_index=i,
+        ).total_cost
+        for i in range(n_reps)
+    ]
+
+    return RevealResponse(
+        c_stars=grid.tolist(),
+        mean_cost=mean_costs,
+        true_best_c_star=float(grid[true_best_idx]),
+        true_min_cost=mean_costs[true_best_idx],
+        player_best_c_star=player_c,
+        player_best_cost=mean_costs[player_idx],
+        naive_cost=float(np.mean(naive_costs)),
+    )
+
+
+@app.get("/sessions/{sid}/posterior")
+def posterior(sid: str, grid_size: int = 200) -> PosteriorResponse:
+    session = _get_or_404(sid)
+    cfg = session._acq_config
+    grid = np.linspace(cfg.c_star_min, cfg.c_star_max, grid_size)
+    mean, std = session.belief.posterior(grid)
+    return PosteriorResponse(
+        c_stars=grid.tolist(),
+        mean=mean.tolist(),
+        std=std.tolist(),
+        best_c_star=session.best_c_star(),
+    )
+
+
+@app.delete("/sessions/{sid}", status_code=204)
+def delete_session(sid: str) -> None:
+    _get_or_404(sid)
+    del _sessions[sid]
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _get_or_404(sid: str) -> Session:
+    session = _sessions.get(sid)
+    if session is None:
+        raise HTTPException(status_code=404, detail=f"session {sid!r} not found")
+    return session

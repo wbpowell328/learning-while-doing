@@ -1,4 +1,9 @@
-# Phase 2 — not implemented.
-# policy/ will contain IE, KG, and random-baseline acquisition policies
-# that read the belief model and propose the next C* to evaluate.
-# Do not add code here until the belief model interface is defined.
+from .belief import BeliefConfig, BeliefModel
+from .acquire import AcquisitionConfig, AcquisitionPolicy, RandomPolicy, IEPolicy, KGPolicy
+from .session import SessionConfig, Session
+
+__all__ = [
+    "BeliefConfig", "BeliefModel",
+    "AcquisitionConfig", "AcquisitionPolicy", "RandomPolicy", "IEPolicy", "KGPolicy",
+    "SessionConfig", "Session",
+]
