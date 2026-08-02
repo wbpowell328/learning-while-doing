@@ -5,9 +5,16 @@ export default function SessionForm({ onCreate, error }) {
   const [seed, setSeed]             = useState(42);
   const [horizon, setHorizon]       = useState(26);
   const [stationary, setStationary] = useState(true);
-  const [budget, setBudget]         = useState(10);
-  const [simsPerPolicy, setSims]    = useState(10);
   const [loading, setLoading]       = useState(false);
+
+  // Numeric inputs held as strings during typing so the browser doesn't strand
+  // leading zeros / empty state. Derived numeric values are clamped and used
+  // for submission and display. On blur, we canonicalize the string back to
+  // the derived number so "050" collapses to "50".
+  const [budgetStr, setBudgetStr] = useState('10');
+  const [simsStr,   setSimsStr]   = useState('10');
+  const budget = Math.max(1, Math.min(50, Number(budgetStr) || 10));
+  const simsPerPolicy = Math.max(1, Math.min(100, Number(simsStr) || 10));
 
   const isHuman = policy === 'human';
   const isBatch = policy === 'kg-batch' || policy === 'ie-batch';
@@ -61,8 +68,9 @@ export default function SessionForm({ onCreate, error }) {
             <div className="form-group">
               <label>{isBatch ? 'Budget (steps per policy per sim)' : 'Adjustment budget'}</label>
               <input
-                type="number" value={budget} min={1} max={50}
-                onChange={e => setBudget(Number(e.target.value))}
+                type="number" value={budgetStr} min={1} max={50}
+                onChange={e => setBudgetStr(e.target.value)}
+                onBlur={() => setBudgetStr(String(budget))}
               />
               <span style={{ fontSize: 12, color: '#64748b' }}>
                 {isBatch
@@ -76,8 +84,9 @@ export default function SessionForm({ onCreate, error }) {
             <div className="form-group">
               <label>Simulations per policy</label>
               <input
-                type="number" value={simsPerPolicy} min={1} max={100}
-                onChange={e => setSims(Number(e.target.value))}
+                type="number" value={simsStr} min={1} max={100}
+                onChange={e => setSimsStr(e.target.value)}
+                onBlur={() => setSimsStr(String(simsPerPolicy))}
               />
               <span style={{ fontSize: 12, color: '#64748b' }}>
                 {family === 'KG'
