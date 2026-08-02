@@ -29,6 +29,7 @@ export default function App() {
   const [error,         setError]         = useState(null);
   const [cStar,         setCStar]         = useState(0.10);
   const [batchResult,   setBatchResult]   = useState(null);
+  const [batchProgress, setBatchProgress] = useState(null);
   const stopRef = useRef(false);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -59,21 +60,41 @@ export default function App() {
   const handleCreate = useCallback(async ({ policy, session_seed, sim_config, session_config, budget, family, sims_per_policy }) => {
     setError(null);
 
-    // Batch mode: run the whole family, show BatchResults, no live session.
+    // Batch mode: stream the whole family, show progress, then BatchResults.
     if (family) {
+      setBatchProgress({ started: true, completed: 0, total: null, current_policy: null, family });
       try {
-        const result = await runBatch({
-          family,
-          sims_per_policy,
-          budget: budget ?? 10,
-          sim_config,
-          session_config,
-          session_seed,
-        });
+        const result = await runBatch(
+          {
+            family,
+            sims_per_policy,
+            budget: budget ?? 10,
+            sim_config,
+            session_config,
+            session_seed,
+          },
+          (msg) => {
+            if (msg.type === 'started') {
+              setBatchProgress(p => ({ ...p, total: msg.total_runs, total_policies: msg.total_policies }));
+            } else if (msg.type === 'progress') {
+              setBatchProgress(p => ({
+                ...p,
+                completed: msg.completed,
+                total: msg.total,
+                current_policy: msg.current_policy,
+                sim_idx: msg.sim_idx,
+              }));
+            } else if (msg.type === 'ground_truth') {
+              setBatchProgress(p => ({ ...p, phase: 'ground_truth' }));
+            }
+          },
+        );
         setBatchResult(result);
       } catch (e) {
         setError(String(e));
         throw e;
+      } finally {
+        setBatchProgress(null);
       }
       return;
     }
@@ -188,6 +209,45 @@ export default function App() {
 
   if (batchResult) {
     return <BatchResults batch={batchResult} onReset={handleNew} />;
+  }
+
+  if (batchProgress) {
+    const { completed, total, current_policy, sim_idx, family, phase } = batchProgress;
+    const pct = total ? (100 * completed / total) : 0;
+    const label = phase === 'ground_truth'
+      ? 'Evaluating ground truth…'
+      : current_policy
+        ? `Sim ${sim_idx} · ${current_policy}`
+        : 'Starting…';
+    return (
+      <div className="app">
+        <div className="header">
+          <h1>Running {family} batch</h1>
+          <span className="badge">{completed} / {total ?? '?'}</span>
+        </div>
+        <div className="card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>{label}</span>
+            <span style={{ fontSize: 13, color: '#64748b', fontFamily: 'monospace' }}>
+              {pct.toFixed(0)}%
+            </span>
+          </div>
+          <div style={{ height: 10, background: '#e2e8f0', borderRadius: 9999, overflow: 'hidden' }}>
+            <div style={{
+              height: '100%',
+              width: `${pct}%`,
+              background: '#16a34a',
+              borderRadius: 9999,
+              transition: 'width 0.15s linear',
+            }} />
+          </div>
+          <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 10 }}>
+            Streaming progress as each policy-run completes. Keep this tab open;
+            closing it cancels the batch on the server after the current run finishes.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   if (!session) {

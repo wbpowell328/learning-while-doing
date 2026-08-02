@@ -29,10 +29,36 @@ export const getReveal     = (sid) => call(`/sessions/${sid}/reveal`);
 export const getKGComparison = (sid, spacing = 0.05, mcSamples = 500, budget = 10) =>
   call(`/sessions/${sid}/kg?spacing=${spacing}&mc_samples=${mcSamples}&budget=${budget}`);
 
-export const runBatch = (body) =>
-  call('/sessions/batch', {
+// Streams the batch endpoint as NDJSON. Invokes onEvent(msg) for each
+// {"started"|"progress"|"ground_truth"|"result"} message. Resolves with the
+// final "result" payload (also delivered via onEvent).
+export async function runBatch(body, onEvent) {
+  const r = await fetch(`/sessions/batch`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let finalResult = null;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';       // last chunk is possibly incomplete
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      let msg;
+      try { msg = JSON.parse(trimmed); }
+      catch { continue; }
+      if (msg.type === 'result') finalResult = msg;
+      onEvent?.(msg);
+    }
+  }
+  return finalResult;
+}
 export const deleteSession = (sid) => call(`/sessions/${sid}`, { method: 'DELETE' });
