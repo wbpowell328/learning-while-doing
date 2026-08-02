@@ -11,6 +11,6 @@ services:
       - key: PYTHON_VERSION
         value: 3.11.9
       - key: NODE_VERSION
-        value: 20.11.1
+        value: 22.12.0
       - key: ALLOWED_ORIGINS
         value: https://warrenpowell.org
