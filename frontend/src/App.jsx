@@ -55,7 +55,7 @@ export default function App() {
   const handleCreate = useCallback(async ({ policy, session_seed, sim_config, session_config, budget }) => {
     setError(null);
     const { session_id } = await createSession({ policy, session_seed, sim_config, session_config });
-    const [post, kg] = await Promise.all([getPosterior(session_id), getKGComparison(session_id)]);
+    const [post, kg] = await Promise.all([getPosterior(session_id), getKGComparison(session_id, 0.01)]);
     setSession({ id: session_id, policy, seed: session_seed, budget: budget ?? null });
     setPosterior(post);
     setKgComparison(kg);
@@ -74,7 +74,7 @@ export default function App() {
     setError(null);
     try {
       const result = await evaluateC(session.id, cStar);
-      const [post, kg] = await Promise.all([getPosterior(session.id), getKGComparison(session.id)]);
+      const [post, kg] = await Promise.all([getPosterior(session.id), getKGComparison(session.id, 0.01)]);
       applyResult(result, post, kg);
       if (session.budget && result.n_steps >= session.budget) {
         await fetchReveal(session.id);
@@ -90,7 +90,7 @@ export default function App() {
 
   const doStep = useCallback(async (sid) => {
     const result = await runStep(sid);
-    const [post, kg] = await Promise.all([getPosterior(sid), getKGComparison(sid)]);
+    const [post, kg] = await Promise.all([getPosterior(sid), getKGComparison(sid, 0.01)]);
     applyResult(result, post, kg);
   }, [applyResult]);
 
@@ -270,7 +270,7 @@ export default function App() {
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
-            KG value at 5% probe points
+            KG(x) — 1% grid
           </span>
           <span style={{ fontSize: 12, color: '#94a3b8' }}>
             correlated (analytic vs MC) vs independent beliefs

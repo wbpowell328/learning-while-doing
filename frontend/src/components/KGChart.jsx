@@ -1,22 +1,24 @@
-// Grouped-bar chart comparing three flavors of KG at a coarse probe grid:
+// Line chart comparing three flavors of KG(x):
 //   analytic correlated   (exact, FPD 2009)
 //   MC correlated         (same estimand as analytic; MC noise diagnostic)
 //   independent           (closed form; pretends zero cross-covariance)
 //
-// Purpose: pedagogical comparison — shows how independent-belief KG can
-// mis-rank alternatives that a correlated GP prefers, and how much MC
-// noise there is for the given sample count.
+// Purpose: pedagogical comparison — shows how independent-belief KG differs
+// in shape from the correlated version, and how much noise the MC estimator
+// carries relative to the analytic gold standard.
 
-const W = 680, H = 300;
+const W = 680, H = 320;
 const PAD = { top: 24, right: 24, bottom: 56, left: 72 };
 const IW = W - PAD.left - PAD.right;
 const IH = H - PAD.top - PAD.bottom;
 
-const COLOR = {
-  analytic: '#16a34a',    // green — same as KG policy color
-  mc:       '#7c3aed',    // violet
-  indep:    '#f59e0b',    // amber
-};
+const X_MIN = 0.01, X_MAX = 0.20;
+
+const SERIES = [
+  { key: 'analytic_correlated', label: 'Correlated (analytic)', color: '#16a34a', dash: null },
+  { key: 'mc_correlated',       label: 'Correlated (MC)',       color: '#7c3aed', dash: '5,3' },
+  { key: 'independent',         label: 'Independent',           color: '#f59e0b', dash: null },
+];
 
 function fmt(v) {
   if (Math.abs(v) >= 1000) return `$${(v / 1000).toFixed(1)}k`;
@@ -34,71 +36,69 @@ export default function KGChart({ kg }) {
     );
   }
 
-  const { c_stars, analytic_correlated, mc_correlated, independent, mc_samples } = kg;
-  const n = c_stars.length;
+  const { c_stars, mc_samples } = kg;
 
-  // Y bounds: KG is nonnegative in theory; include a bit of headroom + a
-  // little slack for MC below zero.
-  const allY = [...analytic_correlated, ...mc_correlated, ...independent];
+  // Y bounds across all three series; include zero baseline for reference.
+  const allY = SERIES.flatMap(s => kg[s.key]);
   const rawMax = Math.max(...allY, 1);
   const rawMin = Math.min(...allY, 0);
   const pad = (rawMax - rawMin) * 0.10 || 1;
   const yLo = Math.min(0, rawMin - pad);
   const yHi = rawMax + pad;
 
-  // X positions: one "slot" per probe; three bars per slot side-by-side.
-  const slotW = IW / n;
-  const barW = Math.min(24, (slotW * 0.7) / 3);
-  const groupW = 3 * barW;
-
+  const xS = (c) => PAD.left + ((c - X_MIN) / (X_MAX - X_MIN)) * IW;
   const yS = (v) => PAD.top + ((yHi - v) / (yHi - yLo)) * IH;
-  const slotCenter = (i) => PAD.left + (i + 0.5) * slotW;
-  const barX = (i, kIdx) => slotCenter(i) - groupW / 2 + kIdx * barW;
 
   const y0 = yS(0);
   const yTicks = Array.from({ length: 5 }, (_, i) => yLo + (i / 4) * (yHi - yLo));
+  const xTicks = [0.01, 0.05, 0.10, 0.15, 0.20];
 
-  const bar = (i, kIdx, value, color) => {
-    const x = barX(i, kIdx);
-    const y = value >= 0 ? yS(value) : y0;
-    const h = Math.max(0.5, Math.abs(yS(value) - y0));
-    return <rect key={`${i}-${kIdx}`} x={x} y={y} width={barW - 1} height={h}
-                 fill={color} fillOpacity={0.85} />;
-  };
+  const linePath = (series) => c_stars
+    .map((c, i) => `${i === 0 ? 'M' : 'L'}${xS(c)},${yS(series[i])}`)
+    .join('');
 
   return (
     <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible' }}>
-      {/* Horizontal gridlines */}
+      {/* Gridlines */}
       {yTicks.map((v, i) => (
         <line key={i} x1={PAD.left} x2={W - PAD.right}
               y1={yS(v)} y2={yS(v)} stroke="#e2e8f0" strokeWidth={1} />
       ))}
 
-      {/* Zero baseline (bold) */}
+      {/* Zero baseline */}
       <line x1={PAD.left} x2={W - PAD.right} y1={y0} y2={y0}
             stroke="#94a3b8" strokeWidth={1} />
 
-      {/* Bars */}
-      {c_stars.map((_, i) => (
-        <g key={i}>
-          {bar(i, 0, analytic_correlated[i], COLOR.analytic)}
-          {bar(i, 1, mc_correlated[i],       COLOR.mc)}
-          {bar(i, 2, independent[i],         COLOR.indep)}
+      {/* Series: line + markers */}
+      {SERIES.map(({ key, color, dash }) => (
+        <g key={key}>
+          <path d={linePath(kg[key])} fill="none"
+                stroke={color} strokeWidth={2}
+                strokeDasharray={dash ?? undefined}
+                opacity={0.9} />
+          {c_stars.map((c, i) => (
+            <circle key={i} cx={xS(c)} cy={yS(kg[key][i])} r={2.5}
+                    fill={color} opacity={0.9} />
+          ))}
         </g>
       ))}
 
-      {/* X axis: probe labels */}
+      {/* X axis */}
       <line x1={PAD.left} x2={W - PAD.right} y1={H - PAD.bottom} y2={H - PAD.bottom}
             stroke="#94a3b8" />
-      {c_stars.map((c, i) => (
-        <text key={i} x={slotCenter(i)} y={H - PAD.bottom + 16}
-              textAnchor="middle" fontSize={11} fill="#64748b">
-          {c.toFixed(2)}
-        </text>
+      {xTicks.map((v) => (
+        <g key={v}>
+          <line x1={xS(v)} x2={xS(v)} y1={H - PAD.bottom} y2={H - PAD.bottom + 5}
+                stroke="#94a3b8" />
+          <text x={xS(v)} y={H - PAD.bottom + 18}
+                textAnchor="middle" fontSize={11} fill="#64748b">
+            {v.toFixed(2)}
+          </text>
+        </g>
       ))}
       <text x={PAD.left + IW / 2} y={H - 4}
             textAnchor="middle" fontSize={12} fill="#64748b">
-        C* probe points (cash buffer ratio)
+        C* (cash buffer ratio)
       </text>
 
       {/* Y axis */}
@@ -116,17 +116,21 @@ export default function KGChart({ kg }) {
       <text
         transform={`translate(${PAD.left - 56},${PAD.top + IH / 2}) rotate(-90)`}
         textAnchor="middle" fontSize={12} fill="#64748b">
-        KG value
+        KG(x)
       </text>
 
       {/* Legend */}
-      <g transform={`translate(${PAD.left + 8},${PAD.top + 4})`}>
-        <rect x={0}  y={0}  width={10} height={10} fill={COLOR.analytic} fillOpacity={0.85} />
-        <text x={14} y={9}  fontSize={10} fill="#374151">Correlated (analytic)</text>
-        <rect x={0}  y={16} width={10} height={10} fill={COLOR.mc} fillOpacity={0.85} />
-        <text x={14} y={25} fontSize={10} fill="#374151">Correlated (MC, n={mc_samples})</text>
-        <rect x={0}  y={32} width={10} height={10} fill={COLOR.indep} fillOpacity={0.85} />
-        <text x={14} y={41} fontSize={10} fill="#374151">Independent (closed form)</text>
+      <g transform={`translate(${W - PAD.right - 210},${PAD.top + 4})`}>
+        {SERIES.map(({ label, color, dash }, i) => (
+          <g key={i} transform={`translate(0,${i * 16})`}>
+            <line x1={0} x2={22} y1={6} y2={6} stroke={color} strokeWidth={2}
+                  strokeDasharray={dash ?? undefined} />
+            <circle cx={11} cy={6} r={2.5} fill={color} />
+            <text x={28} y={9} fontSize={10} fill="#374151">
+              {label}{label.startsWith('Correlated (MC') ? `, n=${mc_samples}` : ''}
+            </text>
+          </g>
+        ))}
       </g>
     </svg>
   );
