@@ -11,6 +11,7 @@ from sim import SimConfig, simulate
 from policy import (
     BeliefConfig, AcquisitionConfig, SessionConfig,
     RandomPolicy, IEPolicy, KGPolicy, Session,
+    KGMCPolicy, KGIndependentPolicy, OKGCorrelatedPolicy, OKGIndependentPolicy,
     kg_analytic_correlated_at, kg_mc_correlated_at, kg_independent_at,
 )
 from .models import (
@@ -20,6 +21,7 @@ from .models import (
     ObserveRequest, ObserveResponse,
     StateResponse, PosteriorResponse,
     RevealResponse, KGComparisonResponse,
+    BatchRequest, BatchResponse, BatchPolicyResult,
 )
 
 app = FastAPI(title="learning-while-doing")
@@ -173,6 +175,130 @@ def reveal(sid: str, grid_size: int = 30, n_reps: int = 12) -> RevealResponse:
         player_best_cost=mean_costs[player_idx],
         naive_cost=float(np.mean(naive_costs)),
     )
+
+
+@app.post("/sessions/batch")
+def batch_run(req: BatchRequest) -> BatchResponse:
+    """
+    Run an entire policy family, aggregating results across sims_per_policy
+    independent runs (each with a distinct session seed but shared across all
+    policies within a sim_idx — Common Random Numbers reduces variance).
+
+    For each run: create session, take `budget` steps, record final best_c_star
+    and cumulative simulated cost. After the loop, evaluate the final best_c_star
+    at ground truth (12-rep MC).
+    """
+    sim_cfg    = SimConfig(**req.sim_config.model_dump())
+    belief_cfg = BeliefConfig(**req.belief_config.model_dump())
+    acq_cfg    = AcquisitionConfig(**req.acq_config.model_dump())
+    ses_cfg    = SessionConfig(**req.session_config.model_dump())
+
+    # ------------------------------------------------------------------
+    # Build (label, param, factory) for each policy in the family
+    # ------------------------------------------------------------------
+    if req.family == "KG":
+        family = [
+            ("KG offline correlated (analytic)", 0.0, lambda: KGPolicy(acq_cfg)),
+            ("KG offline correlated (MC, n=500)", 1.0, lambda: KGMCPolicy(acq_cfg, n_mc=500)),
+            ("KG offline independent", 2.0, lambda: KGIndependentPolicy(acq_cfg)),
+            ("KG online correlated (Ryzhov)", 3.0, lambda: OKGCorrelatedPolicy(acq_cfg, budget=req.budget)),
+            ("KG online independent", 4.0, lambda: OKGIndependentPolicy(acq_cfg, budget=req.budget)),
+        ]
+    elif req.family == "IE":
+        # z_alpha values: 0, 0.2, 0.4, ..., 4.0 → 21 policies
+        family = []
+        for k in range(21):
+            z = round(k * 0.2, 3)
+            # Rebuild AcqConfig with this z_alpha
+            cfg_z = AcquisitionConfig(
+                c_star_min=acq_cfg.c_star_min,
+                c_star_max=acq_cfg.c_star_max,
+                grid_size=acq_cfg.grid_size,
+                z_alpha=z,
+            )
+            family.append((f"IE (z={z:.2f})", z, (lambda c=cfg_z: IEPolicy(c))))
+    else:
+        raise HTTPException(400, f"unknown family: {req.family}")
+
+    # ------------------------------------------------------------------
+    # Run each policy sims_per_policy times
+    # ------------------------------------------------------------------
+    per_policy: dict[str, dict] = {label: {"param": param, "best": [], "term": [], "cum": []}
+                                    for label, param, _ in family}
+
+    for sim_idx in range(req.sims_per_policy):
+        base_seed = req.session_seed + sim_idx * 10_000
+        for label, _, factory in family:
+            session = Session(sim_cfg, belief_cfg, acq_cfg, ses_cfg, factory(), base_seed)
+            cumulative = 0.0
+            for _ in range(req.budget):
+                result = session.step()
+                cumulative += result.total_cost
+            best = session.best_c_star()
+            term = _evaluate_expected_cost(sim_cfg, ses_cfg, best, base_seed + 999_000, n_reps=12)
+            per_policy[label]["best"].append(best)
+            per_policy[label]["term"].append(term)
+            per_policy[label]["cum"].append(cumulative)
+
+    # ------------------------------------------------------------------
+    # Ground truth: best_c_star and min_cost over a fine grid
+    # ------------------------------------------------------------------
+    true_best, true_min = _ground_truth(sim_cfg, ses_cfg, acq_cfg,
+                                         base_seed_prefix=req.session_seed + 777_000,
+                                         grid_size=30, n_reps=12)
+
+    # Aggregate + assemble response
+    def _agg(vals: list[float]) -> tuple[float, float]:
+        arr = np.array(vals)
+        return float(arr.mean()), float(arr.std())
+
+    results: list[BatchPolicyResult] = []
+    for label, param, _ in family:
+        d = per_policy[label]
+        m_best, s_best = _agg(d["best"])
+        m_term, s_term = _agg(d["term"])
+        m_cum, s_cum = _agg(d["cum"])
+        results.append(BatchPolicyResult(
+            policy=label, param=param,
+            mean_best_c_star=m_best, std_best_c_star=s_best,
+            mean_terminal_cost=m_term, std_terminal_cost=s_term,
+            mean_cumulative_cost=m_cum, std_cumulative_cost=s_cum,
+            best_c_stars=d["best"],
+            terminal_costs=d["term"],
+            cumulative_costs=d["cum"],
+        ))
+
+    return BatchResponse(
+        family=req.family,
+        sims_per_policy=req.sims_per_policy,
+        budget=req.budget,
+        session_seed=req.session_seed,
+        true_best_c_star=true_best,
+        true_min_cost=true_min,
+        policies=results,
+    )
+
+
+def _evaluate_expected_cost(sim_cfg: SimConfig, ses_cfg: SessionConfig,
+                             c_star: float, base_seed: int, n_reps: int = 12) -> float:
+    costs = [
+        simulate(config=sim_cfg, c_star=float(c_star),
+                 horizon_weeks=ses_cfg.horizon_weeks,
+                 session_seed=base_seed, experiment_index=i).total_cost
+        for i in range(n_reps)
+    ]
+    return float(np.mean(costs))
+
+
+def _ground_truth(sim_cfg: SimConfig, ses_cfg: SessionConfig, acq_cfg: AcquisitionConfig,
+                   base_seed_prefix: int, grid_size: int = 30, n_reps: int = 12) -> tuple[float, float]:
+    grid = np.linspace(acq_cfg.c_star_min, acq_cfg.c_star_max, grid_size)
+    mean_costs = [
+        _evaluate_expected_cost(sim_cfg, ses_cfg, float(c), base_seed_prefix, n_reps)
+        for c in grid
+    ]
+    i = int(np.argmin(mean_costs))
+    return float(grid[i]), float(mean_costs[i])
 
 
 @app.get("/sessions/{sid}/kg")

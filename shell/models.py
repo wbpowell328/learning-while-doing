@@ -124,6 +124,48 @@ class RevealResponse(BaseModel):
     naive_cost: float
 
 
+class BatchRequest(BaseModel):
+    """
+    Run an entire family of policies, sims_per_policy times each, all sharing
+    the same base configs. Reports aggregated outcome metrics per policy.
+    """
+    family: Literal["KG", "IE"]
+    sims_per_policy: int = 10
+    budget: int = 10                          # measurement steps per session
+    sim_config: SimConfigIn = SimConfigIn()
+    belief_config: BeliefConfigIn = BeliefConfigIn()
+    acq_config: AcqConfigIn = AcqConfigIn()
+    session_config: SessionConfigIn = SessionConfigIn()
+    session_seed: int = 42
+
+
+class BatchPolicyResult(BaseModel):
+    policy: str                               # human-readable label
+    param: float                              # numeric parameter (z_alpha for IE, arbitrary for KG)
+    # Aggregates across sims (mean and std)
+    mean_best_c_star: float
+    std_best_c_star: float
+    mean_terminal_cost: float                 # E[cost at final best_c_star], MC over noise
+    std_terminal_cost: float
+    mean_cumulative_cost: float               # sum of observed costs across the budget
+    std_cumulative_cost: float
+    # Per-sim raw arrays for plotting error bars / distributions
+    best_c_stars: list[float]
+    terminal_costs: list[float]
+    cumulative_costs: list[float]
+
+
+class BatchResponse(BaseModel):
+    family: str
+    sims_per_policy: int
+    budget: int
+    session_seed: int
+    # Ground-truth best C* (via MC on a fine grid), for reference
+    true_best_c_star: float
+    true_min_cost: float
+    policies: list[BatchPolicyResult]
+
+
 class KGComparisonResponse(BaseModel):
     """
     KG values at a coarse probe grid, computed three ways for pedagogical

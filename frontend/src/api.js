@@ -28,4 +28,11 @@ export const getPosterior  = (sid) => call(`/sessions/${sid}/posterior`);
 export const getReveal     = (sid) => call(`/sessions/${sid}/reveal`);
 export const getKGComparison = (sid, spacing = 0.05, mcSamples = 500, budget = 10) =>
   call(`/sessions/${sid}/kg?spacing=${spacing}&mc_samples=${mcSamples}&budget=${budget}`);
+
+export const runBatch = (body) =>
+  call('/sessions/batch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
 export const deleteSession = (sid) => call(`/sessions/${sid}`, { method: 'DELETE' });

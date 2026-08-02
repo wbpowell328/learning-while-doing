@@ -32,6 +32,11 @@ class AcquisitionConfig:
     c_star_min: float = 0.01
     c_star_max: float = 0.20
     grid_size: int = 100   # evaluation grid resolution for IE and KG
+    # IE (interval-estimation / lower confidence bound) tunable parameter.
+    #   IE(x) = mu(x) - z_alpha * std(x); pick argmin.
+    # z_alpha = 0    → pure exploitation (argmin posterior mean)
+    # z_alpha → inf  → pure exploration (argmax posterior std)
+    z_alpha: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -58,15 +63,18 @@ class RandomPolicy:
 
 class IEPolicy:
     """
-    Proposes the C* with the highest posterior standard deviation on the grid.
+    Interval-estimation / lower-confidence-bound acquisition (for minimization):
 
-    This is the one-step maximum entropy reduction acquisition under a GP with
-    independent observations: the point that, when observed, maximally reduces
-    uncertainty about F.  Pure exploration — does not exploit the posterior mean.
+        IE(x) = mu(x) - z_alpha * std(x)
 
-    With no observations the prior std is uniform, so the first proposal is
-    always grid[0] (= c_star_min).  Subsequent proposals move to the region
-    of highest remaining uncertainty.
+    Picks argmin.  z_alpha (in AcquisitionConfig) is the exploration knob:
+
+        z_alpha = 0     — pure exploitation: argmin posterior mean.
+        z_alpha ~ 1-2   — mild exploration bonus for uncertain points.
+        z_alpha → inf   — pure exploration: argmax posterior std.
+
+    With no observations the prior mean and std are both uniform, so the first
+    proposal is grid[0] regardless of z_alpha (deterministic tiebreak).
     """
 
     def __init__(self, config: AcquisitionConfig | None = None) -> None:
@@ -75,8 +83,10 @@ class IEPolicy:
         self._grid = np.linspace(cfg.c_star_min, cfg.c_star_max, cfg.grid_size)
 
     def propose(self, model: BeliefModel, rng: np.random.Generator) -> float:
-        _, std = model.posterior(self._grid)
-        return float(self._grid[np.argmax(std)])
+        mu, std = model.posterior(self._grid)
+        z = self.config.z_alpha
+        score = mu - z * std
+        return float(self._grid[np.argmin(score)])
 
 
 # ---------------------------------------------------------------------------
@@ -332,6 +342,86 @@ def kg_mc_correlated_at(model: BeliefModel, grid: np.ndarray,
         future_min = np.min(mu_ext[None, :] + w_ext[None, :] * z[:, None], axis=1)
         kg[i] = current_min - float(np.mean(future_min))
     return kg
+
+
+class KGMCPolicy:
+    """
+    Same estimand as KGPolicy but computed with Monte-Carlo. Useful as a
+    baseline to see how MC noise degrades KG-driven decisions relative to
+    the analytic gold standard.
+
+    Uses `rng` for reproducible MC draws.
+    """
+    def __init__(self, config: AcquisitionConfig | None = None, n_mc: int = 500) -> None:
+        self.config = config or AcquisitionConfig()
+        self._n_mc = int(n_mc)
+        cfg = self.config
+        self._grid = np.linspace(cfg.c_star_min, cfg.c_star_max, cfg.grid_size)
+
+    def propose(self, model: BeliefModel, rng: np.random.Generator) -> float:
+        kg = kg_mc_correlated_at(model, self._grid, self._grid, self._n_mc, rng)
+        return float(self._grid[np.argmax(kg)])
+
+
+class KGIndependentPolicy:
+    """
+    Offline KG under the independent-beliefs assumption: observing at x
+    only shifts belief at x itself (no cascade to correlated neighbors).
+    argmax of the resulting closed-form KG picks the next measurement.
+    """
+    def __init__(self, config: AcquisitionConfig | None = None) -> None:
+        self.config = config or AcquisitionConfig()
+        cfg = self.config
+        self._grid = np.linspace(cfg.c_star_min, cfg.c_star_max, cfg.grid_size)
+
+    def propose(self, model: BeliefModel, rng: np.random.Generator) -> float:
+        kg = kg_independent_at(model, self._grid, self._grid)
+        return float(self._grid[np.argmax(kg)])
+
+
+class OKGCorrelatedPolicy:
+    """
+    Online KG (Ryzhov 2010) with correlated beliefs.
+
+        OKG(x) = mu_n(x) - (N - n) * offline_correlated_KG(x)
+
+    where N is the total measurement budget and n is the number of steps
+    taken so far (read from model.n_observations). Picks argmin OKG.
+    """
+    def __init__(self, config: AcquisitionConfig, budget: int) -> None:
+        self.config = config
+        self._budget = int(budget)
+        cfg = self.config
+        self._grid = np.linspace(cfg.c_star_min, cfg.c_star_max, cfg.grid_size)
+
+    def propose(self, model: BeliefModel, rng: np.random.Generator) -> float:
+        n = model.n_observations
+        remaining = max(0, self._budget - n)
+        mu, _ = model.posterior(self._grid)
+        kg = kg_analytic_correlated_at(model, self._grid, self._grid)
+        okg = mu - remaining * kg
+        return float(self._grid[np.argmin(okg)])
+
+
+class OKGIndependentPolicy:
+    """
+    Online KG using independent-beliefs offline KG as the info-value term.
+    Same functional form as OKGCorrelatedPolicy but with the independent
+    KG plugged in.
+    """
+    def __init__(self, config: AcquisitionConfig, budget: int) -> None:
+        self.config = config
+        self._budget = int(budget)
+        cfg = self.config
+        self._grid = np.linspace(cfg.c_star_min, cfg.c_star_max, cfg.grid_size)
+
+    def propose(self, model: BeliefModel, rng: np.random.Generator) -> float:
+        n = model.n_observations
+        remaining = max(0, self._budget - n)
+        mu, _ = model.posterior(self._grid)
+        kg = kg_independent_at(model, self._grid, self._grid)
+        okg = mu - remaining * kg
+        return float(self._grid[np.argmin(okg)])
 
 
 def kg_independent_at(model: BeliefModel, grid: np.ndarray,

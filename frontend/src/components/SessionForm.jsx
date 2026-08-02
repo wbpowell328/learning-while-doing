@@ -6,9 +6,12 @@ export default function SessionForm({ onCreate, error }) {
   const [horizon, setHorizon]       = useState(26);
   const [stationary, setStationary] = useState(true);
   const [budget, setBudget]         = useState(10);
+  const [simsPerPolicy, setSims]    = useState(10);
   const [loading, setLoading]       = useState(false);
 
   const isHuman = policy === 'human';
+  const isBatch = policy === 'kg-batch' || policy === 'ie-batch';
+  const family  = policy === 'kg-batch' ? 'KG' : policy === 'ie-batch' ? 'IE' : null;
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -19,7 +22,10 @@ export default function SessionForm({ onCreate, error }) {
         session_seed: seed,
         sim_config: { stationary },
         session_config: { horizon_weeks: horizon },
-        budget: isHuman ? budget : null,
+        budget: (isHuman || isBatch) ? budget : null,
+        // Batch-only fields
+        family,
+        sims_per_policy: simsPerPolicy,
       });
     } finally {
       setLoading(false);
@@ -38,22 +44,45 @@ export default function SessionForm({ onCreate, error }) {
           <div className="form-group">
             <label>Mode</label>
             <select value={policy} onChange={e => setPolicy(e.target.value)}>
-              <option value="human">Human — I pick C* each round</option>
-              <option value="kg">KG — Knowledge Gradient (automated)</option>
-              <option value="ie">IE — Max uncertainty exploration (automated)</option>
-              <option value="random">Random — baseline (automated)</option>
+              <optgroup label="Single run">
+                <option value="human">Human — I pick C* each round</option>
+                <option value="kg">KG — offline correlated (analytic)</option>
+                <option value="ie">IE — LCB with z_alpha=0 (greedy)</option>
+                <option value="random">Random — baseline</option>
+              </optgroup>
+              <optgroup label="Batch benchmark">
+                <option value="kg-batch">KG batch — all 5 variants</option>
+                <option value="ie-batch">IE batch — 21 z_alpha values</option>
+              </optgroup>
             </select>
           </div>
 
-          {isHuman && (
+          {(isHuman || isBatch) && (
             <div className="form-group">
-              <label>Adjustment budget</label>
+              <label>{isBatch ? 'Budget (steps per policy per sim)' : 'Adjustment budget'}</label>
               <input
                 type="number" value={budget} min={1} max={50}
                 onChange={e => setBudget(Number(e.target.value))}
               />
               <span style={{ fontSize: 12, color: '#64748b' }}>
-                Number of times you can run the simulator
+                {isBatch
+                  ? 'How many observations each policy can take before we score it'
+                  : 'Number of times you can run the simulator'}
+              </span>
+            </div>
+          )}
+
+          {isBatch && (
+            <div className="form-group">
+              <label>Simulations per policy</label>
+              <input
+                type="number" value={simsPerPolicy} min={1} max={100}
+                onChange={e => setSims(Number(e.target.value))}
+              />
+              <span style={{ fontSize: 12, color: '#64748b' }}>
+                {family === 'KG'
+                  ? `Total runs = 5 policies × ${simsPerPolicy} sims × ${budget} steps = ${5 * simsPerPolicy * budget} simulations`
+                  : `Total runs = 21 policies × ${simsPerPolicy} sims × ${budget} steps = ${21 * simsPerPolicy * budget} simulations`}
               </span>
             </div>
           )}
@@ -86,7 +115,7 @@ export default function SessionForm({ onCreate, error }) {
 
           <button type="submit" className="btn btn-primary" disabled={loading}
             style={{ width: '100%', padding: '11px', fontSize: '0.95rem' }}>
-            {loading ? 'Creating…' : 'Start →'}
+            {loading ? (isBatch ? 'Running batch…' : 'Creating…') : (isBatch ? 'Run batch →' : 'Start →')}
           </button>
         </form>
       </div>

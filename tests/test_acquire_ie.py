@@ -1,14 +1,17 @@
 """
-IEPolicy (information-theoretic exploration) tests.
+IEPolicy (lower-confidence-bound / interval estimation) tests.
+
+Verified at the pure-exploration end (z_alpha = 1e6): the LCB
+    IE(x) = mu(x) - z_alpha * std(x)
+is dominated by the std term, so argmin(IE) equals argmax(std).
 
 Properties verified:
   1. Proposal is always a grid point within [c_star_min, c_star_max].
-  2. The proposed point achieves the maximum posterior std on the grid.
-  3. After observing a point, the policy does NOT re-propose that point
-     (std is lowest there, so argmax std moves elsewhere).
+  2. Under z_alpha=1e6, proposal achieves the maximum posterior std.
+  3. Well-observed points (low std) are avoided under large z_alpha.
   4. Deterministic: rng is not used; same model → same proposal.
-  5. Works with an empty model (prior is flat; first proposal is grid[0]).
-  6. More observations shift the proposal toward unexplored regions.
+  5. Works with an empty model.
+  6. Dense observations on one side shift proposal to the other side.
 """
 import numpy as np
 import pytest
@@ -17,7 +20,8 @@ from policy.belief import BeliefConfig, BeliefModel
 from policy.acquire import AcquisitionConfig, IEPolicy
 
 
-CFG = AcquisitionConfig(c_star_min=0.01, c_star_max=0.20, grid_size=100)
+# z_alpha=1e6 forces LCB into pure-exploration behavior (argmin(mu - z*std) = argmax(std)).
+CFG = AcquisitionConfig(c_star_min=0.01, c_star_max=0.20, grid_size=100, z_alpha=1e6)
 BELIEF_CFG = BeliefConfig(length_scale=0.04, signal_std=5_000.0, noise_std=500.0)
 
 _DUMMY_RNG = np.random.default_rng(0)  # IE never uses rng; pass any instance

@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { createSession, runStep, evaluateC, getPosterior, getReveal, getKGComparison, deleteSession } from './api';
+import { createSession, runStep, evaluateC, getPosterior, getReveal, getKGComparison, deleteSession, runBatch } from './api';
 import SessionForm from './components/SessionForm';
 import PosteriorChart from './components/PosteriorChart';
 import KGChart from './components/KGChart';
@@ -9,6 +9,7 @@ import HumanControls from './components/HumanControls';
 import CashChart from './components/CashChart';
 import JumpLog from './components/JumpLog';
 import RevealPanel from './components/RevealPanel';
+import BatchResults from './components/BatchResults';
 import './App.css';
 
 const POLICY_LABEL = { random: 'Random', ie: 'IE', kg: 'KG', human: 'Human' };
@@ -27,6 +28,7 @@ export default function App() {
   const [autoCount,     setAutoCount]     = useState(0);
   const [error,         setError]         = useState(null);
   const [cStar,         setCStar]         = useState(0.10);
+  const [batchResult,   setBatchResult]   = useState(null);
   const stopRef = useRef(false);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -54,8 +56,29 @@ export default function App() {
 
   // ── Create session ────────────────────────────────────────────────────────
 
-  const handleCreate = useCallback(async ({ policy, session_seed, sim_config, session_config, budget }) => {
+  const handleCreate = useCallback(async ({ policy, session_seed, sim_config, session_config, budget, family, sims_per_policy }) => {
     setError(null);
+
+    // Batch mode: run the whole family, show BatchResults, no live session.
+    if (family) {
+      try {
+        const result = await runBatch({
+          family,
+          sims_per_policy,
+          budget: budget ?? 10,
+          sim_config,
+          session_config,
+          session_seed,
+        });
+        setBatchResult(result);
+      } catch (e) {
+        setError(String(e));
+        throw e;
+      }
+      return;
+    }
+
+    // Single-policy mode: existing flow
     const { session_id } = await createSession({ policy, session_seed, sim_config, session_config });
     const effectiveBudget = budget ?? 10;
     const [post, kg] = await Promise.all([
@@ -158,9 +181,14 @@ export default function App() {
     setLastResult(null);
     setReveal(null);
     setError(null);
+    setBatchResult(null);
   }, [session]);
 
   // ── Render ────────────────────────────────────────────────────────────────
+
+  if (batchResult) {
+    return <BatchResults batch={batchResult} onReset={handleNew} />;
+  }
 
   if (!session) {
     return (
