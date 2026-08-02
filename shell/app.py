@@ -199,7 +199,7 @@ def batch_run(req: BatchRequest) -> BatchResponse:
     if req.family == "KG":
         family = [
             ("KG offline correlated (analytic)", 0.0, lambda: KGPolicy(acq_cfg)),
-            ("KG offline correlated (MC, n=500)", 1.0, lambda: KGMCPolicy(acq_cfg, n_mc=500)),
+            ("KG offline correlated (MC, n=50)", 1.0, lambda: KGMCPolicy(acq_cfg, n_mc=50)),
             ("KG offline independent", 2.0, lambda: KGIndependentPolicy(acq_cfg)),
             ("KG online correlated (Ryzhov)", 3.0, lambda: OKGCorrelatedPolicy(acq_cfg, budget=req.budget)),
             ("KG online independent", 4.0, lambda: OKGIndependentPolicy(acq_cfg, budget=req.budget)),
@@ -305,7 +305,7 @@ def _ground_truth(sim_cfg: SimConfig, ses_cfg: SessionConfig, acq_cfg: Acquisiti
 def kg_comparison(
     sid: str,
     spacing: float = 0.05,
-    mc_samples: int = 500,
+    mc_samples: int = 50,
     mc_seed: int = 12345,
     budget: int = 10,
 ) -> KGComparisonResponse:

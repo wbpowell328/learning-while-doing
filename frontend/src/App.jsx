@@ -83,7 +83,7 @@ export default function App() {
     const effectiveBudget = budget ?? 10;
     const [post, kg] = await Promise.all([
       getPosterior(session_id),
-      getKGComparison(session_id, 0.01, 500, effectiveBudget),
+      getKGComparison(session_id, 0.01, 50, effectiveBudget),
     ]);
     setSession({ id: session_id, policy, seed: session_seed, budget: budget ?? null });
     setPosterior(post);
@@ -105,7 +105,7 @@ export default function App() {
       const result = await evaluateC(session.id, cStar);
       const [post, kg] = await Promise.all([
         getPosterior(session.id),
-        getKGComparison(session.id, 0.01, 500, session.budget ?? 10),
+        getKGComparison(session.id, 0.01, 50, session.budget ?? 10),
       ]);
       applyResult(result, post, kg);
       if (session.budget && result.n_steps >= session.budget) {
@@ -124,7 +124,7 @@ export default function App() {
     const result = await runStep(sid);
     const [post, kg] = await Promise.all([
       getPosterior(sid),
-      getKGComparison(sid, 0.01, 500, budget ?? 10),
+      getKGComparison(sid, 0.01, 50, budget ?? 10),
     ]);
     applyResult(result, post, kg);
   }, [applyResult]);
