@@ -42,7 +42,6 @@ class AcqConfigIn(BaseModel):
     c_star_min: float = 0.01
     c_star_max: float = 0.20
     grid_size: int = 100
-    kg_n_mc: int = 500
 
 
 class SessionConfigIn(BaseModel):

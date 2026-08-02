@@ -4,12 +4,11 @@ KGPolicy (knowledge gradient) tests.
 Properties verified:
   1. Proposal is always a valid grid point within [c_star_min, c_star_max].
   2. Works with no observations (prior only).
-  3. KG values over the grid are non-negative (allow small MC tolerance).
+  3. KG values over the grid are non-negative (analytic KG, tight tolerance).
   4. The proposed point achieves the maximum KG value on the grid.
-  5. Deterministic: same model + same rng seed → same proposal.
-  6. Different seeds can produce different proposals (Monte Carlo noise).
-  7. After dense observations in one region, KG prefers the unexplored region.
-  8. KG values are higher in unexplored regions than in well-observed ones.
+  5. Deterministic: same model → same proposal (regardless of rng seed).
+  6. After dense observations in one region, KG prefers the unexplored region.
+  7. KG values are higher in unexplored regions than in well-observed ones.
 """
 import numpy as np
 import pytest
@@ -18,7 +17,7 @@ from policy.belief import BeliefConfig, BeliefModel
 from policy.acquire import AcquisitionConfig, KGPolicy
 
 
-CFG = AcquisitionConfig(c_star_min=0.01, c_star_max=0.20, grid_size=50, kg_n_mc=1000)
+CFG = AcquisitionConfig(c_star_min=0.01, c_star_max=0.20, grid_size=50)
 BELIEF_CFG = BeliefConfig(length_scale=0.04, signal_std=5_000.0, noise_std=1_000.0)
 
 
@@ -77,15 +76,16 @@ def test_kg_values_non_negative():
     policy = KGPolicy(CFG)
     model = make_model((0.07, 2_000.0), (0.13, 4_500.0))
     kg = policy.kg_values(model, make_rng(7))
-    assert np.all(kg >= -50.0), (
-        f"KG has large negative values: min={kg.min():.2f}"
+    # Analytic KG is exact: any negativity is float roundoff only.
+    assert np.all(kg >= -1e-6), (
+        f"KG has negative values beyond roundoff: min={kg.min():.4e}"
     )
 
 
 def test_kg_values_non_negative_no_data():
     policy = KGPolicy(CFG)
     kg = policy.kg_values(make_model(), make_rng(7))
-    assert np.all(kg >= -50.0)
+    assert np.all(kg >= -1e-6)
 
 
 # ---------------------------------------------------------------------------
@@ -107,30 +107,19 @@ def test_proposes_max_kg_point():
 
 
 # ---------------------------------------------------------------------------
-# 5. Deterministic given same rng seed
+# 5. Analytic KG: deterministic regardless of rng seed
 # ---------------------------------------------------------------------------
 
-def test_deterministic():
+def test_deterministic_across_seeds():
+    """
+    Analytic KG has no MC noise, so different rng seeds must all yield the
+    same proposal (rng is accepted for interface compat but unused inside KG).
+    """
     policy = KGPolicy(CFG)
     model = make_model((0.08, 2_500.0), (0.14, 4_000.0))
-    c1 = policy.propose(model, make_rng(99))
-    c2 = policy.propose(model, make_rng(99))
-    assert c1 == c2, f"Same seed produced different proposals: {c1} vs {c2}"
-
-
-# ---------------------------------------------------------------------------
-# 6. Different seeds can produce different proposals
-# ---------------------------------------------------------------------------
-
-def test_mc_noise_can_vary_proposals():
-    """With very few MC samples, different seeds should sometimes differ."""
-    small_cfg = AcquisitionConfig(c_star_min=0.01, c_star_max=0.20,
-                                  grid_size=20, kg_n_mc=10)
-    policy = KGPolicy(small_cfg)
-    model = make_model((0.10, 3_000.0))
-    proposals = {policy.propose(model, make_rng(s)) for s in range(30)}
-    assert len(proposals) > 1, (
-        "All 30 proposals identical with kg_n_mc=10 — MC noise seems absent"
+    proposals = {policy.propose(model, make_rng(s)) for s in range(10)}
+    assert len(proposals) == 1, (
+        f"Analytic KG should be deterministic but produced {len(proposals)} distinct proposals"
     )
 
 
