@@ -3,6 +3,7 @@ import { createSession, runStep, evaluateC, getPosterior, getReveal, getKGCompar
 import SessionForm from './components/SessionForm';
 import PosteriorChart from './components/PosteriorChart';
 import KGChart from './components/KGChart';
+import CStarSlider from './components/CStarSlider';
 import HistoryTable from './components/HistoryTable';
 import HumanControls from './components/HumanControls';
 import CashChart from './components/CashChart';
@@ -25,6 +26,7 @@ export default function App() {
   const [loading,       setLoading]       = useState(false);
   const [autoCount,     setAutoCount]     = useState(0);
   const [error,         setError]         = useState(null);
+  const [cStar,         setCStar]         = useState(0.10);
   const stopRef = useRef(false);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -237,17 +239,52 @@ export default function App() {
         )}
       </div>
 
-      {/* Human controls */}
+      {/* Budget bar (human only) */}
       {isHuman && (
         <div className="card">
-          <HumanControls
-            onEvaluate={handleEvaluate}
-            loading={loading}
-            budget={budget ?? 10}
-            used={nSteps}
-          />
+          <HumanControls budget={budget ?? 10} used={nSteps} />
         </div>
       )}
+
+      {/* KG chart — placed above the posterior. For human mode, the aligned
+          C* slider + Run button live directly below the plot so the user can
+          eye-ball the KG curves and pick x visually. */}
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+            KG(x) — 1% grid
+          </span>
+          <span style={{ fontSize: 12, color: '#94a3b8' }}>
+            correlated (analytic vs MC) vs independent beliefs
+          </span>
+        </div>
+        <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 8px 0' }}>
+          Same underlying GP posterior; three ways of scoring each candidate C*.
+          Analytic and MC should agree closely (any gap is MC noise).
+          Independent ignores the covariance cascade to nearby points.
+        </p>
+        <KGChart kg={kgComparison} />
+        {isHuman && (
+          <CStarSlider
+            cStar={cStar}
+            setCStar={setCStar}
+            onRun={() => handleEvaluate(cStar)}
+            loading={loading}
+            exhausted={budget != null && nSteps >= budget}
+          />
+        )}
+      </div>
+
+      {/* Posterior chart */}
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>GP posterior</span>
+          <span style={{ fontSize: 12, color: '#94a3b8' }}>
+            {nSteps} observation{nSteps !== 1 ? 's' : ''}
+          </span>
+        </div>
+        <PosteriorChart posterior={posterior} history={history} policy={policy} />
+      </div>
 
       {/* Last simulation result — cash chart + jump log */}
       {lastResult && (
@@ -264,35 +301,6 @@ export default function App() {
           <JumpLog events={lastResult.event_log} initialAum={lastResult.initial_aum} />
         </div>
       )}
-
-      {/* Posterior chart */}
-      <div className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>GP posterior</span>
-          <span style={{ fontSize: 12, color: '#94a3b8' }}>
-            {nSteps} observation{nSteps !== 1 ? 's' : ''}
-          </span>
-        </div>
-        <PosteriorChart posterior={posterior} history={history} policy={policy} />
-      </div>
-
-      {/* KG comparison */}
-      <div className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
-            KG(x) — 1% grid
-          </span>
-          <span style={{ fontSize: 12, color: '#94a3b8' }}>
-            correlated (analytic vs MC) vs independent beliefs
-          </span>
-        </div>
-        <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 8px 0' }}>
-          Same underlying GP posterior; three ways of scoring each candidate C*.
-          Analytic and MC should agree closely (any gap is MC noise).
-          Independent ignores the covariance cascade to nearby points.
-        </p>
-        <KGChart kg={kgComparison} />
-      </div>
 
       {/* History */}
       <div className="card">
