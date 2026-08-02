@@ -26,6 +26,6 @@ export const evaluateC   = (sid, c_star) => call(`/sessions/${sid}/evaluate`, {
 });
 export const getPosterior  = (sid) => call(`/sessions/${sid}/posterior`);
 export const getReveal     = (sid) => call(`/sessions/${sid}/reveal`);
-export const getKGComparison = (sid, spacing = 0.05, mcSamples = 500) =>
-  call(`/sessions/${sid}/kg?spacing=${spacing}&mc_samples=${mcSamples}`);
+export const getKGComparison = (sid, spacing = 0.05, mcSamples = 500, budget = 10) =>
+  call(`/sessions/${sid}/kg?spacing=${spacing}&mc_samples=${mcSamples}&budget=${budget}`);
 export const deleteSession = (sid) => call(`/sessions/${sid}`, { method: 'DELETE' });

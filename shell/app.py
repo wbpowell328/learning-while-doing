@@ -181,13 +181,19 @@ def kg_comparison(
     spacing: float = 0.05,
     mc_samples: int = 500,
     mc_seed: int = 12345,
+    budget: int = 10,
 ) -> KGComparisonResponse:
     """
-    KG at a coarse probe grid (default 5% spacing across [c_star_min, c_star_max]),
-    computed three ways for side-by-side comparison:
+    KG at a coarse probe grid (default 5% spacing across [c_star_min, c_star_max]).
+
+    Three offline KG series (value-of-information only):
       - analytic_correlated: exact FPD closed form (the one the policy uses)
       - mc_correlated:       Monte-Carlo estimate of the same quantity
       - independent:         closed form assuming zero cross-covariance
+
+    Two online KG series (Ryzhov 2010, min-cost form):
+      online_KG(x) = mu_n(x) - (N - n) * offline_KG(x)
+    where N = `budget`, n = steps taken so far. Choose x* = argmin online_KG.
     """
     session = _get_or_404(sid)
     cfg = session._acq_config
@@ -210,11 +216,26 @@ def kg_comparison(
     )
     ind = kg_independent_at(session.belief, search_grid, probes)
 
+    # Posterior mean at the probe points — needed for the online KG composite.
+    mu_probes, _ = session.belief.posterior(probes)
+
+    # Online KG (Ryzhov, min-cost form). Non-negative multiplier so late in
+    # the run (n → N) the info-value bonus disappears and OKG reduces to μ_n(x).
+    steps_used = int(session.n_steps)
+    remaining = max(0, int(budget) - steps_used)
+    online_ana = (mu_probes - remaining * ana).tolist()
+    online_ind = (mu_probes - remaining * ind).tolist()
+
     return KGComparisonResponse(
         c_stars=probes.tolist(),
+        posterior_mean=mu_probes.tolist(),
         analytic_correlated=ana.tolist(),
         mc_correlated=mc.tolist(),
         independent=ind.tolist(),
+        online_correlated=online_ana,
+        online_independent=online_ind,
+        budget=int(budget),
+        steps_used=steps_used,
         mc_samples=mc_samples,
         mc_seed=mc_seed,
     )

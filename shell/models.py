@@ -127,11 +127,23 @@ class RevealResponse(BaseModel):
 class KGComparisonResponse(BaseModel):
     """
     KG values at a coarse probe grid, computed three ways for pedagogical
-    comparison. All three share the same underlying GP posterior.
+    comparison. All three offline series share the same underlying GP posterior.
+
+    Also returned: two "online KG" series (Ryzhov 2010, min-cost form)
+        online_KG(x) = mu_n(x) - (N - n) * offline_KG(x)
+    with N = budget (measurement horizon) and n = steps used so far.
     """
-    c_stars: list[float]                    # probe grid (e.g. 5% spacing)
+    c_stars: list[float]                    # probe grid
+    posterior_mean: list[float]             # mu_n(x) at each probe point
+    # Offline KG — value-of-information only
     analytic_correlated: list[float]        # exact FPD closed form
     mc_correlated: list[float]              # Monte-Carlo estimate of same quantity
     independent: list[float]                # independent-beliefs closed form
+    # Online KG — expected-cost + info-value composite (Ryzhov)
+    online_correlated: list[float]          # mu - (N-n) * analytic_correlated
+    online_independent: list[float]         # mu - (N-n) * independent
+    # Metadata driving the online formula
+    budget: int                             # N
+    steps_used: int                         # n
     mc_samples: int                         # sample count that produced mc_correlated
     mc_seed: int                            # seed used for reproducibility

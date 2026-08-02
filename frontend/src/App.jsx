@@ -55,7 +55,11 @@ export default function App() {
   const handleCreate = useCallback(async ({ policy, session_seed, sim_config, session_config, budget }) => {
     setError(null);
     const { session_id } = await createSession({ policy, session_seed, sim_config, session_config });
-    const [post, kg] = await Promise.all([getPosterior(session_id), getKGComparison(session_id, 0.01)]);
+    const effectiveBudget = budget ?? 10;
+    const [post, kg] = await Promise.all([
+      getPosterior(session_id),
+      getKGComparison(session_id, 0.01, 500, effectiveBudget),
+    ]);
     setSession({ id: session_id, policy, seed: session_seed, budget: budget ?? null });
     setPosterior(post);
     setKgComparison(kg);
@@ -74,7 +78,10 @@ export default function App() {
     setError(null);
     try {
       const result = await evaluateC(session.id, cStar);
-      const [post, kg] = await Promise.all([getPosterior(session.id), getKGComparison(session.id, 0.01)]);
+      const [post, kg] = await Promise.all([
+        getPosterior(session.id),
+        getKGComparison(session.id, 0.01, 500, session.budget ?? 10),
+      ]);
       applyResult(result, post, kg);
       if (session.budget && result.n_steps >= session.budget) {
         await fetchReveal(session.id);
@@ -88,9 +95,12 @@ export default function App() {
 
   // ── Automated: single step ────────────────────────────────────────────────
 
-  const doStep = useCallback(async (sid) => {
+  const doStep = useCallback(async (sid, budget) => {
     const result = await runStep(sid);
-    const [post, kg] = await Promise.all([getPosterior(sid), getKGComparison(sid, 0.01)]);
+    const [post, kg] = await Promise.all([
+      getPosterior(sid),
+      getKGComparison(sid, 0.01, 500, budget ?? 10),
+    ]);
     applyResult(result, post, kg);
   }, [applyResult]);
 
@@ -98,7 +108,7 @@ export default function App() {
     if (!session || loading) return;
     setLoading(true);
     setError(null);
-    try { await doStep(session.id); }
+    try { await doStep(session.id, session.budget); }
     catch (e) { setError(String(e)); }
     finally   { setLoading(false); }
   }, [session, loading, doStep]);
@@ -114,7 +124,7 @@ export default function App() {
       for (let i = 0; i < n; i++) {
         if (stopRef.current) break;
         setAutoCount(n - i);
-        await doStep(session.id);
+        await doStep(session.id, session.budget);
         await new Promise(r => setTimeout(r, 80));
       }
     } catch (e) {
