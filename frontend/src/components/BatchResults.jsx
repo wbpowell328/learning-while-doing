@@ -1,11 +1,14 @@
 // Batch benchmarking results view.
 //
-// Two panels:
-//   1. Line/bar chart of mean terminal cost by policy (with std-dev error bars),
-//      plus a horizontal dashed line marking the ground-truth minimum.
-//   2. Table of per-policy aggregates.
+// Panels:
+//   1. Bar chart: mean terminal cost by policy (± 1σ), red dashed reference
+//      at ground-truth min cost.
+//   2. Bar chart: mean cumulative cost by policy (± 1σ), red dashed reference
+//      at (budget × ground-truth min cost) — the theoretical floor if you had
+//      known the optimum from step 1 and always played it.
+//   3. Table of per-policy aggregates.
 
-const W = 720, H = 340;
+const W = 720, H = 320;
 const PAD = { top: 24, right: 24, bottom: 76, left: 84 };
 const IW = W - PAD.left - PAD.right;
 const IH = H - PAD.top - PAD.bottom;
@@ -15,19 +18,25 @@ function fmt(v) {
   return `$${v.toFixed(1)}`;
 }
 
-export default function BatchResults({ batch, onReset }) {
-  if (!batch) return null;
-  const { family, sims_per_policy, budget, session_seed,
-          true_best_c_star, true_min_cost, policies } = batch;
-
-  // ------------------------------------------------------------------
-  // Chart: mean terminal cost per policy with ±1σ error bars
-  // ------------------------------------------------------------------
+/**
+ * MetricBarChart — bar chart with error bars and an optional reference line.
+ *
+ * @param policies       array of BatchPolicyResult
+ * @param meanField      key on each policy for the mean (e.g. "mean_terminal_cost")
+ * @param stdField       key on each policy for the std (e.g. "std_terminal_cost")
+ * @param yLabel         Y-axis label
+ * @param referenceValue optional numeric reference to draw as dashed horizontal line
+ * @param referenceLabel label placed to the right of the reference line
+ * @param family         "KG" or "IE" — drives x labels and bar colors
+ */
+function MetricBarChart({ policies, meanField, stdField, yLabel,
+                         referenceValue = null, referenceLabel = '', family }) {
+  // Y bounds — include error bar extremes and (optionally) the reference line
   const yVals = policies.flatMap(p => [
-    p.mean_terminal_cost + p.std_terminal_cost,
-    p.mean_terminal_cost - p.std_terminal_cost,
+    p[meanField] + p[stdField],
+    p[meanField] - p[stdField],
   ]);
-  yVals.push(true_min_cost);
+  if (referenceValue != null) yVals.push(referenceValue);
   const rawMax = Math.max(...yVals);
   const rawMin = Math.min(...yVals);
   const pad = (rawMax - rawMin) * 0.12 || 1;
@@ -41,21 +50,99 @@ export default function BatchResults({ batch, onReset }) {
   const barW = Math.min(28, slotW * 0.55);
   const barX = (i) => PAD.left + (i + 0.5) * slotW - barW / 2;
 
-  // KG family colors by variant, IE family a single color
   const isIE = family === 'IE';
   const kgColorMap = [ '#16a34a', '#7c3aed', '#f59e0b', '#14532d', '#78350f' ];
-  const barColor = (i, p) => {
-    if (isIE) return '#2563eb';
-    return kgColorMap[i] ?? '#2563eb';
-  };
+  const barColor = (i) => isIE ? '#2563eb' : (kgColorMap[i] ?? '#2563eb');
 
-  // X-axis labels: for IE, show z_alpha value; for KG, use short label
   const shortLabel = (p, i) => {
     if (isIE) return p.param.toFixed(1);
-    // For KG, use a compact 2-char code
     const codes = ['ana', 'MC', 'ind', 'oCor', 'oInd'];
     return codes[i] ?? `p${i}`;
   };
+
+  return (
+    <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible' }}>
+      {/* Gridlines */}
+      {yTicks.map((v, i) => (
+        <line key={i} x1={PAD.left} x2={W - PAD.right}
+              y1={yS(v)} y2={yS(v)} stroke="#e2e8f0" strokeWidth={1} />
+      ))}
+
+      {/* Reference dashed line */}
+      {referenceValue != null && (
+        <>
+          <line x1={PAD.left} x2={W - PAD.right}
+                y1={yS(referenceValue)} y2={yS(referenceValue)}
+                stroke="#dc2626" strokeWidth={1.5} strokeDasharray="6,4" opacity={0.75} />
+          <text x={W - PAD.right - 4} y={yS(referenceValue) - 5}
+                textAnchor="end" fontSize={10} fill="#dc2626" fontWeight={600}>
+            {referenceLabel}
+          </text>
+        </>
+      )}
+
+      {/* Bars + error bars */}
+      {policies.map((p, i) => {
+        const x = barX(i);
+        const yTop = yS(p[meanField]);
+        const y0 = yS(yLo);
+        const h = Math.max(1, y0 - yTop);
+        const eTop = yS(p[meanField] + p[stdField]);
+        const eBot = yS(p[meanField] - p[stdField]);
+        const cx = x + barW / 2;
+        return (
+          <g key={i}>
+            <rect x={x} y={yTop} width={barW} height={h}
+                  fill={barColor(i)} fillOpacity={0.85} />
+            <line x1={cx} x2={cx} y1={eTop} y2={eBot} stroke="#374151" strokeWidth={1.5} />
+            <line x1={cx - 4} x2={cx + 4} y1={eTop} y2={eTop} stroke="#374151" strokeWidth={1.5} />
+            <line x1={cx - 4} x2={cx + 4} y1={eBot} y2={eBot} stroke="#374151" strokeWidth={1.5} />
+          </g>
+        );
+      })}
+
+      {/* X axis */}
+      <line x1={PAD.left} x2={W - PAD.right} y1={H - PAD.bottom} y2={H - PAD.bottom}
+            stroke="#94a3b8" />
+      {policies.map((p, i) => (
+        <text key={i} x={barX(i) + barW / 2} y={H - PAD.bottom + 14}
+              textAnchor="middle" fontSize={10} fill="#64748b">
+          {shortLabel(p, i)}
+        </text>
+      ))}
+      <text x={PAD.left + IW / 2} y={H - 8}
+            textAnchor="middle" fontSize={12} fill="#64748b">
+        {isIE ? 'IE parameter z_alpha' : 'KG variant'}
+      </text>
+
+      {/* Y axis */}
+      <line x1={PAD.left} x2={PAD.left} y1={PAD.top} y2={H - PAD.bottom}
+            stroke="#94a3b8" />
+      {yTicks.map((v, i) => (
+        <g key={i}>
+          <line x1={PAD.left - 5} x2={PAD.left} y1={yS(v)} y2={yS(v)} stroke="#94a3b8" />
+          <text x={PAD.left - 8} y={yS(v) + 4}
+                textAnchor="end" fontSize={10} fill="#64748b">
+            {fmt(v)}
+          </text>
+        </g>
+      ))}
+      <text transform={`translate(${PAD.left - 60},${PAD.top + IH / 2}) rotate(-90)`}
+            textAnchor="middle" fontSize={12} fill="#64748b">
+        {yLabel}
+      </text>
+    </svg>
+  );
+}
+
+
+export default function BatchResults({ batch, onReset }) {
+  if (!batch) return null;
+  const { family, sims_per_policy, budget, session_seed,
+          true_best_c_star, true_min_cost, policies } = batch;
+
+  // Cumulative-cost lower bound: play at the true optimum every step.
+  const cumulativeFloor = budget * true_min_cost;
 
   return (
     <div className="app">
@@ -89,89 +176,44 @@ export default function BatchResults({ batch, onReset }) {
             </div>
           </div>
           <div style={{ fontSize: 12, color: '#64748b', maxWidth: 460 }}>
-            Ground truth from 30-point × 12-rep Monte Carlo. Bars below show the
-            mean cost incurred by each policy's <em>final</em> best-C* pick,
-            averaged over {sims_per_policy} sims. Error bars are ±1 standard deviation.
+            Ground truth from 30-point × 12-rep Monte Carlo. Charts below show
+            terminal cost (quality of the <em>final</em> pick) and cumulative
+            cost (total incurred during the {budget}-step run), each averaged
+            over {sims_per_policy} sims. Error bars are ±1 standard deviation.
           </div>
         </div>
       </div>
 
-      {/* Chart */}
+      {/* Chart 1: terminal cost */}
       <div className="card">
         <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 8 }}>
           Mean terminal cost by policy (lower is better)
         </div>
-        <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible' }}>
-          {/* Gridlines */}
-          {yTicks.map((v, i) => (
-            <line key={i} x1={PAD.left} x2={W - PAD.right}
-                  y1={yS(v)} y2={yS(v)} stroke="#e2e8f0" strokeWidth={1} />
-          ))}
+        <MetricBarChart
+          policies={policies}
+          meanField="mean_terminal_cost"
+          stdField="std_terminal_cost"
+          yLabel="Terminal cost at final best C*"
+          referenceValue={true_min_cost}
+          referenceLabel={`true min = ${fmt(true_min_cost)}`}
+          family={family}
+        />
+      </div>
 
-          {/* True-min horizontal dashed line */}
-          <line x1={PAD.left} x2={W - PAD.right}
-                y1={yS(true_min_cost)} y2={yS(true_min_cost)}
-                stroke="#dc2626" strokeWidth={1.5} strokeDasharray="6,4" opacity={0.75} />
-          <text x={W - PAD.right - 4} y={yS(true_min_cost) - 5}
-                textAnchor="end" fontSize={10} fill="#dc2626" fontWeight={600}>
-            true min = {fmt(true_min_cost)}
-          </text>
-
-          {/* Bars + error bars */}
-          {policies.map((p, i) => {
-            const x = barX(i);
-            const yTop = yS(p.mean_terminal_cost);
-            const y0 = yS(yLo);
-            const h = Math.max(1, y0 - yTop);
-            const eTop = yS(p.mean_terminal_cost + p.std_terminal_cost);
-            const eBot = yS(p.mean_terminal_cost - p.std_terminal_cost);
-            const cx = x + barW / 2;
-            return (
-              <g key={i}>
-                <rect x={x} y={yTop} width={barW} height={h}
-                      fill={barColor(i, p)} fillOpacity={0.85} />
-                {/* Error bar */}
-                <line x1={cx} x2={cx} y1={eTop} y2={eBot} stroke="#374151" strokeWidth={1.5} />
-                <line x1={cx - 4} x2={cx + 4} y1={eTop} y2={eTop} stroke="#374151" strokeWidth={1.5} />
-                <line x1={cx - 4} x2={cx + 4} y1={eBot} y2={eBot} stroke="#374151" strokeWidth={1.5} />
-              </g>
-            );
-          })}
-
-          {/* X axis with labels rotated slightly for KG (long) */}
-          <line x1={PAD.left} x2={W - PAD.right} y1={H - PAD.bottom} y2={H - PAD.bottom}
-                stroke="#94a3b8" />
-          {policies.map((p, i) => {
-            const cx = barX(i) + barW / 2;
-            return (
-              <text key={i} x={cx} y={H - PAD.bottom + 14}
-                    textAnchor="middle" fontSize={10} fill="#64748b">
-                {shortLabel(p, i)}
-              </text>
-            );
-          })}
-          <text x={PAD.left + IW / 2} y={H - 8}
-                textAnchor="middle" fontSize={12} fill="#64748b">
-            {isIE ? 'IE parameter z_alpha' : 'KG variant'}
-          </text>
-
-          {/* Y axis */}
-          <line x1={PAD.left} x2={PAD.left} y1={PAD.top} y2={H - PAD.bottom}
-                stroke="#94a3b8" />
-          {yTicks.map((v, i) => (
-            <g key={i}>
-              <line x1={PAD.left - 5} x2={PAD.left} y1={yS(v)} y2={yS(v)} stroke="#94a3b8" />
-              <text x={PAD.left - 8} y={yS(v) + 4}
-                    textAnchor="end" fontSize={10} fill="#64748b">
-                {fmt(v)}
-              </text>
-            </g>
-          ))}
-          <text transform={`translate(${PAD.left - 60},${PAD.top + IH / 2}) rotate(-90)`}
-                textAnchor="middle" fontSize={12} fill="#64748b">
-            Terminal cost at final best C*
-          </text>
-        </svg>
+      {/* Chart 2: cumulative cost */}
+      <div className="card">
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 8 }}>
+          Mean cumulative cost by policy (lower = cheaper learning)
+        </div>
+        <MetricBarChart
+          policies={policies}
+          meanField="mean_cumulative_cost"
+          stdField="std_cumulative_cost"
+          yLabel={`Cumulative cost over ${budget} steps`}
+          referenceValue={cumulativeFloor}
+          referenceLabel={`floor = ${fmt(cumulativeFloor)} (= ${budget} × true min)`}
+          family={family}
+        />
       </div>
 
       {/* Table */}
