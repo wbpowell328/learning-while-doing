@@ -1,4 +1,8 @@
-const BASE = 'http://localhost:8000';
+// In production (single Render service) the API and UI share an origin, so
+// BASE is empty and requests are same-origin. For local dev with the split
+// Vite (5173) + FastAPI (8000) setup, set VITE_API_BASE=http://localhost:8000
+// in frontend/.env.local (or use Vite's proxy option).
+const BASE = import.meta.env.VITE_API_BASE ?? '';
 
 async function call(path, options = {}) {
   const r = await fetch(`${BASE}${path}`, options);

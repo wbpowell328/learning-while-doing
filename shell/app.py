@@ -1,8 +1,11 @@
+import os
+from pathlib import Path
 from uuid import uuid4
 
 import numpy as np
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from sim import SimConfig, simulate
 from policy import (
@@ -20,9 +23,11 @@ from .models import (
 
 app = FastAPI(title="learning-while-doing")
 
+# CORS: default to Vite dev; override in prod via ALLOWED_ORIGINS (comma-separated).
+_allowed = os.environ.get("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Vite dev server
+    allow_origins=[o.strip() for o in _allowed if o.strip()],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -198,3 +203,15 @@ def _get_or_404(sid: str) -> Session:
     if session is None:
         raise HTTPException(status_code=404, detail=f"session {sid!r} not found")
     return session
+
+
+# ---------------------------------------------------------------------------
+# Static frontend
+# ---------------------------------------------------------------------------
+# In production the build step runs `npm run build` in frontend/, producing
+# frontend/dist/. We mount that here so a single Render service serves both
+# the API and the UI at the same origin (no CORS, one URL).
+# MUST be mounted LAST so all @app.get/@app.post routes take precedence.
+_FRONTEND_DIST = Path(__file__).parent.parent / "frontend" / "dist"
+if _FRONTEND_DIST.exists():
+    app.mount("/", StaticFiles(directory=str(_FRONTEND_DIST), html=True), name="frontend")

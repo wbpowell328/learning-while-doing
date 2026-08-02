@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: learning-while-doing
+    runtime: python
+    plan: free
+    region: oregon
+    branch: master
+    buildCommand: bash render-build.sh
+    startCommand: uvicorn shell.app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: NODE_VERSION
+        value: 20.11.1
+      - key: ALLOWED_ORIGINS
+        value: https://warrenpowell.org
