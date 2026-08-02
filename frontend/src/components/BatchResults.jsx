@@ -188,6 +188,7 @@ export default function BatchResults({ batch, onReset }) {
                 <th style={{ padding: '8px 12px' }}>Mean terminal cost</th>
                 <th style={{ padding: '8px 12px' }}>Std terminal cost</th>
                 <th style={{ padding: '8px 12px' }}>Mean cumulative cost</th>
+                <th style={{ padding: '8px 12px' }}>Std cumulative cost</th>
               </tr>
             </thead>
             <tbody>
@@ -213,6 +214,9 @@ export default function BatchResults({ batch, onReset }) {
                     </td>
                     <td style={{ textAlign: 'right', padding: '6px 12px', fontFamily: 'monospace' }}>
                       {fmt(p.mean_cumulative_cost)}
+                    </td>
+                    <td style={{ textAlign: 'right', padding: '6px 12px', fontFamily: 'monospace' }}>
+                      {fmt(p.std_cumulative_cost)}
                     </td>
                   </tr>
                 );
