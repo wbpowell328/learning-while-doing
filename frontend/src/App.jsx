@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef } from 'react';
-import { createSession, runStep, evaluateC, getPosterior, getReveal, deleteSession } from './api';
+import { createSession, runStep, evaluateC, getPosterior, getReveal, getKGComparison, deleteSession } from './api';
 import SessionForm from './components/SessionForm';
 import PosteriorChart from './components/PosteriorChart';
+import KGChart from './components/KGChart';
 import HistoryTable from './components/HistoryTable';
 import HumanControls from './components/HumanControls';
 import CashChart from './components/CashChart';
@@ -14,6 +15,7 @@ const POLICY_LABEL = { random: 'Random', ie: 'IE', kg: 'KG', human: 'Human' };
 export default function App() {
   const [session,       setSession]       = useState(null);
   const [posterior,     setPosterior]     = useState(null);
+  const [kgComparison,  setKgComparison]  = useState(null);
   const [history,       setHistory]       = useState([]);
   const [nSteps,        setNSteps]        = useState(0);
   const [bestCStar,     setBestCStar]     = useState(null);
@@ -27,8 +29,9 @@ export default function App() {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  const applyResult = useCallback((result, post) => {
+  const applyResult = useCallback((result, post, kg) => {
     setPosterior(post);
+    setKgComparison(kg);
     setBestCStar(result.best_c_star);
     setNSteps(result.n_steps);
     setHistory(prev => [...prev, [result.c_star, result.total_cost]]);
@@ -52,9 +55,10 @@ export default function App() {
   const handleCreate = useCallback(async ({ policy, session_seed, sim_config, session_config, budget }) => {
     setError(null);
     const { session_id } = await createSession({ policy, session_seed, sim_config, session_config });
-    const post = await getPosterior(session_id);
+    const [post, kg] = await Promise.all([getPosterior(session_id), getKGComparison(session_id)]);
     setSession({ id: session_id, policy, seed: session_seed, budget: budget ?? null });
     setPosterior(post);
+    setKgComparison(kg);
     setBestCStar(post.best_c_star);
     setHistory([]);
     setNSteps(0);
@@ -70,8 +74,8 @@ export default function App() {
     setError(null);
     try {
       const result = await evaluateC(session.id, cStar);
-      const post   = await getPosterior(session.id);
-      applyResult(result, post);
+      const [post, kg] = await Promise.all([getPosterior(session.id), getKGComparison(session.id)]);
+      applyResult(result, post, kg);
       if (session.budget && result.n_steps >= session.budget) {
         await fetchReveal(session.id);
       }
@@ -86,8 +90,8 @@ export default function App() {
 
   const doStep = useCallback(async (sid) => {
     const result = await runStep(sid);
-    const post   = await getPosterior(sid);
-    applyResult(result, post);
+    const [post, kg] = await Promise.all([getPosterior(sid), getKGComparison(sid)]);
+    applyResult(result, post, kg);
   }, [applyResult]);
 
   const handleStep = useCallback(async () => {
@@ -135,6 +139,7 @@ export default function App() {
     if (session) await deleteSession(session.id).catch(() => {});
     setSession(null);
     setPosterior(null);
+    setKgComparison(null);
     setHistory([]);
     setNSteps(0);
     setBestCStar(null);
@@ -259,6 +264,24 @@ export default function App() {
           </span>
         </div>
         <PosteriorChart posterior={posterior} history={history} policy={policy} />
+      </div>
+
+      {/* KG comparison */}
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+            KG value at 5% probe points
+          </span>
+          <span style={{ fontSize: 12, color: '#94a3b8' }}>
+            correlated (analytic vs MC) vs independent beliefs
+          </span>
+        </div>
+        <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 8px 0' }}>
+          Same underlying GP posterior; three ways of scoring each candidate C*.
+          Analytic and MC should agree closely (any gap is MC noise).
+          Independent ignores the covariance cascade to nearby points.
+        </p>
+        <KGChart kg={kgComparison} />
       </div>
 
       {/* History */}

@@ -228,3 +228,139 @@ class KGPolicy:
             expected_future_min = -e_max
             kg[i] = current_min - expected_future_min
         return kg
+
+
+# ---------------------------------------------------------------------------
+# KG at arbitrary candidate points — for pedagogical comparison plots.
+#
+# These helpers compute KG at any set of candidate C* values, using a fixed
+# search grid.  The search set for the KG calculation is the union of the
+# fixed grid and the candidate — so the candidate itself is treated as one
+# more alternative that could become the "best" after observation.
+#
+# Three flavors:
+#   analytic-correlated (exact, via FPD 2009 upper-envelope)
+#   monte-carlo-correlated (for direct MC-vs-analytic diagnostic)
+#   independent           (pretends observing at x only shifts belief at x)
+# ---------------------------------------------------------------------------
+
+def _kg_pre_compute(model: BeliefModel, grid: np.ndarray, candidates: np.ndarray):
+    """
+    Common pre-computation for the three KG-at-candidates helpers.
+
+    Returns
+    -------
+    mu_grid       : (m,)  posterior mean at grid points
+    cand_mean     : (n_c,) posterior mean at candidates
+    cand_var      : (n_c,) posterior variance at candidates
+    cross_cov     : (n_c, m) posterior covariance Cov_n(candidate_i, grid_j)
+    sigma_tilde   : (n_c,) sqrt(cand_var + noise_var)
+    delta_at_cand : (n_c,) cand_var / sigma_tilde
+                      (= Cov_n(x_i, x_i) / sigma_tilde_i — Bayesian mean-shift std at x_i itself)
+    """
+    grid = np.asarray(grid, dtype=float)
+    candidates = np.asarray(candidates, dtype=float)
+    m = grid.size
+    n_c = candidates.size
+
+    mu_grid, _ = model.posterior(grid)
+    cand_mean, _ = model.posterior(candidates)
+
+    # Full posterior covariance on the union {candidates, grid} — slice as needed.
+    all_pts = np.concatenate([candidates, grid])
+    full_cov = model.posterior_cov_matrix(all_pts)
+    cand_cov = full_cov[:n_c, :n_c]
+    cross_cov = full_cov[:n_c, n_c:]
+
+    cand_var = np.maximum(np.diag(cand_cov), 0.0)
+    noise_var = model.config.noise_std ** 2
+    sigma_tilde = np.sqrt(cand_var + noise_var)
+    safe_sigma = np.where(sigma_tilde > 1e-12, sigma_tilde, 1.0)
+    delta_at_cand = cand_var / safe_sigma  # zero where sigma_tilde ≈ 0
+
+    return mu_grid, cand_mean, cand_var, cross_cov, sigma_tilde, delta_at_cand
+
+
+def kg_analytic_correlated_at(model: BeliefModel, grid: np.ndarray,
+                               candidates: np.ndarray) -> np.ndarray:
+    """
+    Analytic correlated-beliefs KG at each candidate x_i.
+
+    Search set is {grid ∪ x_i}: the candidate itself is one more alternative
+    that could become the argmin after observation.
+    """
+    mu_grid, cand_mean, cand_var, cross_cov, sigma_tilde, delta = _kg_pre_compute(
+        model, grid, candidates
+    )
+    n_c = candidates.size
+    kg = np.zeros(n_c)
+    for i in range(n_c):
+        if sigma_tilde[i] <= 1e-12:
+            continue
+        mu_ext = np.concatenate([mu_grid, [cand_mean[i]]])
+        w_ext = np.concatenate([cross_cov[i] / sigma_tilde[i], [delta[i]]])
+        current_min = float(np.min(mu_ext))
+        e_max = _expected_max_of_lines(-mu_ext, -w_ext)
+        expected_future_min = -e_max
+        kg[i] = current_min - expected_future_min
+    return kg
+
+
+def kg_mc_correlated_at(model: BeliefModel, grid: np.ndarray,
+                         candidates: np.ndarray, n_mc: int,
+                         rng: np.random.Generator) -> np.ndarray:
+    """
+    Monte-Carlo correlated-beliefs KG at each candidate — for diagnostic
+    comparison against the analytic value.
+
+    n_mc draws of Z ~ N(0,1) are shared across candidates for maximum
+    variance reduction (each candidate sees the same Z).
+    """
+    mu_grid, cand_mean, cand_var, cross_cov, sigma_tilde, delta = _kg_pre_compute(
+        model, grid, candidates
+    )
+    n_c = candidates.size
+    z = rng.standard_normal(n_mc)  # (n_mc,)
+    kg = np.zeros(n_c)
+    for i in range(n_c):
+        if sigma_tilde[i] <= 1e-12:
+            continue
+        mu_ext = np.concatenate([mu_grid, [cand_mean[i]]])
+        w_ext = np.concatenate([cross_cov[i] / sigma_tilde[i], [delta[i]]])
+        current_min = float(np.min(mu_ext))
+        # future_min[k] = min_j (mu_ext[j] + w_ext[j] * z[k])
+        future_min = np.min(mu_ext[None, :] + w_ext[None, :] * z[:, None], axis=1)
+        kg[i] = current_min - float(np.mean(future_min))
+    return kg
+
+
+def kg_independent_at(model: BeliefModel, grid: np.ndarray,
+                       candidates: np.ndarray) -> np.ndarray:
+    """
+    Independent-beliefs KG at each candidate — closed form.
+
+    Pretends observing at candidate x_i shifts the belief only at x_i itself
+    (no correlation cascade to grid points).  With M = min_j μ_n(grid_j) fixed
+    and future μ(x_i) = μ_n(x_i) + δ_i·Z, δ_i = Var_n(x_i)/σ̃_i, and letting
+    a_i = M − μ_n(x_i), t_i = a_i/δ_i:
+
+        KG_indep(x_i) = min(M, μ_n(x_i)) − (M − a_i·Φ(t_i) − δ_i·φ(t_i))
+    """
+    mu_grid, cand_mean, cand_var, cross_cov, sigma_tilde, delta = _kg_pre_compute(
+        model, grid, candidates
+    )
+    M = float(np.min(mu_grid))
+    n_c = candidates.size
+    kg = np.zeros(n_c)
+    for i in range(n_c):
+        if delta[i] <= 1e-12:
+            continue
+        a = M - float(cand_mean[i])
+        t = a / delta[i]
+        # _norm_cdf and _norm_pdf both work on numpy arrays; wrap scalar in array.
+        Phi_t = float(_norm_cdf(np.array([t]))[0])
+        phi_t = float(_norm_pdf(np.array([t]))[0])
+        current_min = min(M, float(cand_mean[i]))
+        expected_future_min = M - a * Phi_t - delta[i] * phi_t
+        kg[i] = current_min - expected_future_min
+    return kg

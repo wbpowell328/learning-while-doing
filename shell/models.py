@@ -122,3 +122,16 @@ class RevealResponse(BaseModel):
     player_best_c_star: float
     player_best_cost: float
     naive_cost: float
+
+
+class KGComparisonResponse(BaseModel):
+    """
+    KG values at a coarse probe grid, computed three ways for pedagogical
+    comparison. All three share the same underlying GP posterior.
+    """
+    c_stars: list[float]                    # probe grid (e.g. 5% spacing)
+    analytic_correlated: list[float]        # exact FPD closed form
+    mc_correlated: list[float]              # Monte-Carlo estimate of same quantity
+    independent: list[float]                # independent-beliefs closed form
+    mc_samples: int                         # sample count that produced mc_correlated
+    mc_seed: int                            # seed used for reproducibility

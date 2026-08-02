@@ -11,6 +11,7 @@ from sim import SimConfig, simulate
 from policy import (
     BeliefConfig, AcquisitionConfig, SessionConfig,
     RandomPolicy, IEPolicy, KGPolicy, Session,
+    kg_analytic_correlated_at, kg_mc_correlated_at, kg_independent_at,
 )
 from .models import (
     CreateSessionRequest, CreateSessionResponse,
@@ -18,7 +19,7 @@ from .models import (
     EvaluateRequest,
     ObserveRequest, ObserveResponse,
     StateResponse, PosteriorResponse,
-    RevealResponse,
+    RevealResponse, KGComparisonResponse,
 )
 
 app = FastAPI(title="learning-while-doing")
@@ -171,6 +172,51 @@ def reveal(sid: str, grid_size: int = 30, n_reps: int = 12) -> RevealResponse:
         player_best_c_star=player_c,
         player_best_cost=mean_costs[player_idx],
         naive_cost=float(np.mean(naive_costs)),
+    )
+
+
+@app.get("/sessions/{sid}/kg")
+def kg_comparison(
+    sid: str,
+    spacing: float = 0.05,
+    mc_samples: int = 500,
+    mc_seed: int = 12345,
+) -> KGComparisonResponse:
+    """
+    KG at a coarse probe grid (default 5% spacing across [c_star_min, c_star_max]),
+    computed three ways for side-by-side comparison:
+      - analytic_correlated: exact FPD closed form (the one the policy uses)
+      - mc_correlated:       Monte-Carlo estimate of the same quantity
+      - independent:         closed form assuming zero cross-covariance
+    """
+    session = _get_or_404(sid)
+    cfg = session._acq_config
+
+    # Build probe grid: multiples of `spacing` inside [c_star_min, c_star_max].
+    first = float(np.ceil(cfg.c_star_min / spacing) * spacing)
+    if first < cfg.c_star_min - 1e-9:
+        first += spacing
+    probes = np.arange(first, cfg.c_star_max + spacing * 1e-6, spacing)
+    if probes.size == 0:
+        probes = np.array([0.5 * (cfg.c_star_min + cfg.c_star_max)])
+
+    # Search grid: the same 100-point grid the KG policy uses.
+    search_grid = np.linspace(cfg.c_star_min, cfg.c_star_max, cfg.grid_size)
+
+    ana = kg_analytic_correlated_at(session.belief, search_grid, probes)
+    mc = kg_mc_correlated_at(
+        session.belief, search_grid, probes,
+        n_mc=mc_samples, rng=np.random.default_rng(mc_seed),
+    )
+    ind = kg_independent_at(session.belief, search_grid, probes)
+
+    return KGComparisonResponse(
+        c_stars=probes.tolist(),
+        analytic_correlated=ana.tolist(),
+        mc_correlated=mc.tolist(),
+        independent=ind.tolist(),
+        mc_samples=mc_samples,
+        mc_seed=mc_seed,
     )
 
 
