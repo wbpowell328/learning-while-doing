@@ -32,6 +32,9 @@ export const getKGComparison = (sid, spacing = 0.05, mcSamples = 500, budget = 1
 // Streams the batch endpoint as NDJSON. Invokes onEvent(msg) for each
 // {"started"|"progress"|"ground_truth"|"result"} message. Resolves with the
 // final "result" payload (also delivered via onEvent).
+//
+// Throws an explicit error if the stream ends without a "result" event — the
+// UI needs to know something went wrong rather than silently returning null.
 export async function runBatch(body, onEvent) {
   const r = await fetch(`/sessions/batch`, {
     method: 'POST',
@@ -39,25 +42,53 @@ export async function runBatch(body, onEvent) {
     body: JSON.stringify(body),
   });
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+
   const reader = r.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
   let finalResult = null;
+  const seenTypes = new Set();
+
+  const flushLines = (lines) => {
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      let msg;
+      try {
+        msg = JSON.parse(trimmed);
+      } catch (err) {
+        console.warn('[runBatch] failed to parse NDJSON line', {
+          length: trimmed.length,
+          head: trimmed.slice(0, 120),
+          tail: trimmed.slice(-120),
+          err: String(err),
+        });
+        continue;
+      }
+      seenTypes.add(msg.type);
+      if (msg.type === 'result') finalResult = msg;
+      onEvent?.(msg);
+    }
+  };
+
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split('\n');
-    buffer = lines.pop() ?? '';       // last chunk is possibly incomplete
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      let msg;
-      try { msg = JSON.parse(trimmed); }
-      catch { continue; }
-      if (msg.type === 'result') finalResult = msg;
-      onEvent?.(msg);
-    }
+    buffer = lines.pop() ?? '';
+    flushLines(lines);
+  }
+
+  // Flush pending decoder bytes and process any final leftover in the buffer.
+  buffer += decoder.decode();
+  if (buffer.trim().length > 0) flushLines([buffer]);
+
+  if (!finalResult) {
+    throw new Error(
+      `Batch stream ended without a "result" event. Received event types: [${[...seenTypes].join(', ') || 'none'}]. ` +
+      `Check server logs — the connection may have been dropped mid-response.`
+    );
   }
   return finalResult;
 }
