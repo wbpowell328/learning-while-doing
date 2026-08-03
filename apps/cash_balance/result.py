@@ -18,7 +18,16 @@ class SimResult:
     session_seed: int
     experiment_index: int
 
-    # --- Cost breakdown ---
+    # --- Reward breakdown (user-facing; app is a MAXIMISATION problem) ---
+    total_reward: float        # = market_gain + cash_gain - shortfall_penalty
+    market_gain: float         # r_market × Σ invested × dt
+    cash_gain: float           # r_cash   × Σ cash     × dt
+    shortfall_penalty: float   # r_borrow × Σ shortfall (proportional, per D8)
+
+    # --- Legacy cost breakdown ---
+    # Kept because the belief layer minimises internally. Session feeds
+    # total_cost (≈ -total_reward up to a θ-nearly-constant shift) to belief;
+    # all acquisition-policy math continues to operate in cost frame.
     total_cost: float        # = opportunity_cost + shortfall_cost
     opportunity_cost: float  # cumulative cash drag over horizon
     shortfall_cost: float    # cumulative borrowing penalty over horizon

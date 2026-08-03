@@ -76,15 +76,18 @@ export default function KGChart({ kg }) {
   const { impparams, mc_samples, budget, steps_used } = kg;
   const remaining = Math.max(0, budget - steps_used);
 
-  // "Next θ" per policy: offline curves want argmax (higher KG = more info
-  // value); online curves want argmin (they are μ_n(x) − (N−n)·offline_KG
-  // and represent an expected cost the online policy minimises).
+  // "Next θ" per policy — the app is now a MAXIMISATION problem so every
+  // curve is picked by argmax:
+  //   * offline KG curves: argmax (KG is info value; more is better)
+  //   * online KG curves: backend returns them in reward frame,
+  //     display_OKG(x) = μ_reward(x) + (N−n)·offline_KG(x), which the
+  //     policy also maximises. Same argmax convention everywhere.
   const nextByKey = {
     analytic_correlated: argExtremum(impparams, kg.analytic_correlated, 'max'),
     mc_correlated:       argExtremum(impparams, kg.mc_correlated,       'max'),
     independent:         argExtremum(impparams, kg.independent,         'max'),
-    online_correlated:   argExtremum(impparams, kg.online_correlated,   'min'),
-    online_independent:  argExtremum(impparams, kg.online_independent,  'min'),
+    online_correlated:   argExtremum(impparams, kg.online_correlated,   'max'),
+    online_independent:  argExtremum(impparams, kg.online_independent,  'max'),
   };
   // The primary KG policy used by session.policy='kg' is offline analytic
   // correlated — its argmax is what a "next step" click would sample.
@@ -227,7 +230,7 @@ export default function KGChart({ kg }) {
       <text
         transform={`translate(${W - PAD.right + 56},${PAD.top + IH / 2}) rotate(-90)`}
         textAnchor="middle" fontSize={12} fill="#64748b">
-        Online KG(x)  = μ(x) − (N−n)·offline KG
+        Online KG(x) = μ_reward(x) + (N−n)·offline KG
       </text>
 
       {/* Legend — two horizontal rows ABOVE the plot area so it never

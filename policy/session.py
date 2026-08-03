@@ -66,6 +66,7 @@ class Session:
         policy: AcquisitionPolicy,
         session_seed: int,
         simulate_fn: Callable | None = None,
+        minimize: bool = True,
     ) -> None:
         self._sim_config = sim_config
         self._acq_config = acq_config
@@ -73,6 +74,7 @@ class Session:
         self._policy = policy
         self._session_seed = session_seed
         self._simulate = simulate_fn if simulate_fn is not None else cash_balance_simulate
+        self._minimize = bool(minimize)
 
         self._dim = _dim_of(acq_config)
 
@@ -89,6 +91,23 @@ class Session:
     # Primary interface
     # ------------------------------------------------------------------
 
+    def _observed_value(self, result) -> float:
+        """
+        The scalar this run contributes to belief / history.
+
+        Belief always minimises internally, so for a maximisation app we feed
+        it -total_reward. History stores the display-frame value so callers
+        see rewards for maximise apps and costs for minimise apps.
+        """
+        if self._minimize:
+            return float(result.total_cost)
+        return -float(result.total_reward)
+
+    def _display_value(self, result) -> float:
+        if self._minimize:
+            return float(result.total_cost)
+        return float(result.total_reward)
+
     def step(self):
         """Propose the next θ, run the simulation, update the belief."""
         impparam = self._policy.propose(self._belief, self._rng)
@@ -99,8 +118,8 @@ class Session:
             session_seed=self._session_seed,
             experiment_index=self._step_count,
         )
-        self._belief.update(impparam, result.total_cost)
-        self._history.append((impparam, result.total_cost))
+        self._belief.update(impparam, self._observed_value(result))
+        self._history.append((impparam, self._display_value(result)))
         self._step_count += 1
         return result
 
@@ -113,21 +132,30 @@ class Session:
             session_seed=self._session_seed,
             experiment_index=self._step_count,
         )
-        self._belief.update(impparam, result.total_cost)
-        self._history.append((impparam, result.total_cost))
+        self._belief.update(impparam, self._observed_value(result))
+        self._history.append((impparam, self._display_value(result)))
         self._step_count += 1
         return result
 
     def observe(self, impparam, total_cost: float) -> None:
-        """Inject an external observation without running a new simulation."""
-        self._belief.update(impparam, float(total_cost))
-        self._history.append((impparam, float(total_cost)))
+        """
+        Inject an external observation without running a new simulation.
+        Argument is in the app's display frame (cost for min, reward for max).
+        """
+        v = float(total_cost)
+        # Belief always minimises; negate reward for maximise apps.
+        internal = v if self._minimize else -v
+        self._belief.update(impparam, internal)
+        self._history.append((impparam, v))
 
     def best_impparam(self):
         """
-        Current best estimate of the optimal θ: argmin of posterior mean over
-        a fine grid.  Returns scalar for dim=1, ndarray for dim≥2.  With no
-        observations returns the box midpoint.
+        Current best θ. Internally belief always stores "value to minimise",
+        so argmin(mean) is correct in both frames (it becomes argmax(reward)
+        for maximise apps because the internal value is -reward).
+
+        Returns scalar for dim=1, ndarray for dim≥2.  With no observations
+        returns the box midpoint.
         """
         cfg = self._acq_config
         lo = np.atleast_1d(np.asarray(cfg.impparam_min, dtype=float))
@@ -158,8 +186,16 @@ class Session:
 
     @property
     def history(self) -> list:
-        """Ordered (impparam, cost) pairs from step() and observe() calls."""
+        """
+        Ordered (impparam, value) pairs from step()/observe() calls, where
+        `value` is in the app's display frame: total_cost for minimise apps,
+        total_reward for maximise apps.
+        """
         return list(self._history)
+
+    @property
+    def minimize(self) -> bool:
+        return self._minimize
 
     @property
     def dim(self) -> int:

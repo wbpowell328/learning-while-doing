@@ -18,13 +18,13 @@ export default function RevealPanel({ reveal }) {
   if (!reveal) return null;
 
   const {
-    impparams, mean_cost,
-    true_best_impparam, true_min_cost,
-    player_best_impparam, player_best_cost,
-    naive_cost,
+    impparams, mean_reward,
+    true_best_impparam, true_max_reward,
+    player_best_impparam, player_best_reward,
+    naive_reward,
   } = reveal;
 
-  const allY = [...mean_cost, player_best_cost, naive_cost];
+  const allY = [...mean_reward, player_best_reward, naive_reward];
   const rawMin = Math.min(...allY);
   const rawMax = Math.max(...allY);
   const ygap = Math.max((rawMax - rawMin) * 0.15, 300);
@@ -34,21 +34,23 @@ export default function RevealPanel({ reveal }) {
   const xS = (c) => PAD.left + ((c - X_MIN) / (X_MAX - X_MIN)) * IW;
   const yS = (v) => PAD.top + ((yHi - v) / (yHi - yLo)) * IH;
 
-  const costPath = impparams
-    .map((c, i) => `${i === 0 ? 'M' : 'L'}${xS(c).toFixed(1)},${yS(mean_cost[i]).toFixed(1)}`)
+  const rewardPath = impparams
+    .map((c, i) => `${i === 0 ? 'M' : 'L'}${xS(c).toFixed(1)},${yS(mean_reward[i]).toFixed(1)}`)
     .join('');
 
   const yTicks = Array.from({ length: 5 }, (_, i) => yLo + (i / 4) * (yHi - yLo));
   const xTicks = [0.01, 0.05, 0.10, 0.15, 0.20];
 
-  const playerGap = player_best_cost - true_min_cost;
-  const vsNaive = naive_cost - player_best_cost;
+  // Gap: how much reward the player left on the table (true - player, ≥ 0).
+  const playerGap = true_max_reward - player_best_reward;
+  // vs naive: positive means the player earned more than naive.
+  const vsNaive = player_best_reward - naive_reward;
 
   return (
     <div className="card reveal-panel">
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>
-          Session complete — true cost curve revealed
+          Session complete — true reward curve revealed
         </div>
         <div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>
           Estimated from {impparams.length} grid points × 12 independent simulations (held-out seed)
@@ -60,28 +62,28 @@ export default function RevealPanel({ reveal }) {
         <div className="reveal-stat">
           <span className="reveal-stat-label">Your best θ</span>
           <span className="reveal-stat-value">{player_best_impparam.toFixed(3)}</span>
-          <span className="reveal-stat-sub">~{fmt(player_best_cost)}/run</span>
+          <span className="reveal-stat-sub">~{fmt(player_best_reward)}/run</span>
         </div>
         <div className="reveal-stat">
           <span className="reveal-stat-label">True optimum</span>
           <span className="reveal-stat-value" style={{ color: '#dc2626' }}>
             {true_best_impparam.toFixed(3)}
           </span>
-          <span className="reveal-stat-sub">~{fmt(true_min_cost)}/run</span>
+          <span className="reveal-stat-sub">~{fmt(true_max_reward)}/run</span>
         </div>
         <div className="reveal-stat">
           <span className="reveal-stat-label">Gap to optimum</span>
           <span className="reveal-stat-value" style={{ color: playerGap < 200 ? '#16a34a' : playerGap < 1000 ? '#d97706' : '#dc2626' }}>
-            {fmtDiff(playerGap)}
+            −{fmt(playerGap)}
           </span>
           <span className="reveal-stat-sub">per run</span>
         </div>
         <div className="reveal-stat">
           <span className="reveal-stat-label">vs. naive 10%</span>
           <span className="reveal-stat-value" style={{ color: vsNaive >= 0 ? '#16a34a' : '#dc2626' }}>
-            {vsNaive >= 0 ? `saved ${fmt(vsNaive)}` : `lost ${fmt(-vsNaive)}`}
+            {vsNaive >= 0 ? `+${fmt(vsNaive)}` : `−${fmt(-vsNaive)}`}
           </span>
-          <span className="reveal-stat-sub">{fmt(naive_cost)}/run at 10%</span>
+          <span className="reveal-stat-sub">{fmt(naive_reward)}/run at 10%</span>
         </div>
       </div>
 
@@ -107,15 +109,15 @@ export default function RevealPanel({ reveal }) {
           y1={PAD.top} y2={H - PAD.bottom}
           stroke="#dc2626" strokeWidth={2} />
 
-        {/* True cost curve */}
-        <path d={costPath} fill="none" stroke="#374151" strokeWidth={2.5} />
+        {/* True reward curve */}
+        <path d={rewardPath} fill="none" stroke="#374151" strokeWidth={2.5} />
 
-        {/* Dot at true minimum */}
-        <circle cx={xS(true_best_impparam)} cy={yS(true_min_cost)} r={5}
+        {/* Dot at true maximum */}
+        <circle cx={xS(true_best_impparam)} cy={yS(true_max_reward)} r={5}
           fill="#dc2626" stroke="white" strokeWidth={1.5} />
 
         {/* Dot at player position */}
-        <circle cx={xS(player_best_impparam)} cy={yS(player_best_cost)} r={5}
+        <circle cx={xS(player_best_impparam)} cy={yS(player_best_reward)} r={5}
           fill="#2563eb" stroke="white" strokeWidth={1.5} />
 
         {/* X axis */}
@@ -145,12 +147,12 @@ export default function RevealPanel({ reveal }) {
         ))}
         <text
           transform={`translate(${PAD.left - 56},${PAD.top + IH / 2}) rotate(-90)`}
-          textAnchor="middle" fontSize={12} fill="#64748b">Avg. total cost</text>
+          textAnchor="middle" fontSize={12} fill="#64748b">Avg. total reward</text>
 
         {/* Legend */}
         <g transform={`translate(${W - PAD.right - 108},${PAD.top + 4})`}>
           <line x1={0} x2={16} y1={6} y2={6} stroke="#374151" strokeWidth={2.5} />
-          <text x={20} y={10} fontSize={9} fill="#64748b">E[cost | θ]</text>
+          <text x={20} y={10} fontSize={9} fill="#64748b">E[reward | θ]</text>
           <line x1={0} x2={16} y1={22} y2={22} stroke="#dc2626" strokeWidth={2} />
           <circle cx={8} cy={22} r={3} fill="#dc2626" stroke="white" strokeWidth={1} />
           <text x={20} y={26} fontSize={9} fill="#dc2626">true θ</text>

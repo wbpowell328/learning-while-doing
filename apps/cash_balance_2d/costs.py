@@ -19,6 +19,34 @@ import numpy as np
 from .config import SimConfig
 
 
+def compute_rewards(
+    config: SimConfig,
+    impparam: np.ndarray,
+    cash_series: np.ndarray,
+    invested_series: np.ndarray,
+    aum_ind_series: np.ndarray,
+    aum_inst_series: np.ndarray,
+    shortfall_ind_series: np.ndarray,
+    shortfall_inst_series: np.ndarray,
+) -> tuple[float, float, float, float]:
+    """
+    Return (market_gain, cash_gain, shortfall_ind_penalty, shortfall_inst_penalty).
+
+    total_reward = market_gain + cash_gain - shortfall_ind_penalty - shortfall_inst_penalty.
+    """
+    cfg = config
+    dt = 1.0 / cfg.trading_days_per_year
+    r_market_daily = cfg.r_market_annual * dt
+    r_cash_daily   = cfg.r_cash_annual   * dt
+
+    market_gain = float(r_market_daily * np.sum(np.maximum(invested_series, 0.0)))
+    cash_gain   = float(r_cash_daily   * np.sum(np.maximum(cash_series,     0.0)))
+    shortfall_ind_penalty  = float(cfg.r_borrow_ind_annual  * np.sum(shortfall_ind_series))
+    shortfall_inst_penalty = float(cfg.r_borrow_inst_annual * np.sum(shortfall_inst_series))
+
+    return market_gain, cash_gain, shortfall_ind_penalty, shortfall_inst_penalty
+
+
 def compute_costs(
     config: SimConfig,
     impparam: np.ndarray,               # shape (2,): (theta_ind, theta_inst)

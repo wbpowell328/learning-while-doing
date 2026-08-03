@@ -16,15 +16,15 @@ export default function HistoryTable({ history }) {
           <tr>
             <th>#</th>
             <th>θ</th>
-            <th>Total cost</th>
+            <th>Total reward</th>
           </tr>
         </thead>
         <tbody>
-          {[...history].reverse().map(([c, cost], i) => (
+          {[...history].reverse().map(([c, reward], i) => (
             <tr key={i}>
               <td style={{ color: '#94a3b8' }}>{history.length - i}</td>
               <td><code>{fmtTheta(c)}</code></td>
-              <td>${cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+              <td>${reward.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
             </tr>
           ))}
         </tbody>

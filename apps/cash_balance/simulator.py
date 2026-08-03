@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .config import SimConfig
-from .costs import compute_costs
+from .costs import compute_costs, compute_rewards
 from .dynamics import run_path
 from .result import SimResult
 
@@ -42,13 +42,25 @@ def simulate(
         invested_series=invested_series,
         shortfall_series=shortfall_series,
     )
-
     total_cost = opportunity_cost + shortfall_cost
+
+    market_gain, cash_gain, shortfall_penalty = compute_rewards(
+        config=config,
+        impparam=impparam,
+        cash_series=cash_series,
+        invested_series=invested_series,
+        shortfall_series=shortfall_series,
+    )
+    total_reward = market_gain + cash_gain - shortfall_penalty
 
     return SimResult(
         impparam=impparam,
         session_seed=session_seed,
         experiment_index=experiment_index,
+        total_reward=total_reward,
+        market_gain=market_gain,
+        cash_gain=cash_gain,
+        shortfall_penalty=shortfall_penalty,
         total_cost=total_cost,
         opportunity_cost=opportunity_cost,
         shortfall_cost=shortfall_cost,

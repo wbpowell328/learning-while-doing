@@ -83,14 +83,16 @@ def test_observe_best_impparam_in_bounds():
 
 
 # ---------------------------------------------------------------------------
-# 5. best_impparam tracks parabola minimum
+# 5. best_impparam tracks parabola optimum
+# cash_balance is now a MAXIMISE app, so observe() takes rewards. Feed a
+# downward-opening parabola peaked at θ = 0.10 and check argmax.
 # ---------------------------------------------------------------------------
 
 def test_observe_tracks_minimum():
     sid = make_session()
     for c in [0.02, 0.05, 0.08, 0.10, 0.12, 0.15, 0.18]:
-        cost = 5_000.0 + 200_000.0 * (c - 0.10) ** 2
-        observe(sid, c, cost)
+        reward = 5_000.0 - 200_000.0 * (c - 0.10) ** 2
+        observe(sid, c, reward)
     state = client.get(f"/sessions/{sid}/state").json()
     assert abs(state["best_impparam"] - 0.10) < 0.04
 

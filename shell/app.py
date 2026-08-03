@@ -41,6 +41,18 @@ def _theta_out(theta, dim: int):
         return float(np.atleast_1d(np.asarray(theta, dtype=float))[0])
     return _as_list(theta)
 
+
+def _to_display(session: "Session", value):
+    """
+    Convert a belief-frame quantity (posterior mean, true F(θ), etc.) to the
+    frame the UI wants. Belief always minimises internally, so for a
+    maximisation app the display value is −(belief-frame value).
+    """
+    arr = np.asarray(value, dtype=float)
+    if not session.minimize:
+        arr = -arr
+    return arr
+
 app = FastAPI(title="learning-while-doing")
 
 # CORS: default to Vite dev; override in prod via ALLOWED_ORIGINS (comma-separated).
@@ -60,10 +72,17 @@ def _make_step_response(result, session: Session) -> StepResponse:
     dim = session.dim
     payload = dict(
         impparam=_theta_out(result.impparam, dim),
+        # Reward-frame quantities (app is a MAXIMISATION problem).
+        total_reward=float(getattr(result, "total_reward", -result.total_cost)),
+        market_gain=float(getattr(result, "market_gain", 0.0)),
+        cash_gain=float(getattr(result, "cash_gain", 0.0)),
+        # `shortfall_penalty` — for cash_balance_2d this is a computed property
+        # summing ind + inst; both apps expose the attribute.
+        shortfall_penalty=float(getattr(result, "shortfall_penalty", 0.0)),
+        # Legacy cost-frame quantities — kept so callers that still read them
+        # (e.g. old tests, batch metrics) do not break.
         total_cost=float(result.total_cost),
         opportunity_cost=float(result.opportunity_cost),
-        # `shortfall_cost` — for cash_balance_2d this is a computed property
-        # summing the ind + inst components; both apps expose the attribute.
         shortfall_cost=float(getattr(result, "shortfall_cost", 0.0)),
         days=int(result.days),
         n_steps=int(session.n_steps),
@@ -163,6 +182,7 @@ def create_session(req: CreateSessionRequest) -> CreateSessionResponse:
         policy=policy,
         session_seed=req.session_seed,
         simulate_fn=app_mod.simulate,
+        minimize=bool(app_mod.MINIMIZE),
     )
     sid = str(uuid4())
     _sessions[sid] = session
@@ -236,8 +256,10 @@ def posterior_2d(sid: str, grid_size: int = 30) -> Posterior2DResponse:
     grid = np.stack([G1.ravel(), G2.ravel()], axis=-1)   # (grid_size**2, 2)
 
     mean, std = session.belief.posterior(grid)
+    mean_display = _to_display(session, mean)  # negated for maximise apps
 
-    # History flattened as rows [theta1, theta2, cost]
+    # History flattened as rows [theta1, theta2, value_in_display_frame]
+    # (session.history already stores display-frame values.)
     hist_rows: list[list[float]] = []
     for t, c in session.history:
         arr = np.atleast_1d(np.asarray(t, dtype=float))
@@ -247,7 +269,7 @@ def posterior_2d(sid: str, grid_size: int = 30) -> Posterior2DResponse:
     return Posterior2DResponse(
         axis1=axis1.tolist(),
         axis2=axis2.tolist(),
-        mean=mean.tolist(),
+        mean=mean_display.tolist(),
         std=std.tolist(),
         history=hist_rows,
         best_impparam=best,
@@ -300,44 +322,50 @@ def reveal(sid: str, grid_size: int = 30, n_reps: int = 12) -> RevealResponse:
     base_seed = session._session_seed + 999_000
 
     grid = np.linspace(cfg.impparam_min, cfg.impparam_max, grid_size)
-    mean_costs: list[float] = []
+    mean_rewards: list[float] = []
+    mean_costs: list[float] = []   # legacy — kept for backward compat
     for c in grid:
-        costs = [
+        results = [
             simulate(
                 config=cfg,
                 impparam=float(c),
                 horizon_weeks=sc.horizon_weeks,
                 session_seed=base_seed,
                 experiment_index=i,
-            ).total_cost
+            )
             for i in range(n_reps)
         ]
-        mean_costs.append(float(np.mean(costs)))
+        mean_rewards.append(float(np.mean([r.total_reward for r in results])))
+        mean_costs.append(float(np.mean([r.total_cost   for r in results])))
 
-    true_best_idx = int(np.argmin(mean_costs))
+    true_best_idx = int(np.argmax(mean_rewards))   # max reward = min cost
     player_c = session.best_impparam()
     player_idx = int(np.argmin(np.abs(grid - player_c)))
 
     naive_c = float(np.clip(0.10, cfg.impparam_min, cfg.impparam_max))
-    naive_costs = [
+    naive_results = [
         simulate(
             config=cfg,
             impparam=naive_c,
             horizon_weeks=sc.horizon_weeks,
             session_seed=base_seed,
             experiment_index=i,
-        ).total_cost
+        )
         for i in range(n_reps)
     ]
 
     return RevealResponse(
         impparams=grid.tolist(),
+        mean_reward=mean_rewards,
         mean_cost=mean_costs,
         true_best_impparam=float(grid[true_best_idx]),
+        true_max_reward=mean_rewards[true_best_idx],
         true_min_cost=mean_costs[true_best_idx],
         player_best_impparam=player_c,
+        player_best_reward=mean_rewards[player_idx],
         player_best_cost=mean_costs[player_idx],
-        naive_cost=float(np.mean(naive_costs)),
+        naive_reward=float(np.mean([r.total_reward for r in naive_results])),
+        naive_cost=float(np.mean([r.total_cost   for r in naive_results])),
     )
 
 
@@ -542,16 +570,24 @@ def kg_comparison(
     # Posterior mean at the probe points — needed for the online KG composite.
     mu_probes, _ = session.belief.posterior(probes)
 
-    # Online KG (Ryzhov, min-cost form). Non-negative multiplier so late in
-    # the run (n → N) the info-value bonus disappears and OKG reduces to μ_n(x).
+    # Online KG. Internally (min-cost form) Ryzhov gives
+    #     online_KG(x) = μ_n(x) − (N − n) · offline_KG(x)
+    # and picks argmin. For a maximise app we display
+    #     display_online_KG(x) = μ_reward(x) + (N − n) · offline_KG(x)
+    #                          = −μ_cost(x) + (N − n) · offline_KG(x)
+    # which the user maximises — consistent with the offline KG chart above.
+    # Offline KG(x) is always ≥ 0 (info value) and is unchanged by direction.
     steps_used = int(session.n_steps)
     remaining = max(0, int(budget) - steps_used)
-    online_ana = (mu_probes - remaining * ana).tolist()
-    online_ind = (mu_probes - remaining * ind).tolist()
+    online_ana_internal = mu_probes - remaining * ana
+    online_ind_internal = mu_probes - remaining * ind
+    online_ana = _to_display(session, online_ana_internal).tolist()
+    online_ind = _to_display(session, online_ind_internal).tolist()
+    mu_display = _to_display(session, mu_probes).tolist()
 
     return KGComparisonResponse(
         impparams=probes.tolist(),
-        posterior_mean=mu_probes.tolist(),
+        posterior_mean=mu_display,
         analytic_correlated=ana.tolist(),
         mc_correlated=mc.tolist(),
         independent=ind.tolist(),
@@ -572,7 +608,7 @@ def posterior(sid: str, grid_size: int = 200) -> PosteriorResponse:
     mean, std = session.belief.posterior(grid)
     return PosteriorResponse(
         impparams=grid.tolist(),
-        mean=mean.tolist(),
+        mean=_to_display(session, mean).tolist(),  # reward frame for maximise apps
         std=std.tolist(),
         best_impparam=session.best_impparam(),
     )

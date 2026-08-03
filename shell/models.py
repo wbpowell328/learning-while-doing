@@ -112,6 +112,13 @@ class StepResponse(BaseModel):
     model_config = ConfigDict(extra="allow")   # per-app extras (e.g. cash_series)
 
     impparam: ThetaLike                    # scalar (1D) or list (2D+)
+    # Reward-frame (app is a MAXIMISATION problem)
+    total_reward: float = 0.0
+    market_gain: float = 0.0
+    cash_gain: float = 0.0
+    shortfall_penalty: float = 0.0
+    # Legacy cost-frame — retained so old clients still parse. Belief layer
+    # keeps operating in cost frame internally.
     total_cost: float
     opportunity_cost: float
     shortfall_cost: float
@@ -190,6 +197,12 @@ class KG2DResponse(BaseModel):
 
 class RevealResponse(BaseModel):
     impparams: list[float]
+    # Reward-frame — what the UI shows for maximise apps
+    mean_reward: list[float] = []
+    true_max_reward: float = 0.0
+    player_best_reward: float = 0.0
+    naive_reward: float = 0.0
+    # Legacy cost-frame — kept for backward compat with any older reader
     mean_cost: list[float]
     true_best_impparam: float
     true_min_cost: float

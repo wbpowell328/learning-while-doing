@@ -27,7 +27,7 @@ from .result import SimResult, JumpEvent
 # Registry metadata — see apps/base.py Simulator Protocol
 NAME       = "cash_balance_2d"
 LABEL      = "Cash balance (2-parameter, scaffold)"
-MINIMIZE   = True
+MINIMIZE   = False   # maximise expected total reward
 THETA_DIM  = 2   # will become meaningful once the second parameter is wired in
 
 __all__ = ["simulate", "SimConfig", "SimResult", "JumpEvent",

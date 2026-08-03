@@ -118,7 +118,7 @@ export default function PosteriorChart({ posterior, history, policy }) {
       <text
         transform={`translate(${PAD.left - 56},${PAD.top + IH / 2}) rotate(-90)`}
         textAnchor="middle" fontSize={12} fill="#64748b">
-        Total cost
+        Total reward
       </text>
 
       {/* Legend */}

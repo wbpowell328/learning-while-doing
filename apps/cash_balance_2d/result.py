@@ -18,7 +18,14 @@ class SimResult:
     session_seed: int
     experiment_index: int
 
-    # --- Cost breakdown ---
+    # --- Reward breakdown (user-facing; app is a MAXIMISATION problem) ---
+    total_reward: float               # = market_gain + cash_gain - shortfall_ind_penalty - shortfall_inst_penalty
+    market_gain: float
+    cash_gain: float
+    shortfall_ind_penalty: float
+    shortfall_inst_penalty: float
+
+    # --- Legacy cost breakdown (internal; belief layer keeps minimising) ---
     total_cost: float                # = opportunity_cost + shortfall_ind_cost + shortfall_inst_cost
     opportunity_cost: float          # cumulative cash drag over horizon
     shortfall_ind_cost: float        # cumulative deferred-payment penalty (individual)
@@ -28,6 +35,11 @@ class SimResult:
     def shortfall_cost(self) -> float:
         """Convenience alias — total shortfall cost across both investor classes."""
         return self.shortfall_ind_cost + self.shortfall_inst_cost
+
+    @property
+    def shortfall_penalty(self) -> float:
+        """Convenience alias — total shortfall reward-penalty (both classes)."""
+        return self.shortfall_ind_penalty + self.shortfall_inst_penalty
 
     # --- Daily time series (length = trading days in horizon) ---
     cash_series: np.ndarray          # cash balance end-of-day (post-rebalance)

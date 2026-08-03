@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 from .config import SimConfig
-from .costs import compute_costs
+from .costs import compute_costs, compute_rewards
 from .dynamics import run_path
 from .result import SimResult
 
@@ -60,13 +60,29 @@ def simulate(
         shortfall_ind_series=shortfall_ind_series,
         shortfall_inst_series=shortfall_inst_series,
     )
-
     total_cost = opportunity_cost + shortfall_ind_cost + shortfall_inst_cost
+
+    market_gain, cash_gain, shortfall_ind_penalty, shortfall_inst_penalty = compute_rewards(
+        config=config,
+        impparam=theta,
+        cash_series=cash_series,
+        invested_series=invested_series,
+        aum_ind_series=aum_ind_series,
+        aum_inst_series=aum_inst_series,
+        shortfall_ind_series=shortfall_ind_series,
+        shortfall_inst_series=shortfall_inst_series,
+    )
+    total_reward = market_gain + cash_gain - shortfall_ind_penalty - shortfall_inst_penalty
 
     return SimResult(
         impparam=theta,
         session_seed=session_seed,
         experiment_index=experiment_index,
+        total_reward=total_reward,
+        market_gain=market_gain,
+        cash_gain=cash_gain,
+        shortfall_ind_penalty=shortfall_ind_penalty,
+        shortfall_inst_penalty=shortfall_inst_penalty,
         total_cost=total_cost,
         opportunity_cost=opportunity_cost,
         shortfall_ind_cost=shortfall_ind_cost,

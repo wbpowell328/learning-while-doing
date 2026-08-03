@@ -77,7 +77,7 @@ export default function App() {
     setKgComparison(kg);
     setBestImpparam(result.best_impparam);
     setNSteps(result.n_steps);
-    setHistory(prev => [...prev, [result.impparam, result.total_cost]]);
+    setHistory(prev => [...prev, [result.impparam, result.total_reward]]);
     setLastResult(result);
   }, []);
 
@@ -227,7 +227,7 @@ export default function App() {
       setKg2D(kg2);
       setBestImpparam(result.best_impparam ?? p2.best_impparam);
       setNSteps(result.n_steps);
-      setHistory(prev => [...prev, [result.impparam, result.total_cost]]);
+      setHistory(prev => [...prev, [result.impparam, result.total_reward]]);
       setLastResult(result);
     }
   }, [applyResult]);
@@ -406,8 +406,8 @@ export default function App() {
                 <button className="btn btn-outline" onClick={handleReveal}
                   disabled={loading || revealLoading || reveal != null}
                   title={reveal != null
-                    ? 'Ground-truth cost curve already shown below'
-                    : 'Plot the true underlying cost curve F(θ) to compare with your beliefs'}>
+                    ? 'Ground-truth reward curve already shown below'
+                    : 'Plot the true underlying reward curve F(θ) to compare with your beliefs'}>
                   {revealLoading ? 'Computing…' : reveal != null ? 'Truth revealed' : 'Reveal truth'}
                 </button>
               )}
@@ -479,11 +479,11 @@ export default function App() {
               </div>
               <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 8px 0' }}>
                 Posterior mean of F(θ) as a 3-D surface over the 2-parameter box.
-                Red dots are past observations at their realized (noisy) cost.
+                Red dots are past observations at their realized (noisy) reward.
                 Green circle on the base plane marks the current best θ.
               </p>
               <Belief3DChart data={posterior2D && { ...posterior2D, value: posterior2D.mean }}
-                             valueLabel="Posterior mean cost"
+                             valueLabel="Posterior mean reward"
                              colorScheme="viridis"
                              obsMode="atCost"
                              emptyMessage="Waiting for posterior…" />
@@ -533,7 +533,7 @@ export default function App() {
               impossible to miss. 1-D apps only. */}
           {session.dim === 1 && revealLoading && !reveal && (
             <div className="card" style={{ textAlign: 'center', color: '#64748b', fontSize: 13, padding: 32 }}>
-              Computing true cost curve — running {30 * 12} simulations…
+              Computing true reward curve — running {30 * 12} simulations…
             </div>
           )}
           {session.dim === 1 && reveal && <RevealPanel reveal={reveal} />}
@@ -545,7 +545,7 @@ export default function App() {
                   Cash position — θ = {Number(lastResult.impparam).toFixed(3)}
                 </span>
                 <span style={{ fontSize: 12, color: '#64748b' }}>
-                  Opp. cost {fmt(lastResult.opportunity_cost)} · Shortfall {fmt(lastResult.shortfall_cost)} · Total {fmt(lastResult.total_cost)}
+                  Market {fmt(lastResult.market_gain)} · Cash {fmt(lastResult.cash_gain)} · Shortfall −{fmt(lastResult.shortfall_penalty)} · Reward {fmt(lastResult.total_reward)}
                 </span>
               </div>
               <CashChart result={lastResult} />
