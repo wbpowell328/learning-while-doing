@@ -81,11 +81,17 @@ def _make_step_response(result, session: Session) -> StepResponse:
     return StepResponse(**payload)
 
 
-def _make_policy(name: str, acq_cfg: AcquisitionConfig):
+def _make_policy(name: str, acq_cfg: AcquisitionConfig, budget: int | None):
     if name == "ie":
         return IEPolicy(acq_cfg)
     if name == "kg":
-        return KGPolicy(acq_cfg)
+        return KGPolicy(acq_cfg)                # offline correlated (analytic)
+    if name == "kg_indep":
+        return KGIndependentPolicy(acq_cfg)     # offline independent
+    if name == "okg":
+        return OKGCorrelatedPolicy(acq_cfg, budget=budget or 10)
+    if name == "okg_indep":
+        return OKGIndependentPolicy(acq_cfg, budget=budget or 10)
     return RandomPolicy(acq_cfg)  # "random" and "human" both use RandomPolicy
 
 
@@ -147,7 +153,7 @@ def create_session(req: CreateSessionRequest) -> CreateSessionResponse:
     acq_cfg = AcquisitionConfig(**{k: v for k, v in acq_kwargs.items() if k in acq_field_names})
 
     ses_cfg = SessionConfig(**req.session_config.model_dump())
-    policy = _make_policy(req.policy, acq_cfg)
+    policy = _make_policy(req.policy, acq_cfg, req.budget)
 
     session = Session(
         sim_config=sim_cfg,

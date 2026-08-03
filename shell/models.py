@@ -72,7 +72,19 @@ class CreateSessionRequest(BaseModel):
     belief_config: BeliefConfigIn = BeliefConfigIn()
     acq_config: AcqConfigIn = AcqConfigIn()
     session_config: SessionConfigIn = SessionConfigIn()
-    policy: Literal["random", "ie", "kg", "human"] = "human"
+    policy: Literal[
+        "random",
+        "ie",
+        "kg",         # offline correlated (analytic) — default KG
+        "kg_indep",   # offline independent
+        "okg",        # online correlated (Ryzhov)
+        "okg_indep",  # online independent
+        "human",
+    ] = "human"
+    # Required by the online-KG policies (they need N to compute (N-n) in the
+    # Ryzhov formula). Ignored by the offline policies; the frontend still
+    # tracks its own budget for the human/auto-run loop.
+    budget: int | None = None
     session_seed: int = 42
 
 

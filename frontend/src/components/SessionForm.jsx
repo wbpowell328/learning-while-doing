@@ -136,11 +136,15 @@ export default function SessionForm({ onCreate, error }) {
 
   // Auto-flip incompatible policy selections when app changes.
   // Human mode and batch modes are 1-D-only for now.
-  const policyAllowed = (p) => is2D ? ['random', 'ie', 'kg'].includes(p) : true;
+  const policyAllowed = (p) => is2D
+    ? ['random', 'ie', 'kg', 'kg_indep', 'okg', 'okg_indep'].includes(p)
+    : true;
   const effectivePolicy = policyAllowed(policy) ? policy : 'kg';
 
   const isHuman = effectivePolicy === 'human';
   const isBatch = effectivePolicy === 'kg-batch' || effectivePolicy === 'ie-batch';
+  // Online-KG variants need N to compute (N−n) in the Ryzhov formula.
+  const isOKG   = effectivePolicy === 'okg' || effectivePolicy === 'okg_indep';
   const family  = effectivePolicy === 'kg-batch' ? 'KG' : effectivePolicy === 'ie-batch' ? 'IE' : null;
 
   // θ search-box bounds — always sent as scalars for 1-D, as 2-tuples for 2-D.
@@ -211,7 +215,7 @@ export default function SessionForm({ onCreate, error }) {
         sim_config: simConfigPayload,
         belief_config: beliefConfigPayload,
         session_config: { horizon_weeks: horizon },
-        budget: (isHuman || isBatch) ? budget : null,
+        budget: (isHuman || isBatch || isOKG) ? budget : null,
         family,
         sims_per_policy: simsPerPolicy,
       });
@@ -265,6 +269,9 @@ export default function SessionForm({ onCreate, error }) {
               <optgroup label="Single run">
                 {!is2D && <option value="human">Human — I pick θ each round</option>}
                 <option value="kg">KG — offline correlated (analytic)</option>
+                <option value="kg_indep">KG — offline independent</option>
+                <option value="okg">KG — online correlated (Ryzhov)</option>
+                <option value="okg_indep">KG — online independent</option>
                 <option value="ie">IE — LCB with z_alpha=0 (greedy)</option>
                 <option value="random">Random — baseline</option>
               </optgroup>
@@ -277,9 +284,11 @@ export default function SessionForm({ onCreate, error }) {
             </select>
           </div>
 
-          {(isHuman || isBatch) && (
+          {(isHuman || isBatch || isOKG) && (
             <div className="form-group">
-              <label>{isBatch ? 'Budget (steps per policy per sim)' : 'Adjustment budget'}</label>
+              <label>{isBatch ? 'Budget (steps per policy per sim)'
+                     : isOKG   ? 'Measurement budget N'
+                     :           'Adjustment budget'}</label>
               <input
                 type="number" value={budgetStr} min={1} max={50}
                 onChange={e => setBudgetStr(e.target.value)}
@@ -288,6 +297,8 @@ export default function SessionForm({ onCreate, error }) {
               <span style={{ fontSize: 12, color: '#64748b' }}>
                 {isBatch
                   ? 'How many observations each policy can take before we score it'
+                  : isOKG
+                  ? 'Online KG uses N to compute the info-value bonus (N−n)·KG(x)'
                   : 'Number of times you can run the simulator'}
               </span>
             </div>

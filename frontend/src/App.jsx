@@ -13,7 +13,26 @@ import RevealPanel from './components/RevealPanel';
 import BatchResults from './components/BatchResults';
 import './App.css';
 
-const POLICY_LABEL = { random: 'Random', ie: 'IE', kg: 'KG', human: 'Human' };
+const POLICY_LABEL = {
+  random:    'Random',
+  ie:        'IE',
+  kg:        'KG',
+  kg_indep:  'KG indep',
+  okg:       'OKG',
+  okg_indep: 'OKG indep',
+  human:     'Human',
+};
+// All KG variants share the green KG badge so the color still reads as "this
+// is a KG-family policy" without needing four separate colors.
+const POLICY_BADGE_KIND = {
+  random:    'random',
+  ie:        'ie',
+  kg:        'kg',
+  kg_indep:  'kg',
+  okg:       'kg',
+  okg_indep: 'kg',
+  human:     'human',
+};
 
 // argmax over a 2-D grid encoded as a flat array in meshgrid(indexing="ij") order:
 // values[i * len(axis2) + j] corresponds to (axis1[i], axis2[j]).
@@ -331,7 +350,9 @@ export default function App() {
       {/* Header */}
       <div className="header">
         <h1>Learning While Doing</h1>
-        <span className={`badge badge-${policy}`}>{POLICY_LABEL[policy]}</span>
+        <span className={`badge badge-${POLICY_BADGE_KIND[policy] ?? policy}`}>
+          {POLICY_LABEL[policy] ?? policy}
+        </span>
         <div className="session-meta">
           seed {seed}
           <button className="btn btn-ghost" onClick={handleNew}>← New session</button>
