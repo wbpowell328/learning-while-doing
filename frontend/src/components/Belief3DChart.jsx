@@ -23,9 +23,10 @@ const IH = H - PAD.top - PAD.bottom;
 //     screen_x = origin_x + sx * x + tilt_x * y
 //     screen_y = origin_y - sz * z + tilt_y * y   (flip z so higher goes up)
 //
-// The origin (0,0,0) sits near the bottom-left of the plot area.
-const TILT_X = 0.6;    // fraction of "y" axis pushed to the right
-const TILT_Y = 0.5;    // fraction of "y" axis pushed up (compressed depth)
+// TILT_Y is deliberately small: a flatter perspective where the "into the
+// page" axis doesn't rise dramatically off the base plane.
+const TILT_X = 0.55;   // fraction of "y" axis pushed to the right
+const TILT_Y = 0.20;   // fraction of "y" axis pushed up (kept small — flat base)
 
 // Generic linear-interpolation colormap runner.
 function interp(t, stops) {
