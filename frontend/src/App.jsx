@@ -477,6 +477,10 @@ export default function App() {
               Same underlying GP posterior; three ways of scoring each candidate θ.
               Analytic and MC should agree closely (any gap is MC noise).
               Independent ignores the covariance cascade to nearby points.
+              Each curve is ringed at its own extremum — the θ that policy
+              would sample next; the dashed green vertical is the primary KG
+              policy (offline analytic correlated), which is what the KG
+              "step" action would actually try.
             </p>
             <KGChart kg={kgComparison} />
             {isHuman && (

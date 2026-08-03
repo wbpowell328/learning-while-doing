@@ -46,6 +46,22 @@ function bounds(vals, includeZero) {
   return [rawMin - pad, rawMax + pad];
 }
 
+// argmax / argmin over the (impparams, values) samples. Skips non-finite values.
+// Returns the θ (not the index) at the extremum, or null if all values are bad.
+function argExtremum(impparams, values, mode /* 'max' | 'min' */) {
+  if (!impparams?.length || !values?.length) return null;
+  let bestVal = mode === 'max' ? -Infinity : Infinity;
+  let bestI = -1;
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i];
+    if (!Number.isFinite(v)) continue;
+    if ((mode === 'max' && v > bestVal) || (mode === 'min' && v < bestVal)) {
+      bestVal = v; bestI = i;
+    }
+  }
+  return bestI < 0 ? null : impparams[bestI];
+}
+
 export default function KGChart({ kg }) {
   if (!kg) {
     return (
@@ -58,6 +74,20 @@ export default function KGChart({ kg }) {
 
   const { impparams, mc_samples, budget, steps_used } = kg;
   const remaining = Math.max(0, budget - steps_used);
+
+  // "Next θ" per policy: offline curves want argmax (higher KG = more info
+  // value); online curves want argmin (they are μ_n(x) − (N−n)·offline_KG
+  // and represent an expected cost the online policy minimises).
+  const nextByKey = {
+    analytic_correlated: argExtremum(impparams, kg.analytic_correlated, 'max'),
+    mc_correlated:       argExtremum(impparams, kg.mc_correlated,       'max'),
+    independent:         argExtremum(impparams, kg.independent,         'max'),
+    online_correlated:   argExtremum(impparams, kg.online_correlated,   'min'),
+    online_independent:  argExtremum(impparams, kg.online_independent,  'min'),
+  };
+  // The primary KG policy used by session.policy='kg' is offline analytic
+  // correlated — its argmax is what a "next step" click would sample.
+  const primaryNext = nextByKey.analytic_correlated;
 
   // Offline axis (left)
   const offVals = OFFLINE_SERIES.flatMap(s => kg[s.key]);
@@ -91,6 +121,20 @@ export default function KGChart({ kg }) {
       <line x1={PAD.left} x2={W - PAD.right} y1={y0Off} y2={y0Off}
             stroke="#94a3b8" strokeWidth={1} />
 
+      {/* "Next θ" vertical for the primary offline KG policy (analytic correlated). */}
+      {primaryNext != null && (
+        <>
+          <line x1={xS(primaryNext)} x2={xS(primaryNext)}
+                y1={PAD.top} y2={H - PAD.bottom}
+                stroke="#16a34a" strokeWidth={1.5}
+                strokeDasharray="6,4" opacity={0.8} />
+          <text x={xS(primaryNext) + 5} y={PAD.top + 14}
+                fill="#16a34a" fontSize={11} fontWeight={600}>
+            next θ={primaryNext.toFixed(3)}
+          </text>
+        </>
+      )}
+
       {/* Offline series on left axis */}
       {OFFLINE_SERIES.map(({ key, color, dash, width }) => (
         <g key={key}>
@@ -102,6 +146,14 @@ export default function KGChart({ kg }) {
             <circle key={i} cx={xS(c)} cy={yOff(kg[key][i])} r={2.3}
                     fill={color} opacity={0.9} />
           ))}
+          {/* argmax marker for this series */}
+          {nextByKey[key] != null && (() => {
+            const iStar = impparams.indexOf(nextByKey[key]);
+            return iStar >= 0 ? (
+              <circle cx={xS(impparams[iStar])} cy={yOff(kg[key][iStar])}
+                      r={5} fill="none" stroke={color} strokeWidth={2} />
+            ) : null;
+          })()}
         </g>
       ))}
 
@@ -112,6 +164,14 @@ export default function KGChart({ kg }) {
                 stroke={color} strokeWidth={width}
                 strokeDasharray={dash ?? undefined}
                 opacity={0.9} />
+          {/* argmin marker for this series */}
+          {nextByKey[key] != null && (() => {
+            const iStar = impparams.indexOf(nextByKey[key]);
+            return iStar >= 0 ? (
+              <circle cx={xS(impparams[iStar])} cy={yOn(kg[key][iStar])}
+                      r={5} fill="none" stroke={color} strokeWidth={2} />
+            ) : null;
+          })()}
         </g>
       ))}
 
