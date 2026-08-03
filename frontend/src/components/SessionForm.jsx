@@ -15,6 +15,11 @@ const ADV_DEFAULTS = {
   jump_std_log:      '0.5',
   sigma_net_annual:  '0.02',
   r_borrow_annual:   '0.10',
+  // θ search-box bounds (1-D uses first component only; 2-D uses both)
+  theta1_min:        '0.01',
+  theta1_max:        '0.20',
+  theta2_min:        '0.01',
+  theta2_max:        '0.40',
 };
 
 // Field metadata for the advanced-parameters panel
@@ -38,6 +43,19 @@ const SIM_FIELDS = [
     'Baseline daily-flow volatility (non-jump).'],
   ['r_borrow_annual', 'Borrow rate (/yr)',
     'Rate paid when cash goes negative — controls the low-θ cliff.'],
+];
+
+// θ search-box bounds. For a 1-D app, only theta1_min/max are used.
+// For a 2-D app, all four are used.
+const RANGE_FIELDS_1D = [
+  ['theta1_min', 'θ min', 'Lower bound of the θ search box.'],
+  ['theta1_max', 'θ max', 'Upper bound of the θ search box.'],
+];
+const RANGE_FIELDS_2D = [
+  ['theta1_min', 'θ₁ min (individual)', 'Lower bound for individual buffer θ₁.'],
+  ['theta1_max', 'θ₁ max (individual)', 'Upper bound for individual buffer θ₁.'],
+  ['theta2_min', 'θ₂ min (institutional)', 'Lower bound for institutional buffer θ₂.'],
+  ['theta2_max', 'θ₂ max (institutional)', 'Upper bound for institutional buffer θ₂.'],
 ];
 
 
@@ -81,17 +99,27 @@ export default function SessionForm({ onCreate, error }) {
   const isBatch = effectivePolicy === 'kg-batch' || effectivePolicy === 'ie-batch';
   const family  = effectivePolicy === 'kg-batch' ? 'KG' : effectivePolicy === 'ie-batch' ? 'IE' : null;
 
+  // θ search-box bounds — always sent as scalars for 1-D, as 2-tuples for 2-D.
+  const impparamMin = is2D
+    ? [numeric('theta1_min'), numeric('theta2_min')]
+    : numeric('theta1_min');
+  const impparamMax = is2D
+    ? [numeric('theta1_max'), numeric('theta2_max')]
+    : numeric('theta1_max');
+
   // For 2-D apps, don't send single-value-tuple sim_config knobs that would
-  // clash with the app's 2-parameter defaults.  We ship only stationary; the
-  // 2-D app's own jump / flow / borrow-rate defaults take over.
+  // clash with the app's 2-parameter defaults.  We ship only stationary and
+  // the θ bounds; the 2-D app's own jump / flow / borrow-rate defaults take over.
   const simConfigPayload = is2D
-    ? { stationary }
+    ? { stationary, impparam_min: impparamMin, impparam_max: impparamMax }
     : {
         stationary,
         jump_rate_annual: numeric('jump_rate_annual'),
         jump_std_log:     numeric('jump_std_log'),
         sigma_net_annual: numeric('sigma_net_annual'),
         r_borrow_annual:  numeric('r_borrow_annual'),
+        impparam_min:     impparamMin,
+        impparam_max:     impparamMax,
       };
 
   // For 2-D belief prior, broadcast the scalar length_scale into a per-dim
@@ -258,19 +286,38 @@ export default function SessionForm({ onCreate, error }) {
               <div className="form-row">{BELIEF_FIELDS.slice(0, 2).map(advField)}</div>
               <div className="form-row">{BELIEF_FIELDS.slice(2, 4).map(advField)}</div>
 
+              {!is2D && (
+                <>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b',
+                                textTransform: 'uppercase', letterSpacing: 0.6,
+                                marginTop: 16, marginBottom: 8 }}>
+                    Simulation model (underlying truth &amp; per-run noise)
+                  </div>
+                  <div className="form-row">{SIM_FIELDS.slice(0, 2).map(advField)}</div>
+                  <div className="form-row">{SIM_FIELDS.slice(2, 4).map(advField)}</div>
+                </>
+              )}
+
               <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b',
                             textTransform: 'uppercase', letterSpacing: 0.6,
                             marginTop: 16, marginBottom: 8 }}>
-                Simulation model (underlying truth &amp; per-run noise)
+                θ search-box bounds
               </div>
-              <div className="form-row">{SIM_FIELDS.slice(0, 2).map(advField)}</div>
-              <div className="form-row">{SIM_FIELDS.slice(2, 4).map(advField)}</div>
+              {is2D ? (
+                <>
+                  <div className="form-row">{RANGE_FIELDS_2D.slice(0, 2).map(advField)}</div>
+                  <div className="form-row">{RANGE_FIELDS_2D.slice(2, 4).map(advField)}</div>
+                </>
+              ) : (
+                <div className="form-row">{RANGE_FIELDS_1D.map(advField)}</div>
+              )}
 
               <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 12, marginBottom: 0 }}>
                 Simulation parameters change what F(θ) actually looks like and how noisy
                 a single 26-week run is. Belief parameters are what the GP algorithms
                 <em> assume</em> — mismatch between the two is itself a pedagogically
-                interesting condition.
+                interesting condition. Widening the θ box explores a larger region;
+                make sure the length scale ℓ isn't tiny compared to the new range.
               </p>
             </div>
           </details>
