@@ -1,155 +1,200 @@
 """
-Gaussian Process belief model over F(θ) = E[total_cost | θ].
+Gaussian Process belief model over F(θ) = E[cost | θ].
 
-Kernel: squared-exponential (RBF)
-    k(x, x') = signal_std² × exp(-0.5 × (x - x')² / length_scale²)
+Kernel: squared-exponential (RBF) with per-dimension length scales (ARD):
+    k(x, x') = signal_std² × exp(-0.5 × Σ_d ((x_d - x'_d)² / ℓ_d²))
 
-Observations y_i = F(C*_i) + ε_i, ε_i ~ N(0, noise_std²).
+Observations y_i = F(θ_i) + ε_i, ε_i ~ N(0, noise_std²).
 
-The posterior is computed from scratch on each query after a new observation
-(lazy Cholesky cache, invalidated on update).  This is correct and simple;
-incremental Cholesky updates can be added if n_observations grows large.
+The posterior is recomputed from scratch on each query after a new observation
+(lazy Cholesky cache, invalidated on update).  Correct and simple; incremental
+Cholesky updates can be added if n_observations grows large.
+
+Dimensionality
+--------------
+`BeliefModel(config, dim=d)` supports any input dimension d ≥ 1.  Internally
+all inputs are 2-D arrays of shape (n, d).  For d=1, callers may pass flat
+arrays of shape (n,) — the model auto-reshapes.  `length_scale` on the config
+may be a scalar (broadcast to all d dimensions) or a length-d array (ARD).
 """
 from __future__ import annotations
 from dataclasses import dataclass
+from typing import Sequence
 
 import numpy as np
 
 
 @dataclass(frozen=True)
 class BeliefConfig:
-    # RBF kernel hyperparameters
-    length_scale: float = 0.04    # length scale in θ units; θ ∈ [~0.01, ~0.20]
-    signal_std: float = 5_000.0   # prior amplitude: std of F(θ) in cost units
-    noise_std: float = 3_000.0    # per-observation noise std (single-run variance)
-    prior_mean: float = 5_000.0   # constant prior mean for F(θ)
+    # RBF kernel hyperparameters.
+    # length_scale: scalar → same across all dims (isotropic);
+    #               sequence of length d → per-dimension (ARD).
+    length_scale: float | Sequence[float] = 0.04
+    signal_std: float = 5_000.0   # prior amplitude of F(θ) in cost units
+    noise_std:  float = 3_000.0   # per-observation noise std
+    prior_mean: float = 5_000.0   # constant prior mean of F(θ)
+    jitter:     float = 1e-6      # diagonal jitter for Cholesky stability
 
-    # Numerical stability: added to kernel diagonal before Cholesky
-    jitter: float = 1e-6
+
+def _as_2d(x, dim: int) -> np.ndarray:
+    """Coerce a scalar/1-D/2-D input into shape (n, dim)."""
+    arr = np.asarray(x, dtype=float)
+    if arr.ndim == 0:                      # scalar
+        arr = arr.reshape(1, 1)
+    elif arr.ndim == 1:
+        if dim == 1:
+            arr = arr.reshape(-1, 1)       # flat (n,) → (n, 1)
+        elif arr.size == dim:
+            arr = arr.reshape(1, dim)      # single vector (d,) → (1, d)
+        else:
+            raise ValueError(f"cannot reshape 1-D array of size {arr.size} to (?, {dim})")
+    elif arr.ndim == 2:
+        if arr.shape[1] != dim:
+            raise ValueError(f"expected shape (n, {dim}); got {arr.shape}")
+    else:
+        raise ValueError(f"expected 0/1/2-D input; got {arr.ndim}-D")
+    return arr
 
 
 class BeliefModel:
     """
-    GP surrogate for the expected total cost F(θ).
+    GP surrogate for E[cost | θ] with support for scalar or vector θ.
 
-    Usage:
-        model = BeliefModel()           # or BeliefModel(BeliefConfig(...))
-        model.update(impparam, cost)      # add one observation
-        mean, std = model.posterior(grid)  # query the posterior
+    Usage
+    -----
+        model = BeliefModel(BeliefConfig(), dim=2)
+        model.update([0.05, 0.20], 3000.0)
+        mean, std = model.posterior(query_grid)   # query_grid: (m, 2) or (2,)
     """
 
-    def __init__(self, config: BeliefConfig | None = None) -> None:
+    def __init__(self, config: BeliefConfig | None = None, dim: int = 1) -> None:
         self.config: BeliefConfig = config if config is not None else BeliefConfig()
-        self._x_obs: list[float] = []
-        self._y_obs: list[float] = []
-        self._chol: np.ndarray | None = None   # lower-triangular Cholesky of K
-        self._alpha: np.ndarray | None = None  # K^{-1} (y - prior_mean)
+        self.dim: int = int(dim)
+
+        # Per-dim length scales.  Scalar → broadcast; sequence → ARD.
+        ls = np.asarray(self.config.length_scale, dtype=float).reshape(-1)
+        if ls.size == 1:
+            self._length_scales = np.full(self.dim, float(ls[0]))
+        elif ls.size == self.dim:
+            self._length_scales = ls.copy()
+        else:
+            raise ValueError(
+                f"length_scale has {ls.size} value(s) but dim={self.dim}"
+            )
+
+        # Observation store — always 2-D internally: X shape (n, dim), y shape (n,).
+        self._X: np.ndarray = np.empty((0, self.dim), dtype=float)
+        self._y: np.ndarray = np.empty((0,), dtype=float)
+        self._chol:  np.ndarray | None = None
+        self._alpha: np.ndarray | None = None
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
-    def update(self, impparam: float, observed_cost: float) -> None:
+    def update(self, impparam, observed_cost: float) -> None:
         """Append one (θ, cost) observation and invalidate the cached decomposition."""
-        self._x_obs.append(float(impparam))
-        self._y_obs.append(float(observed_cost))
+        x = _as_2d(impparam, self.dim)
+        if x.shape[0] != 1:
+            raise ValueError(f"update() expects a single point; got shape {x.shape}")
+        self._X = np.vstack([self._X, x])
+        self._y = np.concatenate([self._y, [float(observed_cost)]])
         self._chol = None
         self._alpha = None
 
-    def posterior(self, impparams: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    def posterior(self, impparams) -> tuple[np.ndarray, np.ndarray]:
         """
-        Return (mean, std) at each query point in impparams.
+        Return (mean, std) at each query point.
 
-        std is the posterior standard deviation, clipped to zero to absorb
-        small negative values from floating-point arithmetic.
+        impparams: array-like of shape (m, dim), or (m,) if dim==1, or (dim,)
+        for a single point.  Returns two length-m arrays.
         """
-        impparams = np.asarray(impparams, dtype=float)
+        X_q = _as_2d(impparams, self.dim)
         cfg = self.config
 
-        if not self._x_obs:
-            mean = np.full_like(impparams, cfg.prior_mean)
-            std = np.full_like(impparams, cfg.signal_std)
+        if self._X.shape[0] == 0:
+            mean = np.full(X_q.shape[0], cfg.prior_mean)
+            std  = np.full(X_q.shape[0], cfg.signal_std)
             return mean, std
 
         self._build_cache()
 
-        X = np.array(self._x_obs)
+        K_star_X = self._rbf(X_q, self._X)                # (m, n)
+        mean = cfg.prior_mean + K_star_X @ self._alpha    # (m,)
 
-        # k(impparams, X): shape (m, n)
-        K_star_X = self._rbf(impparams[:, None], X[None, :])
-
-        # Posterior mean: m₀ + k(x*, X) α
-        mean = cfg.prior_mean + K_star_X @ self._alpha  # type: ignore[operator]
-
-        # Posterior variance: k(x*,x*) - ||L⁻¹ k(X,x*)||²
-        # k(x*, x*) = signal_std² for all x* (diagonal of prior covariance)
-        V = np.linalg.solve(self._chol, K_star_X.T)  # (n, m)
+        # Var(x) = k(x, x) - k(X, x)^T (K + σ² I)^{-1} k(X, x)
+        # k(x, x) = signal_std² for the RBF kernel.
+        V = np.linalg.solve(self._chol, K_star_X.T)       # (n, m)
         post_var = cfg.signal_std ** 2 - np.sum(V ** 2, axis=0)
         std = np.sqrt(np.maximum(post_var, 0.0))
-
         return mean, std
 
-    def posterior_at(self, impparam: float) -> tuple[float, float]:
+    def posterior_at(self, impparam) -> tuple[float, float]:
         """Convenience wrapper: return (mean, std) at a single point."""
-        mean, std = self.posterior(np.array([float(impparam)]))
-        return float(mean[0]), float(std[0])
+        m, s = self.posterior(impparam)
+        return float(m[0]), float(s[0])
 
-    def posterior_cov_matrix(self, impparams: np.ndarray) -> np.ndarray:
+    def posterior_cov_matrix(self, impparams) -> np.ndarray:
         """
-        Full posterior covariance matrix at query points, shape (m, m).
+        Full posterior covariance matrix at the query points, shape (m, m).
 
         Cov_n(x_i, x_j) = k(x_i, x_j) − V_i · V_j
-        where V = L⁻¹ k(X, impparams), L = Cholesky(K(X,X) + noise·I).
-
-        With no observations this equals the prior covariance k(impparams, impparams).
+        where V = L⁻¹ k(X, x*), L = chol(K(X,X) + σ² I).
+        With no observations this equals the prior covariance k(x*, x*).
         """
-        impparams = np.asarray(impparams, dtype=float)
-        K_star = self._rbf(impparams[:, None], impparams[None, :])  # (m, m)
+        X_q = _as_2d(impparams, self.dim)
+        K_star = self._rbf(X_q, X_q)                      # (m, m)
 
-        if not self._x_obs:
+        if self._X.shape[0] == 0:
             return K_star
 
         self._build_cache()
-
-        X = np.array(self._x_obs)
-        k_X_grid = self._rbf(X[:, None], impparams[None, :])     # (n, m)
-        V = np.linalg.solve(self._chol, k_X_grid)              # (n, m)
-        return K_star - V.T @ V                                 # (m, m)
+        k_X_grid = self._rbf(self._X, X_q)                # (n, m)
+        V = np.linalg.solve(self._chol, k_X_grid)         # (n, m)
+        return K_star - V.T @ V                           # (m, m)
 
     @property
     def n_observations(self) -> int:
-        return len(self._x_obs)
+        return int(self._X.shape[0])
 
     @property
-    def observations(self) -> tuple[list[float], list[float]]:
-        """Return (impparams, costs) as independent copies."""
-        return list(self._x_obs), list(self._y_obs)
+    def observations(self) -> tuple[list, list]:
+        """
+        Return (impparams, costs) as lists — dim=1 returns flat floats,
+        higher dims return list-of-lists.
+        """
+        if self.dim == 1:
+            return list(self._X[:, 0]), list(self._y)
+        return [row.tolist() for row in self._X], list(self._y)
 
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
 
-    def _rbf(self, x1: np.ndarray, x2: np.ndarray) -> np.ndarray:
-        """Squared-exponential kernel; x1 and x2 broadcast to the output shape."""
+    def _rbf(self, X1: np.ndarray, X2: np.ndarray) -> np.ndarray:
+        """
+        ARD squared-exponential kernel.
+
+        X1: (m, dim), X2: (n, dim).  Returns (m, n).
+        """
         cfg = self.config
-        sq_dist = (x1 - x2) ** 2
-        return cfg.signal_std ** 2 * np.exp(-0.5 * sq_dist / cfg.length_scale ** 2)
+        # Broadcast to (m, n, dim); normalize each dim by its own length scale.
+        diffs = X1[:, None, :] - X2[None, :, :]
+        scaled = diffs / self._length_scales
+        sq_dist = np.sum(scaled ** 2, axis=-1)
+        return cfg.signal_std ** 2 * np.exp(-0.5 * sq_dist)
 
     def _build_cache(self) -> None:
-        """Compute and cache the Cholesky of K(X,X) and the weight vector α."""
+        """Cache Cholesky of K(X,X) + σ² I and the weight vector α."""
         if self._chol is not None:
             return
-
         cfg = self.config
-        X = np.array(self._x_obs)
-        y = np.array(self._y_obs)
-        n = len(X)
+        n = self._X.shape[0]
 
-        K = self._rbf(X[:, None], X[None, :])
+        K = self._rbf(self._X, self._X)
         K += (cfg.noise_std ** 2 + cfg.jitter) * np.eye(n)
 
         self._chol = np.linalg.cholesky(K)
-
-        residual = y - cfg.prior_mean
+        residual = self._y - cfg.prior_mean
         L_inv_r = np.linalg.solve(self._chol, residual)
         self._alpha = np.linalg.solve(self._chol.T, L_inv_r)

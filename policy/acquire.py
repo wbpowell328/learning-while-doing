@@ -15,7 +15,7 @@ Policies implemented here (in order of complexity):
 from __future__ import annotations
 import math
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, Sequence, Union
 
 import numpy as np
 
@@ -24,19 +24,50 @@ from .belief import BeliefModel
 
 class AcquisitionPolicy(Protocol):
     """Structural interface satisfied by RandomPolicy, IEPolicy, and KGPolicy."""
-    def propose(self, model: BeliefModel, rng: np.random.Generator) -> float: ...
+    def propose(self, model: BeliefModel, rng: np.random.Generator): ...
 
 
 @dataclass(frozen=True)
 class AcquisitionConfig:
-    impparam_min: float = 0.01
-    impparam_max: float = 0.20
-    grid_size: int = 100   # evaluation grid resolution for IE and KG
-    # IE (interval-estimation / lower confidence bound) tunable parameter.
-    #   IE(x) = mu(x) - z_alpha * std(x); pick argmin.
-    # z_alpha = 0    → pure exploitation (argmin posterior mean)
-    # z_alpha → inf  → pure exploration (argmax posterior std)
+    # For 1D problems: impparam_min/max are floats.
+    # For higher-dim problems: pass tuples of length dim.
+    # grid_size is PER-DIMENSION; total grid has grid_size**dim points.
+    impparam_min: Union[float, Sequence[float]] = 0.01
+    impparam_max: Union[float, Sequence[float]] = 0.20
+    grid_size: int = 100
+    # IE tunable parameter — see IEPolicy docstring.
     z_alpha: float = 0.0
+
+
+def _make_grid(lo, hi, grid_size: int) -> np.ndarray:
+    """
+    Build a flat grid of shape (n_points, dim) over the box [lo, hi].
+
+    * lo, hi may be scalar (dim=1) or length-dim sequences.
+    * n_points = grid_size ** dim.
+    """
+    lo = np.atleast_1d(np.asarray(lo, dtype=float))
+    hi = np.atleast_1d(np.asarray(hi, dtype=float))
+    if lo.shape != hi.shape:
+        raise ValueError(f"impparam_min and impparam_max must have same shape; got {lo.shape} vs {hi.shape}")
+    dim = lo.size
+    axes = [np.linspace(lo[d], hi[d], grid_size) for d in range(dim)]
+    mesh = np.meshgrid(*axes, indexing="ij")
+    return np.stack([m.ravel() for m in mesh], axis=-1)  # (grid_size**dim, dim)
+
+
+def _theta_dim(cfg: AcquisitionConfig) -> int:
+    """Extract the dimension of θ implied by the config's bounds."""
+    return int(np.atleast_1d(np.asarray(cfg.impparam_min, dtype=float)).size)
+
+
+def _grid_pick(grid: np.ndarray, idx: int):
+    """
+    Return grid[idx] as a scalar float for dim=1 grids, or a length-dim
+    numpy array for dim>=2.  Used at the end of every policy's propose().
+    """
+    row = grid[idx]
+    return float(row[0]) if row.size == 1 else row.copy()
 
 
 # ---------------------------------------------------------------------------
@@ -45,16 +76,19 @@ class AcquisitionConfig:
 
 class RandomPolicy:
     """
-    Proposes a θ drawn uniformly at random from [impparam_min, impparam_max].
-    The BeliefModel is not consulted; the rng drives all randomness.
+    Proposes a θ drawn uniformly at random from the box
+    [impparam_min, impparam_max].  Works for any dimension.
     """
 
     def __init__(self, config: AcquisitionConfig | None = None) -> None:
         self.config = config or AcquisitionConfig()
+        self._lo = np.atleast_1d(np.asarray(self.config.impparam_min, dtype=float))
+        self._hi = np.atleast_1d(np.asarray(self.config.impparam_max, dtype=float))
+        self._dim = self._lo.size
 
-    def propose(self, model: BeliefModel, rng: np.random.Generator) -> float:
-        cfg = self.config
-        return float(rng.uniform(cfg.impparam_min, cfg.impparam_max))
+    def propose(self, model: BeliefModel, rng: np.random.Generator):
+        theta = rng.uniform(self._lo, self._hi)
+        return float(theta[0]) if self._dim == 1 else theta
 
 
 # ---------------------------------------------------------------------------
@@ -80,13 +114,13 @@ class IEPolicy:
     def __init__(self, config: AcquisitionConfig | None = None) -> None:
         self.config = config or AcquisitionConfig()
         cfg = self.config
-        self._grid = np.linspace(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
+        self._grid = _make_grid(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
 
-    def propose(self, model: BeliefModel, rng: np.random.Generator) -> float:
+    def propose(self, model: BeliefModel, rng: np.random.Generator):
         mu, std = model.posterior(self._grid)
         z = self.config.z_alpha
         score = mu - z * std
-        return float(self._grid[np.argmin(score)])
+        return _grid_pick(self._grid, int(np.argmin(score)))
 
 
 # ---------------------------------------------------------------------------
@@ -203,20 +237,20 @@ class KGPolicy:
     def __init__(self, config: AcquisitionConfig | None = None) -> None:
         self.config = config or AcquisitionConfig()
         cfg = self.config
-        self._grid = np.linspace(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
+        self._grid = _make_grid(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
 
-    def propose(self, model: BeliefModel, rng: np.random.Generator) -> float:
-        # rng is accepted for AcquisitionPolicy protocol compatibility; unused.
+    def propose(self, model: BeliefModel, rng: np.random.Generator):
+        # rng accepted for protocol compatibility; unused.
         kg = self._kg_values(model)
-        return float(self._grid[np.argmax(kg)])
+        return _grid_pick(self._grid, int(np.argmax(kg)))
 
     def kg_values(self, model: BeliefModel, rng: np.random.Generator | None = None) -> np.ndarray:
         """Return KG for every grid point. rng is accepted but unused."""
         return self._kg_values(model)
 
     def _kg_values(self, model: BeliefModel) -> np.ndarray:
-        grid = self._grid
-        m = len(grid)
+        grid = self._grid                           # (m, dim)
+        m = grid.shape[0]
 
         mu, _ = model.posterior(grid)                          # (m,)
         current_min = float(np.min(mu))
@@ -270,14 +304,19 @@ def _kg_pre_compute(model: BeliefModel, grid: np.ndarray, candidates: np.ndarray
     """
     grid = np.asarray(grid, dtype=float)
     candidates = np.asarray(candidates, dtype=float)
-    m = grid.size
-    n_c = candidates.size
+    # Ensure both are 2-D (n, dim); auto-reshape 1-D to (n, 1).
+    if grid.ndim == 1:
+        grid = grid.reshape(-1, 1)
+    if candidates.ndim == 1:
+        candidates = candidates.reshape(-1, 1)
+    m = grid.shape[0]
+    n_c = candidates.shape[0]
 
     mu_grid, _ = model.posterior(grid)
     cand_mean, _ = model.posterior(candidates)
 
     # Full posterior covariance on the union {candidates, grid} — slice as needed.
-    all_pts = np.concatenate([candidates, grid])
+    all_pts = np.concatenate([candidates, grid], axis=0)
     full_cov = model.posterior_cov_matrix(all_pts)
     cand_cov = full_cov[:n_c, :n_c]
     cross_cov = full_cov[:n_c, n_c:]
@@ -302,7 +341,7 @@ def kg_analytic_correlated_at(model: BeliefModel, grid: np.ndarray,
     mu_grid, cand_mean, cand_var, cross_cov, sigma_tilde, delta = _kg_pre_compute(
         model, grid, candidates
     )
-    n_c = candidates.size
+    n_c = cand_mean.shape[0]
     kg = np.zeros(n_c)
     for i in range(n_c):
         if sigma_tilde[i] <= 1e-12:
@@ -356,11 +395,11 @@ class KGMCPolicy:
         self.config = config or AcquisitionConfig()
         self._n_mc = int(n_mc)
         cfg = self.config
-        self._grid = np.linspace(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
+        self._grid = _make_grid(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
 
-    def propose(self, model: BeliefModel, rng: np.random.Generator) -> float:
+    def propose(self, model: BeliefModel, rng: np.random.Generator):
         kg = kg_mc_correlated_at(model, self._grid, self._grid, self._n_mc, rng)
-        return float(self._grid[np.argmax(kg)])
+        return _grid_pick(self._grid, int(np.argmax(kg)))
 
 
 class KGIndependentPolicy:
@@ -372,11 +411,11 @@ class KGIndependentPolicy:
     def __init__(self, config: AcquisitionConfig | None = None) -> None:
         self.config = config or AcquisitionConfig()
         cfg = self.config
-        self._grid = np.linspace(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
+        self._grid = _make_grid(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
 
-    def propose(self, model: BeliefModel, rng: np.random.Generator) -> float:
+    def propose(self, model: BeliefModel, rng: np.random.Generator):
         kg = kg_independent_at(model, self._grid, self._grid)
-        return float(self._grid[np.argmax(kg)])
+        return _grid_pick(self._grid, int(np.argmax(kg)))
 
 
 class OKGCorrelatedPolicy:
@@ -392,15 +431,15 @@ class OKGCorrelatedPolicy:
         self.config = config
         self._budget = int(budget)
         cfg = self.config
-        self._grid = np.linspace(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
+        self._grid = _make_grid(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
 
-    def propose(self, model: BeliefModel, rng: np.random.Generator) -> float:
+    def propose(self, model: BeliefModel, rng: np.random.Generator):
         n = model.n_observations
         remaining = max(0, self._budget - n)
         mu, _ = model.posterior(self._grid)
         kg = kg_analytic_correlated_at(model, self._grid, self._grid)
         okg = mu - remaining * kg
-        return float(self._grid[np.argmin(okg)])
+        return _grid_pick(self._grid, int(np.argmin(okg)))
 
 
 class OKGIndependentPolicy:
@@ -413,15 +452,15 @@ class OKGIndependentPolicy:
         self.config = config
         self._budget = int(budget)
         cfg = self.config
-        self._grid = np.linspace(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
+        self._grid = _make_grid(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
 
-    def propose(self, model: BeliefModel, rng: np.random.Generator) -> float:
+    def propose(self, model: BeliefModel, rng: np.random.Generator):
         n = model.n_observations
         remaining = max(0, self._budget - n)
         mu, _ = model.posterior(self._grid)
         kg = kg_independent_at(model, self._grid, self._grid)
         okg = mu - remaining * kg
-        return float(self._grid[np.argmin(okg)])
+        return _grid_pick(self._grid, int(np.argmin(okg)))
 
 
 def kg_independent_at(model: BeliefModel, grid: np.ndarray,
@@ -440,7 +479,7 @@ def kg_independent_at(model: BeliefModel, grid: np.ndarray,
         model, grid, candidates
     )
     M = float(np.min(mu_grid))
-    n_c = candidates.size
+    n_c = cand_mean.shape[0]
     kg = np.zeros(n_c)
     for i in range(n_c):
         if delta[i] <= 1e-12:
