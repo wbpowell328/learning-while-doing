@@ -330,6 +330,67 @@ def _kg_pre_compute(model: BeliefModel, grid: np.ndarray, candidates: np.ndarray
     return mu_grid, cand_mean, cand_var, cross_cov, sigma_tilde, delta_at_cand
 
 
+def _std_normal_pdf(z):
+    return np.exp(-0.5 * z * z) / np.sqrt(2.0 * np.pi)
+
+
+# math.erf is scalar; numpy has no erf without scipy. Vectorise once.
+_np_erf = np.vectorize(__import__('math').erf, otypes=[float])
+
+
+def _std_normal_cdf(z):
+    return 0.5 * (1.0 + _np_erf(z / np.sqrt(2.0)))
+
+
+def kg_indep_scalar_vs_batch_size(model: BeliefModel, grid: np.ndarray,
+                                   theta, m_values) -> np.ndarray:
+    """
+    Independent-scalar KG at a single candidate θ as a function of the
+    batch size m of repeat observations there.
+
+    Uses the classical single-alternative KG formula (Frazier & Powell
+    OSPL): treats the candidate as one alternative competing against the
+    current best on the grid, ignores cross-θ covariance. This is the KG
+    that exhibits the pedagogically-classical S-curve as a function of
+    precision (equivalently, of m):
+
+        σ̃(m) = √( V² / (V + σ²/m) ),   V = posterior variance at θ
+        Δ     = μ(θ) − μ(best)          (best = argmin_{j≠candidate} μ_j)
+        KG(m) = σ̃(m) · f( −|Δ| / σ̃(m) ),
+        f(z) = φ(z) − z · Φ(z).
+
+    Correlated KG (the version the KG policy uses) is smoother in m: the
+    upper-envelope over many nearby grid points averages out the tight
+    threshold that produces the classical S. Both are valid views — this
+    one is the pedagogical one Warren asked for. Correlated stays
+    available via kg_vs_batch_size for callers that want it.
+    """
+    theta_arr = np.atleast_1d(np.asarray(theta, dtype=float)).reshape(1, -1)
+    mu_x_arr, std_x_arr = model.posterior(theta_arr)
+    mu_x = float(mu_x_arr[0])
+    var_x = float(std_x_arr[0]) ** 2
+
+    mu_grid, _ = model.posterior(grid)
+    mu_best = float(np.min(mu_grid))    # belief-frame (always minimising)
+    delta_abs = abs(mu_x - mu_best)
+
+    sigma_eps = float(model.config.noise_std)
+    m_arr = np.asarray(list(m_values), dtype=float)
+    out = np.zeros_like(m_arr, dtype=float)
+    if var_x <= 0 or sigma_eps <= 0:
+        return out
+
+    # Bayesian mean-shift std for m repeat obs at candidate.
+    denom = var_x + (sigma_eps ** 2) / np.maximum(m_arr, 1e-12)
+    var_shift = (var_x ** 2) / denom
+    st = np.sqrt(np.maximum(var_shift, 0.0))
+    safe_st = np.where(st > 1e-12, st, 1.0)
+    z = -delta_abs / safe_st
+    # f(z) = phi(z) - z * Phi(z); nonneg for all z; large for z near 0.
+    f = _std_normal_pdf(z) - z * _std_normal_cdf(z)
+    return st * f
+
+
 def kg_vs_batch_size(model: BeliefModel, grid: np.ndarray,
                      theta, m_values,
                      noise_std_override: float | None = None) -> np.ndarray:

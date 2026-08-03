@@ -16,7 +16,7 @@ from policy import (
     RandomPolicy, IEPolicy, KGPolicy, Session,
     KGMCPolicy, KGIndependentPolicy, OKGCorrelatedPolicy, OKGIndependentPolicy,
     kg_analytic_correlated_at, kg_mc_correlated_at, kg_independent_at,
-    kg_vs_batch_size,
+    kg_vs_batch_size, kg_indep_scalar_vs_batch_size,
 )
 from policy.acquire import _make_grid
 from .models import (
@@ -660,25 +660,38 @@ def kg_vs_m(sid: str, theta: float | None = None, m_max: int = 50,
     else:
         belief_for_kg = session.belief
 
-    m_max_int = int(max(1, min(m_max, 500)))
+    m_max_int = int(max(1, min(m_max, 5000)))
     m_positive = list(range(1, m_max_int + 1))
-    kg_positive = kg_vs_batch_size(
+    kg_positive_corr = kg_vs_batch_size(
+        belief_for_kg, search_grid, theta_used, m_positive,
+    )
+    # Independent-scalar KG at θ: classical single-alternative formula;
+    # exhibits the pedagogically-classical S-curve as a function of m.
+    # Correlated KG (what the policy actually uses) is smoother because
+    # it aggregates over many nearby grid points — so the two curves
+    # differ intrinsically, not just by parameter tuning.
+    kg_positive_indep = kg_indep_scalar_vs_batch_size(
         belief_for_kg, search_grid, theta_used, m_positive,
     )
     # Prepend m=0 anchor: with zero observations no information is gained,
     # so KG(x; 0) = 0 by definition. Including it makes the "first
     # observation" jump visible, matching the classical KG(x; N) plots.
     m_values = [0] + m_positive
-    kg_values = [0.0] + [float(v) for v in kg_positive.tolist()]
+    kg_values = [0.0] + [float(v) for v in kg_positive_corr.tolist()]
+    kg_values_indep = [0.0] + [float(v) for v in kg_positive_indep.tolist()]
     return {
         "theta": theta_used,
         "m_values": m_values,
+        # Legacy field name = correlated curve (what the policy uses).
         "kg_values": kg_values,
+        "kg_values_correlated": kg_values,
+        "kg_values_independent": kg_values_indep,
         # noise_std currently in effect for this response (the override if
         # supplied, else the belief's own noise_std).
         "noise_std": float(belief_for_kg.config.noise_std),
         "noise_std_belief": float(session.belief.config.noise_std),
-        "base_kg": float(kg_positive[0]) if len(kg_positive) else 0.0,
+        "base_kg": float(kg_positive_corr[0]) if len(kg_positive_corr) else 0.0,
+        "base_kg_indep": float(kg_positive_indep[0]) if len(kg_positive_indep) else 0.0,
     }
 
 

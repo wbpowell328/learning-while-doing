@@ -583,12 +583,16 @@ export default function App() {
                 <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 8px 0' }}>
                   Info value at the θ the KG policy would sample next if we
                   averaged m independent runs there (noise → σ/√m, precision
-                  → m·β). Flat-then-rising S-curves mean single-shot KG is
-                  hiding a lot of information; online-KG will look tempted by
-                  μ_reward instead of exploring. Editing σ_ε below refits the
-                  whole posterior under that noise assumption (a "what if
-                  σ_ε had been X the whole time" scenario), then recomputes
-                  the KG(m) curve — the current session's belief is untouched.
+                  → m·β). Two curves: <b style={{color:'#16a34a'}}>correlated</b> is
+                  what the KG policy actually uses (upper envelope over the
+                  whole grid — smooth); <b style={{color:'#2563eb'}}>independent
+                  scalar</b> pits θ against the current best as one alternative
+                  (classical KG-vs-precision S-curve when applicable). The two
+                  differ intrinsically: correlations across nearby θ smooth
+                  out the threshold that produces the S. Editing σ_ε refits
+                  the posterior under that noise assumption (a "what if σ_ε
+                  had been X the whole time" scenario); the current session's
+                  belief is untouched.
                 </p>
                 <KGvsMChart
                   data={kgVsM}

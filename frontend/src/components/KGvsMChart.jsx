@@ -45,6 +45,11 @@ export default function KGvsMChart({
   }
 
   const { theta, m_values, kg_values, noise_std, noise_std_belief, base_kg } = data;
+  // kg_values is the CORRELATED KG curve (what the policy uses); the
+  // INDEPENDENT-scalar curve is served alongside for pedagogical
+  // comparison and exhibits the classical S when the noise regime lines
+  // up. Both are on the same y-scale.
+  const kg_values_indep = data.kg_values_independent ?? [];
   const isOverridden = noise_std_belief != null &&
                        Math.abs(noise_std - noise_std_belief) > 1e-6;
 
@@ -74,7 +79,7 @@ export default function KGvsMChart({
 
   const xLo = m_values[0];
   const xHi = m_values[m_values.length - 1];
-  const yMax = Math.max(...kg_values, base_kg, 1);
+  const yMax = Math.max(...kg_values, ...kg_values_indep, base_kg, 1);
   const yLo = 0;
   const yHi = yMax * 1.10 || 1;
 
@@ -84,6 +89,11 @@ export default function KGvsMChart({
   const pathD = m_values
     .map((m, i) => `${i === 0 ? 'M' : 'L'}${xS(m).toFixed(1)},${yS(kg_values[i]).toFixed(1)}`)
     .join('');
+  const pathDIndep = kg_values_indep.length === m_values.length
+    ? m_values
+        .map((m, i) => `${i === 0 ? 'M' : 'L'}${xS(m).toFixed(1)},${yS(kg_values_indep[i]).toFixed(1)}`)
+        .join('')
+    : '';
 
   const yTicks = niceTicks(yLo, yHi, 5);
   const xTickCandidates = [1, 2, 5, 10, 20, 50, 100, 200];
@@ -150,8 +160,14 @@ export default function KGvsMChart({
               y1={yS(v)} y2={yS(v)} stroke="#e2e8f0" strokeWidth={1} />
       ))}
 
-      {/* KG(m) curve */}
+      {/* Correlated KG(m) curve — what the KG policy actually uses. */}
       <path d={pathD} fill="none" stroke="#16a34a" strokeWidth={2.5} />
+
+      {/* Independent-scalar KG(m) — pedagogically-classical S-curve view. */}
+      {pathDIndep && (
+        <path d={pathDIndep} fill="none" stroke="#2563eb" strokeWidth={2}
+              strokeDasharray="5,3" opacity={0.9} />
+      )}
 
       {/* Marker at m=1. When the belief is not overridden, this value is
           exactly what the main KG chart shows at θ*. When the σ_ε override
@@ -198,6 +214,19 @@ export default function KGvsMChart({
         textAnchor="middle" fontSize={12} fill="#64748b">
         KG(θ; m)
       </text>
+
+      {/* Legend — two lines: correlated (policy) vs independent (classical) */}
+      <g transform={`translate(${W - PAD.right - 210},${PAD.top + 4})`}>
+        <line x1={0} x2={20} y1={6} y2={6} stroke="#16a34a" strokeWidth={2.5} />
+        <text x={26} y={10} fontSize={10} fill="#374151">
+          Correlated KG (what the policy uses)
+        </text>
+        <line x1={0} x2={20} y1={22} y2={22} stroke="#2563eb" strokeWidth={2}
+              strokeDasharray="5,3" opacity={0.9} />
+        <text x={26} y={26} fontSize={10} fill="#374151">
+          Independent scalar KG (classical S)
+        </text>
+      </g>
 
       {/* Footer: β context */}
       <text x={W - PAD.right} y={H - 4} textAnchor="end"
