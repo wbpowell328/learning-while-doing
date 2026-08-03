@@ -1,0 +1,767 @@
+% ============================================================================
+%  Learning While Doing — Methodology
+%  Compile with:  pdflatex methodology.tex && pdflatex methodology.tex
+%  Standard packages only; no external files required.
+% ============================================================================
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm, amsfonts}
+\usepackage{mathtools}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\hypersetup{colorlinks=true, linkcolor=blue!50!black, urlcolor=blue!60!black,
+  citecolor=blue!50!black}
+
+\newcommand{\Real}{\mathbb{R}}
+\newcommand{\Normal}{\mathcal{N}}
+\newcommand{\Ex}{\mathbb{E}}
+\newcommand{\Var}{\mathrm{Var}}
+\newcommand{\Cov}{\mathrm{Cov}}
+\newcommand{\Ind}{\mathbf{1}}
+\newcommand{\Cstar}{C^{\!*}}
+\newcommand{\muhat}{\hat{\mu}}
+\newcommand{\muprior}{m_0}
+\newcommand{\muN}{\mu_n}
+\newcommand{\sigN}{\sigma_n}
+\newcommand{\sigTilde}{\tilde{\sigma}}
+\newcommand{\code}[1]{\texttt{#1}}
+
+\title{Learning While Doing: Methodology}
+\author{Reference documentation for the \code{learning-while-doing} package}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\bigskip
+
+% ============================================================================
+\section{Overview}
+% ============================================================================
+
+The \code{learning-while-doing} package is an interactive simulation for
+studying how one might learn the optimal \emph{cash-buffer ratio} $\Cstar$
+for a mutual fund while balancing two competing costs:
+
+\begin{itemize}[nosep]
+  \item \textbf{Opportunity cost} — cash sitting in a low-yield instrument
+    earns less than the market portfolio, so holding \emph{too much} cash
+    drags returns.
+  \item \textbf{Shortfall cost} — when redemptions exceed available cash,
+    the fund must liquidate assets under adverse conditions, incurring
+    an incremental friction penalty. Holding \emph{too little} cash raises
+    the probability of these events.
+\end{itemize}
+
+The \emph{true expected cost} function $F(\Cstar)$ is unknown to the
+decision-maker. It is defined implicitly by the stochastic dynamics of the
+fund (Section~\ref{sec:sim}). The decision-maker chooses a sequence of
+candidate values $C^*_1, C^*_2, \dots$, observes a noisy realization of
+$F(C^*_i)$ after each choice, and updates their belief about $F$.
+
+The learning problem has two flavors:
+\begin{itemize}[nosep]
+  \item \textbf{Offline}: only the terminal decision matters — after a
+    budget of $N$ measurements, one commits to a single $\Cstar$ and lives
+    with the cost of that choice indefinitely.
+  \item \textbf{Online}: measurement costs are also incurred during
+    learning — every trial's cost counts against the total. This is the
+    classical online learning setting.
+\end{itemize}
+
+The package supports both regimes and provides a suite of policies for
+choosing the next $C^*$: pure exploration (Random), a family of
+interval-estimation policies (IE), and five variants of the Knowledge
+Gradient (KG) — offline analytic, offline Monte Carlo, offline independent,
+online correlated (Ryzhov), and online independent.
+
+Section~\ref{sec:sim} defines the simulator. Section~\ref{sec:gp} covers the
+Gaussian-process belief model. Section~\ref{sec:policies} derives the
+acquisition policies. Section~\ref{sec:session} describes the session
+workflow and Common Random Numbers. Section~\ref{sec:batch} defines the
+batch benchmarking framework.
+
+% ============================================================================
+\section{Simulation model}
+\label{sec:sim}
+% ============================================================================
+
+A single simulation experiment consists of running a deterministic-once-seeded
+fund path over $H$ trading days at a chosen $\Cstar$, then computing the total
+cost incurred. The default horizon is $26$ weeks ($H = 130$ trading days).
+
+\subsection{State variables and daily updates}
+\label{sec:sim:dynamics}
+
+Let $\code{AUM}_t$ denote assets under management, $\code{Cash}_t$ the cash
+balance, and $\code{Inv}_t = \code{AUM}_t - \code{Cash}_t$ the invested
+portfolio balance at the end of day $t$. The initial state is $\code{AUM}_0
+= A_0$, $\code{Cash}_0 = \Cstar A_0$, $\code{Inv}_0 = (1-\Cstar) A_0$.
+
+Each day the following updates occur in order.
+
+\paragraph{Regime transition (optional).} A two-state hidden Markov chain
+governs an additive drift term. Let $R_t \in \{0,1\}$ be the regime. If
+regime-switching is enabled, $R_{t+1} \neq R_t$ with probability
+$p_{\mathrm{switch}}$; otherwise $R_{t+1} = R_t$. Each regime carries a
+per-year drift adjustment $\mu^{\mathrm{reg}}_{R_t}$.
+
+\paragraph{Retail net flow.} Modeled as a Brownian increment on the
+fraction of AUM. With $\Delta t = 1/\code{tdy}$ (default $\code{tdy}=252$),
+the effective daily drift is
+\[
+  \mu^{\mathrm{eff}}_t \;=\; \mu_{\mathrm{net}} \Delta t \;+\; \mu^{\mathrm{reg}}_{R_t} \Delta t,
+\]
+and the retail flow into cash on day $t$ is
+\[
+  F^{\mathrm{retail}}_t \;=\; \code{AUM}_t \bigl(\mu^{\mathrm{eff}}_t + \sigma_{\mathrm{net}} \sqrt{\Delta t}\, Z_t\bigr),
+  \qquad Z_t \stackrel{\text{iid}}{\sim} \Normal(0,1).
+\]
+The default annual drift is $\mu_{\mathrm{net}} = 0$ and the default annual
+volatility is $\sigma_{\mathrm{net}} = 0.02$.
+
+\paragraph{Institutional jumps.} A Poisson process with per-year rate
+$\lambda$ generates institutional in/outflow events. The number of events on
+day $t$ is $N_t \sim \mathrm{Poisson}(\lambda \Delta t)$. Each event $k =
+1, \dots, N_t$ has a signed jump size
+\[
+  J^{(k)}_t \;=\; D^{(k)}_t \cdot \exp\!\bigl(\mu_{\mathrm{jump}} + \sigma_{\mathrm{jump}} \varepsilon^{(k)}_t\bigr) \cdot \code{AUM}_t,
+\]
+where $D^{(k)}_t = +1$ with probability $p_{\mathrm{in}}$ and $-1$ otherwise,
+and $\varepsilon^{(k)}_t \sim \Normal(0,1)$. The total institutional flow is
+$F^{\mathrm{inst}}_t = \sum_{k=1}^{N_t} J^{(k)}_t$. Default parameters:
+$\lambda = 12$/yr, $\mu_{\mathrm{jump}} = -4.5$ (median jump $\approx 1.1\%$
+of AUM), $\sigma_{\mathrm{jump}} = 0.5$, $p_{\mathrm{in}} = 0.5$.
+
+\paragraph{Cash update and shortfall recording.} The net flow hits the cash
+balance first:
+\[
+  \code{Cash}_{t+1}^{-} \;=\; \code{Cash}_t \;+\; F^{\mathrm{retail}}_t \;+\; F^{\mathrm{inst}}_t.
+\]
+If the pre-rebalance cash would go negative, the shortfall is recorded
+before the rebalance:
+\[
+  S_t \;=\; \max\!\bigl(-\code{Cash}_{t+1}^{-},\, 0\bigr).
+\]
+
+\paragraph{Invested growth.} Invested assets grow at the daily market rate
+$r_{\mathrm{mkt}} \Delta t$:
+\[
+  \code{Inv}_{t+1}^{-} \;=\; \code{Inv}_t \cdot (1 + r_{\mathrm{mkt}} \Delta t).
+\]
+
+\paragraph{End-of-day rebalance.} Let $\code{AUM}_{t+1}^{-} =
+\code{Cash}_{t+1}^{-} + \code{Inv}_{t+1}^{-}$. The target cash level is
+$\Cstar \cdot \code{AUM}_{t+1}^{-}$ and the gap is $g_t = \Cstar
+\code{AUM}_{t+1}^{-} - \code{Cash}_{t+1}^{-}$. The transfer applied is
+\[
+  \tau_t \;=\; \max\!\bigl(\rho \cdot g_t,\; -\code{Inv}_{t+1}^{-}\bigr),
+\]
+where $\rho \in (0,1]$ is the rebalance speed (default $1$, i.e.\
+full-rebalance). Post-transfer:
+\[
+  \code{Cash}_{t+1} \;=\; \code{Cash}_{t+1}^{-} + \tau_t, \qquad
+  \code{Inv}_{t+1} \;=\; \code{Inv}_{t+1}^{-} - \tau_t.
+\]
+
+\subsection{Cost accounting}
+\label{sec:sim:costs}
+
+The realized total cost over the $H$-day horizon has two additive
+components.
+
+\paragraph{Opportunity cost.} The drag rate is
+$r_{\mathrm{drag}} = r_{\mathrm{mkt}} - r_{\mathrm{cash}}$ (default
+$0.07 - 0.04 = 0.03$/yr). With default option \code{opp\_cost\_on\_total\_cash
+= True} we apply the drag to \emph{all} cash held:
+\[
+  \code{OppCost} \;=\; r_{\mathrm{drag}} \Delta t \sum_{t=1}^{H} \code{Cash}_t.
+\]
+
+\paragraph{Shortfall cost.} A proportional penalty on the total shortfall,
+independent of time scale:
+\[
+  \code{ShortCost} \;=\; r_{\mathrm{borrow}} \sum_{t=1}^{H} S_t.
+\]
+Here $r_{\mathrm{borrow}}$ (default $0.10$/yr) is the per-dollar friction
+cost of forced asset liquidation, not a daily rate.
+
+\paragraph{Total cost.} The observation returned by the simulator is
+\[
+  y \;=\; \code{TotalCost} \;=\; \code{OppCost} + \code{ShortCost}.
+\]
+By construction, $y \geq 0$.
+
+\subsection{The learning target}
+\label{sec:sim:target}
+
+The unknown function the learner attempts to estimate is
+\[
+  F(\Cstar) \;\equiv\; \Ex\bigl[\code{TotalCost}(\Cstar)\bigr],
+\]
+where the expectation is over the randomness in the sim path (regime path,
+retail flow, jumps). A single simulation call at $\Cstar$ returns
+$y = F(\Cstar) + \varepsilon$, where $\varepsilon$ is the realization noise;
+in this model $\varepsilon$ is non-Gaussian and heteroscedastic
+(jump-frequency and jump-size distributions vary the variance across the
+domain), but the belief model treats it as $\Normal(0, \sigTilde^{\,2})$ for
+tractability.
+
+\subsection{Common Random Numbers}
+\label{sec:sim:crn}
+
+The simulator is a pure function of $(\code{config}, \Cstar, H,
+\code{session\_seed}, \code{experiment\_index})$. Two calls with the same
+\code{(session\_seed, experiment\_index)} pair but different $\Cstar$ share
+their random draws (regime path, retail $Z_t$, jump counts $N_t$ and sizes
+$J^{(k)}_t$). This is Common Random Numbers (CRN): it dramatically reduces
+the variance of pairwise cost comparisons across $\Cstar$ values within a
+single session.
+
+Independent sub-streams for each experiment index are drawn from
+\code{numpy.random.SeedSequence.spawn}, which guarantees non-overlapping
+BitGenerator states.
+
+% ============================================================================
+\section{Belief model: Gaussian Process}
+\label{sec:gp}
+% ============================================================================
+
+The learner maintains a Gaussian-process (GP) posterior over $F$. The prior
+is
+\[
+  F(\cdot) \sim \mathcal{GP}\bigl(\muprior,\; k(\cdot, \cdot)\bigr),
+\]
+with constant mean $\muprior$ (default $5000$) and squared-exponential
+(RBF) kernel
+\[
+  k(x, x') \;=\; \sigma_f^{\,2}\, \exp\!\left(-\tfrac{1}{2}\,\frac{(x-x')^2}{\ell^{\,2}}\right),
+\]
+with signal std $\sigma_f$ (default $5000$, in cost units) and length scale
+$\ell$ (default $0.04$, in $\Cstar$ units).
+
+\subsection{Posterior after \texorpdfstring{$n$}{n} observations}
+\label{sec:gp:posterior}
+
+Given observations $(x_i, y_i)_{i=1}^n$ with assumed noise model $y_i =
+F(x_i) + \varepsilon_i$, $\varepsilon_i \sim \Normal(0, \sigTilde^{\,2})$,
+define
+\[
+  \mathbf{K} = \bigl[k(x_i, x_j)\bigr]_{i,j=1}^n, \qquad
+  \mathbf{k}_*(x) = \bigl[k(x, x_i)\bigr]_{i=1}^n, \qquad
+  \mathbf{r} = \mathbf{y} - \muprior \mathbf{1}.
+\]
+The posterior mean and variance at a query point $x$ are
+\begin{align}
+  \muN(x)      &\;=\; \muprior \;+\; \mathbf{k}_*(x)^{\!\top}\bigl(\mathbf{K} + \sigTilde^{\,2}\mathbf{I}\bigr)^{-1} \mathbf{r},
+  \label{eq:gp-mean} \\[2pt]
+  \sigma_n^{\,2}(x) &\;=\; k(x, x) \;-\; \mathbf{k}_*(x)^{\!\top}\bigl(\mathbf{K} + \sigTilde^{\,2}\mathbf{I}\bigr)^{-1} \mathbf{k}_*(x).
+  \label{eq:gp-var}
+\end{align}
+Because $k(x, x) = \sigma_f^{\,2}$ for the RBF kernel,
+Eq.~\eqref{eq:gp-var} simplifies to
+$\sigma_n^{\,2}(x) = \sigma_f^{\,2} - \|\mathbf{L}^{-1}\mathbf{k}_*(x)\|^2$,
+where $\mathbf{L}$ is the lower-triangular Cholesky factor of
+$\mathbf{K} + \sigTilde^{\,2}\mathbf{I}$.
+
+\subsection{Posterior covariance between two query points}
+\label{sec:gp:covmat}
+
+For a set of query points $\{x_1, \dots, x_m\}$, the full posterior
+covariance matrix is
+\[
+  \Cov_n(x_i, x_j) \;=\; k(x_i, x_j) \;-\; \mathbf{k}_*(x_i)^{\!\top}\bigl(\mathbf{K} + \sigTilde^{\,2}\mathbf{I}\bigr)^{-1}\mathbf{k}_*(x_j).
+\]
+This matrix appears explicitly in the correlated-KG derivations
+(Section~\ref{sec:policies:kg-analytic}).
+
+\subsection{Implementation notes}
+\label{sec:gp:impl}
+
+The implementation caches the Cholesky factor $\mathbf{L}$ and the vector
+$\alpha = (\mathbf{K} + \sigTilde^{\,2}\mathbf{I})^{-1}\mathbf{r}$ after each
+observation. A small jitter $10^{-6}$ is added to the diagonal for numerical
+stability. Posterior evaluation at $m$ query points costs $O(nm)$ per call
+after the $O(n^3)$ Cholesky, which is recomputed whenever a new observation
+is appended.
+
+The GP treats observations as Gaussian, but the true simulator noise is
+non-Gaussian and can be heteroscedastic. This mis-specification is
+pedagogical: it lets students see how a "wrong prior" affects the
+algorithms' behavior.
+
+% ============================================================================
+\section{Acquisition policies}
+\label{sec:policies}
+% ============================================================================
+
+An acquisition policy is a rule $\pi$ that, given the current belief model
+and any auxiliary state, proposes the next $\Cstar$ to measure. All
+policies in the package share the interface
+\code{propose(model, rng) -> float} and select from a fixed grid
+$\mathcal{G} = \{\Cstar_1, \dots, \Cstar_M\}$ (default $M=100$ evenly spaced
+over $[\Cstar_{\min}, \Cstar_{\max}]$).
+
+Sections~\ref{sec:policies:random}--\ref{sec:policies:ie} cover the
+baseline and interval-estimation policies.
+Sections~\ref{sec:policies:kg-analytic}--\ref{sec:policies:okg} cover the
+five Knowledge-Gradient variants.
+
+\subsection{Random baseline}
+\label{sec:policies:random}
+
+$\pi_{\mathrm{rand}}$ draws $\Cstar_{n+1} \sim \mathrm{Uniform}[\Cstar_{\min},
+\Cstar_{\max}]$ each step. The belief model is not consulted. Provides a
+control against which informed policies must justify their added complexity.
+
+\subsection{Interval Estimation (IE / LCB)}
+\label{sec:policies:ie}
+
+The interval-estimation (equivalently, lower-confidence-bound) score is
+\begin{equation}
+  \code{IE}(x) \;=\; \muN(x) \;-\; z_\alpha \cdot \sigN(x).
+  \label{eq:ie-lcb}
+\end{equation}
+The policy picks $\Cstar_{n+1} = \arg\min_{x \in \mathcal{G}} \code{IE}(x)$.
+The parameter $z_\alpha \geq 0$ controls the exploration--exploitation
+tradeoff:
+\begin{itemize}[nosep]
+  \item $z_\alpha = 0$: pure exploitation ($\arg\min \muN$).
+  \item $z_\alpha \approx 1.96$: 95\% lower confidence bound.
+  \item $z_\alpha \to \infty$: pure exploration ($\arg\max \sigN$, i.e.\
+    maximum-entropy reduction).
+\end{itemize}
+The IE batch benchmark evaluates 21 values of $z_\alpha \in \{0, 0.2, 0.4,
+\dots, 4.0\}$.
+
+\subsection{Knowledge Gradient: offline correlated, analytic}
+\label{sec:policies:kg-analytic}
+
+The Knowledge Gradient at a candidate $x$ measures the expected reduction
+in the minimum posterior mean after one additional observation at $x$:
+\begin{equation}
+  \code{KG}(x) \;=\; \min_j \muN(x_j) \;-\; \Ex_{Z \sim \Normal(0,1)}\!\left[\min_j \bigl(\muN(x_j) + w_j(x)\,Z\bigr)\right],
+  \label{eq:kg-def}
+\end{equation}
+where the minimum is taken over the search grid $\{x_j\}_{j=1}^m$, and
+$w_j(x)$ is the \emph{influence vector} of an observation at $x$ on the
+posterior mean at $x_j$:
+\begin{equation}
+  w_j(x) \;=\; \frac{\Cov_n(x, x_j)}{\sqrt{\Var_n(x) + \sigTilde^{\,2}}}.
+  \label{eq:influence}
+\end{equation}
+This uses the full posterior covariance $\Cov_n(x, x_j)$ — hence
+\emph{correlated beliefs}. An observation at $x$ shifts the posterior mean
+at \emph{every} grid point $j$ in proportion to how correlated $x_j$ is
+with $x$ under the GP.
+
+\paragraph{Closed-form expectation.} Under the KG-CB formulation of Frazier,
+Powell \& Dayanik~\cite{frazier2009}, the expectation in Eq.~\eqref{eq:kg-def}
+admits a closed form based on the upper envelope of $m$ affine functions of
+a standard-normal variable. The package computes
+$\Ex_Z[\max_j (a_j + b_j Z)]$ using
+Algorithm~\ref{alg:envelope}. To handle the minimum in Eq.~\eqref{eq:kg-def},
+we use the identity $\min_j(\mu_j + w_j Z) = -\max_j(-\mu_j - w_j Z)$, so
+\[
+  \Ex_Z\!\left[\min_j (\muN(x_j) + w_j(x) Z)\right] \;=\; -\,\Ex_Z\!\left[\max_j (-\muN(x_j) + (-w_j(x)) Z)\right].
+\]
+
+\begin{algorithm}[t]
+  \caption{Closed-form $\Ex_Z[\max_j (a_j + b_j Z)]$ via Frazier--Powell--Dayanik (2009).}
+  \label{alg:envelope}
+  \begin{algorithmic}[1]
+    \Require Arrays $\{a_j, b_j\}_{j=1}^m$
+    \State Sort by $b$ ascending; break ties by keeping the largest $a$.
+    \State Deduplicate: if two consecutive entries have identical $b$, drop the smaller-$a$ one.
+    \State Initialize a monotone stack $S \gets \{(a_1, b_1, -\infty)\}$ (the third field is the left boundary).
+    \For{$i = 2, \dots, m$}
+      \Loop
+        \State Let $(A, B, C)$ be the top of $S$.
+        \State $z \gets (A - a_i) / (b_i - B)$
+        \If{$z \leq C$} \Comment{top is dominated by line $i$ on its active region}
+          \State Pop $S$; if empty, push $(a_i, b_i, -\infty)$; \textbf{break}.
+        \Else
+          \State Push $(a_i, b_i, z)$ onto $S$; \textbf{break}.
+        \EndIf
+      \EndLoop
+    \EndFor
+    \State Let $S = \{(A_k, B_k, C_k)\}_{k=1}^K$ with $C_{K+1} = +\infty$.
+    \State \Return $\displaystyle\sum_{k=1}^K \bigl[A_k \bigl(\Phi(C_{k+1}) - \Phi(C_k)\bigr) + B_k \bigl(\phi(C_k) - \phi(C_{k+1})\bigr)\bigr]$
+  \end{algorithmic}
+\end{algorithm}
+
+The two per-segment integrals use
+\[
+  \int_a^b \phi(z)\,dz \;=\; \Phi(b) - \Phi(a),
+  \qquad
+  \int_a^b z\,\phi(z)\,dz \;=\; \phi(a) - \phi(b),
+\]
+where $\phi$ is the standard-normal pdf and $\Phi$ its cdf.
+
+\paragraph{Complexity.} Sorting is $O(m \log m)$; the envelope construction
+is amortized $O(m)$; the integral sum is $O(K) \leq O(m)$. Total per
+candidate: $O(m \log m)$. Evaluating KG at all $m$ candidates: $O(m^2 \log
+m)$ — trivial at $m = 100$.
+
+\paragraph{Determinism.} Algorithm~\ref{alg:envelope} is exact
+(up to floating-point round-off), so KG evaluated this way is completely
+deterministic given the observations. The \code{rng} argument to
+\code{propose()} is accepted for interface compatibility but unused.
+
+\subsection{Knowledge Gradient: offline correlated, Monte Carlo}
+\label{sec:policies:kg-mc}
+
+The same estimand as Section~\ref{sec:policies:kg-analytic}, but the
+expectation in Eq.~\eqref{eq:kg-def} is estimated by naive Monte Carlo:
+\[
+  \widehat{\code{KG}}_{\mathrm{MC}}(x) \;=\; \min_j \muN(x_j) \;-\; \frac{1}{n_{\mathrm{mc}}} \sum_{k=1}^{n_{\mathrm{mc}}} \min_j \bigl(\muN(x_j) + w_j(x)\, Z^{(k)}\bigr),
+  \qquad Z^{(k)} \stackrel{\text{iid}}{\sim} \Normal(0,1).
+\]
+Default $n_{\mathrm{mc}} = 50$. This variant exists purely for pedagogical
+comparison with the analytic version: with enough samples the two
+converge, but the MC estimator has variance $O(1/n_{\mathrm{mc}})$ that is
+visible at moderate sample counts.
+
+\subsection{Knowledge Gradient: offline independent}
+\label{sec:policies:kg-indep}
+
+The \emph{independent-beliefs} KG replaces the influence vector
+Eq.~\eqref{eq:influence} with the assumption that an observation at $x$
+shifts only the belief at $x$ itself — no covariance cascade to other grid
+points. Concretely, for a candidate $x$ let
+\[
+  M \;=\; \min_{j \in \mathcal{G}} \muN(x_j),
+  \qquad
+  \delta(x) \;=\; \frac{\Var_n(x)}{\sqrt{\Var_n(x) + \sigTilde^{\,2}}},
+\]
+so that the future posterior mean at $x$ (over the random observation
+$Y$) is distributed as $\muN(x) + \delta(x) Z$, $Z \sim \Normal(0,1)$.
+The future minimum over the extended search set $\mathcal{G} \cup \{x\}$
+is $\min\!\bigl(M,\, \muN(x) + \delta(x) Z\bigr)$.
+
+Let $a = M - \muN(x)$ and $t = a / \delta(x)$. Then
+\begin{align*}
+  \Ex_Z\!\left[\min\!\bigl(M,\, \muN(x) + \delta(x) Z\bigr)\right]
+  &\;=\; M - a\,\Phi(t) - \delta(x)\,\phi(t),
+\end{align*}
+and, letting $\code{cur\_min} = \min(M, \muN(x))$, the independent-KG
+score is
+\begin{equation}
+  \code{KG}_{\mathrm{indep}}(x) \;=\; \code{cur\_min} - \bigl(M - a\,\Phi(t) - \delta(x)\,\phi(t)\bigr).
+  \label{eq:kg-indep}
+\end{equation}
+This is a closed form; no numerical integration or Monte Carlo required.
+
+\paragraph{Note on the two independence assumptions.} There are two places
+in a learning loop where one might impose independence: (a) when
+\emph{computing} the acquisition score, and (b) when \emph{updating} the
+belief after observing. This package always uses the full-correlation GP
+update in (b); the independent flavor only affects (a).
+
+\subsection{Online Knowledge Gradient (Ryzhov)}
+\label{sec:policies:okg}
+
+The online KG (see Ryzhov~\cite{ryzhov2010}, Powell \&
+Ryzhov~\cite{ryzhov2012optimal}) is designed for problems where each
+measurement's realized cost counts against the objective — i.e.\ cumulative
+cost matters, not only the final decision. For a minimization problem with
+$N$ measurements remaining, define
+\begin{equation}
+  \code{OKG}(x) \;=\; \muN(x) \;-\; (N - n) \cdot \code{KG}(x),
+  \label{eq:okg}
+\end{equation}
+where $n$ is the number of measurements already taken and $\code{KG}(x)$ is
+any of the offline KG variants above. The online policy picks $\Cstar_{n+1}
+= \arg\min_{x \in \mathcal{G}} \code{OKG}(x)$.
+
+Two intuitions:
+\begin{itemize}[nosep]
+  \item Early in the run ($n \ll N$), the info-value term $(N-n)\code{KG}(x)$
+    dominates and the policy behaves like offline KG — exploration is
+    rewarded because there are many future decisions to benefit from the
+    information.
+  \item Late in the run ($n \to N$), the multiplier shrinks to zero and the
+    policy reduces to \emph{pure exploitation} of the current posterior
+    mean ($\arg\min \muN$).
+\end{itemize}
+The package implements OKG in two flavors: \code{OKGCorrelatedPolicy} uses
+the analytic correlated KG, and \code{OKGIndependentPolicy} uses the
+independent KG.
+
+\subsection{Summary of KG variants}
+\label{sec:policies:summary}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}llll@{}}
+  \toprule
+  Class name & Off/Online & Belief model & Estimator \\
+  \midrule
+  \code{KGPolicy}                & Offline & Correlated  & Analytic (FPD 2009) \\
+  \code{KGMCPolicy}              & Offline & Correlated  & Monte Carlo ($n_{\mathrm{mc}}$ draws) \\
+  \code{KGIndependentPolicy}     & Offline & Independent & Analytic (closed form) \\
+  \code{OKGCorrelatedPolicy}     & Online  & Correlated  & Analytic KG plus $\muN$ tradeoff \\
+  \code{OKGIndependentPolicy}    & Online  & Independent & Analytic KG plus $\muN$ tradeoff \\
+  \bottomrule
+\end{tabular}
+\caption{The five KG variants in the package.}
+\end{table}
+
+% ============================================================================
+\section{Session workflow}
+\label{sec:session}
+% ============================================================================
+
+A \emph{session} coordinates a single learning run. The learner is
+initialized with a belief model, an acquisition policy, and a session seed.
+At each step:
+
+\begin{enumerate}[nosep]
+  \item The policy proposes $\Cstar_{n+1} = \pi(\mathrm{belief}, \mathrm{rng})$.
+  \item The simulator is called: $y_{n+1} = \code{simulate}(\code{cfg}, \Cstar_{n+1}, H, \code{seed}, n)$.
+  \item The belief is updated: $(\muN, \sigN) \to (\muN[n+1], \sigN[n+1])$
+    given the new $(x, y) = (\Cstar_{n+1}, y_{n+1})$ pair.
+  \item The step counter increments $n \to n+1$.
+\end{enumerate}
+
+The Common Random Numbers (CRN) contract of Section~\ref{sec:sim:crn} is
+preserved by passing \code{experiment\_index=n} on step $n$. This means
+that different \emph{policies} in the same session slot (same seed, same
+step index) see the same random draws in the simulator — differences in
+observed cost reflect only differences in the chosen $\Cstar$, not
+different noise. This is critical for the fairness of batch benchmarking
+(Section~\ref{sec:batch}).
+
+\paragraph{Current-best pick.} The session's current best guess of the
+optimum $\Cstar$ is
+\[
+  \widehat{\Cstar}_n \;\equiv\; \arg\min_{x \in \mathcal{G}_{\mathrm{fine}}} \muN(x),
+\]
+where $\mathcal{G}_{\mathrm{fine}}$ is a fine grid (default $200$ points)
+that need not coincide with the acquisition grid $\mathcal{G}$.
+
+% ============================================================================
+\section{Batch benchmarking}
+\label{sec:batch}
+% ============================================================================
+
+The batch benchmarking framework runs an entire \emph{family} of policies,
+each $S$ times, and reports per-policy aggregated performance metrics.
+
+\subsection{Families}
+\label{sec:batch:families}
+
+\begin{itemize}[nosep]
+  \item \textbf{KG family (5 policies):} the five variants listed in
+    Section~\ref{sec:policies:summary}.
+  \item \textbf{IE family (21 policies):} \code{IEPolicy} at $z_\alpha \in
+    \{0, 0.2, 0.4, \dots, 4.0\}$.
+\end{itemize}
+
+\subsection{Common Random Numbers across policies}
+\label{sec:batch:crn}
+
+For each simulation index $s \in \{1, \dots, S\}$ a base seed is chosen as
+$\code{seed}_s = \code{session\_seed} + 10{,}000\,s$. \emph{Every} policy in
+the family runs with $\code{seed}_s$ at simulation index $s$. This means
+that if two policies happen to pick the same $\Cstar$ at the same step
+index, they see identical noise; differences in observed cost reflect only
+policy differences.
+
+\subsection{Metrics}
+\label{sec:batch:metrics}
+
+For each individual run (one policy, one simulation index) the package
+records three raw quantities.
+
+\paragraph{Terminal $\widehat{\Cstar}$.} The session's current-best pick
+after all $N$ measurements, $\widehat{\Cstar}_N$.
+
+\paragraph{Terminal cost.} An unbiased estimate of $F(\widehat{\Cstar}_N)$
+via ground-truth Monte Carlo:
+\[
+  \code{TermCost} \;=\; \frac{1}{n_{\mathrm{rep}}} \sum_{k=1}^{n_{\mathrm{rep}}} \code{simulate}\bigl(\code{cfg}, \widehat{\Cstar}_N, H, \code{seed}_s + 999{,}000, k\bigr).\code{total\_cost}.
+\]
+Default $n_{\mathrm{rep}} = 12$. This measures the quality of the
+\emph{final decision} — how much you would pay to run the fund at your
+final estimate of the optimum.
+
+\paragraph{Cumulative cost.} The sum of all realized costs incurred during
+the run:
+\[
+  \code{CumCost} \;=\; \sum_{n=1}^{N} y_n.
+\]
+This measures the \emph{cost of learning} — how expensive the experimentation
+was.
+
+\subsection{Ground truth reference}
+\label{sec:batch:truth}
+
+The true minimum of $F$ is estimated once per batch by evaluating a
+30-point grid over $[\Cstar_{\min}, \Cstar_{\max}]$ with $n_{\mathrm{rep}} =
+12$ Monte-Carlo replications at each point:
+\[
+  \widehat{F}_{\mathrm{true}}(\Cstar_j) \;=\; \frac{1}{n_{\mathrm{rep}}} \sum_{k=1}^{n_{\mathrm{rep}}} \code{simulate}(\cdot, \Cstar_j, \cdot, s^*, k).\code{total\_cost},
+\]
+with $s^* = \code{session\_seed} + 777{,}000$. The reported \code{true\_best\_c\_star}
+is $\arg\min_j \widehat{F}_{\mathrm{true}}(\Cstar_j)$ and \code{true\_min\_cost}
+is the corresponding minimum. The cumulative-cost chart uses the reference
+$N \cdot \code{true\_min\_cost}$: the theoretical floor if the learner had
+known the optimum from step 1 and played it every step.
+
+\subsection{Aggregation}
+\label{sec:batch:agg}
+
+For each policy $\pi$, the batch reports:
+\begin{align*}
+  \bar{c}_\pi &\;=\; \tfrac{1}{S} \textstyle\sum_{s=1}^S \widehat{\Cstar}_{N}^{(\pi,s)},
+  &
+  \sigma_{c,\pi} &\;=\; \mathrm{std}\bigl\{\widehat{\Cstar}_{N}^{(\pi,s)}\bigr\}, \\
+  \bar{T}_\pi &\;=\; \tfrac{1}{S} \textstyle\sum_{s=1}^S \code{TermCost}^{(\pi,s)},
+  &
+  \sigma_{T,\pi} &\;=\; \mathrm{std}\bigl\{\code{TermCost}^{(\pi,s)}\bigr\}, \\
+  \bar{K}_\pi &\;=\; \tfrac{1}{S} \textstyle\sum_{s=1}^S \code{CumCost}^{(\pi,s)},
+  &
+  \sigma_{K,\pi} &\;=\; \mathrm{std}\bigl\{\code{CumCost}^{(\pi,s)}\bigr\}.
+\end{align*}
+Both charts in the batch results view display the means with $\pm 1
+\sigma$ error bars.
+
+% ============================================================================
+\section{Configuration parameters}
+\label{sec:params}
+% ============================================================================
+
+Table~\ref{tab:sim-params} lists the simulation-model parameters,
+Table~\ref{tab:belief-params} lists the belief-model parameters, and
+Table~\ref{tab:acq-params} lists the acquisition-policy parameters. Values
+in the ``Default'' column are the ones shipped in \code{SimConfig},
+\code{BeliefConfig}, and \code{AcquisitionConfig} respectively.
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{@{}p{4.2cm}p{2cm}p{8.5cm}@{}}
+  \toprule
+  Symbol / field & Default & Description \\
+  \midrule
+  $A_0$ (\code{initial\_aum})            & $10^6$   & Fund initial assets under management (\$). \\
+  $\mu_{\mathrm{net}}$ (\code{mu\_net\_annual})       & $0$      & Annual drift of retail net flow / AUM. \\
+  $\sigma_{\mathrm{net}}$ (\code{sigma\_net\_annual}) & $0.02$   & Annual volatility of retail flow / AUM. \\
+  $\lambda$ (\code{jump\_rate\_annual})            & $12$     & Poisson rate (jumps/year). \\
+  $\mu_{\mathrm{jump}}$ (\code{jump\_mean\_log})   & $-4.5$   & Mean of $\log(|J|/\code{AUM})$; median jump $\approx 1.1\%$. \\
+  $\sigma_{\mathrm{jump}}$ (\code{jump\_std\_log}) & $0.5$    & Std of $\log(|J|/\code{AUM})$. \\
+  $p_{\mathrm{in}}$ (\code{jump\_inflow\_prob})    & $0.5$    & Probability jump is an inflow. \\
+  \code{stationary}                                & \code{False} & If \code{True}, disable regime switching. \\
+  $(\mu^{\mathrm{reg}}_0, \mu^{\mathrm{reg}}_1)$   & $(0.001, -0.001)$ & Regime drift adjustments (annual). \\
+  $p_{\mathrm{switch}}$                            & $0.01$   & Daily regime-switch probability. \\
+  $r_{\mathrm{mkt}}$ (\code{r\_market\_annual})    & $0.07$   & Market portfolio return (annual). \\
+  $r_{\mathrm{cash}}$ (\code{r\_cash\_annual})     & $0.04$   & Cash return (annual). \\
+  $r_{\mathrm{borrow}}$ (\code{r\_borrow\_annual}) & $0.10$   & Shortfall penalty rate (per \$ of forced liquidation). \\
+  \code{opp\_cost\_on\_total\_cash}                & \code{True} & Apply drag to all cash (True) or only excess (False). \\
+  $\rho$ (\code{rebalance\_speed})                 & $1.0$    & Fraction of gap closed each end-of-day rebalance. \\
+  $[\Cstar_{\min}, \Cstar_{\max}]$                 & $[0.01, 0.20]$ & Legal range of $\Cstar$. \\
+  \code{trading\_days\_per\_year}                  & $252$    & Calendar convention. \\
+  \bottomrule
+\end{tabular}
+\caption{Simulation model parameters (\code{SimConfig}).}
+\label{tab:sim-params}
+\end{table}
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{@{}p{4.2cm}p{2cm}p{8.5cm}@{}}
+  \toprule
+  Symbol / field & Default & Description \\
+  \midrule
+  $\ell$ (\code{length\_scale})     & $0.04$  & RBF kernel length scale (in $\Cstar$ units). \\
+  $\sigma_f$ (\code{signal\_std})   & $5000$  & Prior amplitude of $F(\Cstar)$ (cost units). \\
+  $\sigTilde$ (\code{noise\_std})   & $3000$  & Assumed per-observation noise std. \\
+  $\muprior$ (\code{prior\_mean})   & $5000$  & Prior mean of $F$. \\
+  \code{jitter}                     & $10^{-6}$ & Diagonal jitter for Cholesky stability. \\
+  \bottomrule
+\end{tabular}
+\caption{Belief model parameters (\code{BeliefConfig}).}
+\label{tab:belief-params}
+\end{table}
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{@{}p{4.2cm}p{2cm}p{8.5cm}@{}}
+  \toprule
+  Symbol / field & Default & Description \\
+  \midrule
+  $\Cstar_{\min}$, $\Cstar_{\max}$ & $0.01, 0.20$ & Acquisition-grid endpoints (mirror \code{SimConfig}). \\
+  $M$ (\code{grid\_size})       & $100$        & Number of grid points $\mathcal{G}$. \\
+  $z_\alpha$ (\code{z\_alpha})  & $0.0$        & Exploration weight in IE (see Eq.~\eqref{eq:ie-lcb}). \\
+  \bottomrule
+\end{tabular}
+\caption{Acquisition config parameters (\code{AcquisitionConfig}).}
+\label{tab:acq-params}
+\end{table}
+
+% ============================================================================
+\section{Software architecture}
+\label{sec:arch}
+% ============================================================================
+
+The package is organized into four Python modules and a React frontend.
+
+\begin{description}[style=nextline, itemsep=2pt]
+  \item[\code{sim/}]
+    Pure-function simulator. Given a config, $\Cstar$, horizon, and seed
+    pair, returns a deterministic \code{SimResult} (Section~\ref{sec:sim}).
+    No dependency on the learning modules.
+  \item[\code{policy/}]
+    Belief model (\code{belief.py}), acquisition policies
+    (\code{acquire.py}), and session coordinator (\code{session.py}).
+    All acquisition policies satisfy the protocol
+    \code{propose(model, rng) -> float}.
+  \item[\code{shell/}]
+    FastAPI service exposing \code{POST /sessions},
+    \code{POST /sessions/\{sid\}/step}, \code{GET /sessions/\{sid\}/posterior},
+    \code{GET /sessions/\{sid\}/reveal}, \code{GET /sessions/\{sid\}/kg},
+    and \code{POST /sessions/batch}. The batch endpoint streams
+    NDJSON progress events.
+  \item[\code{frontend/}]
+    React + Vite single-page app. Two primary views: (a) live session
+    (posterior chart, KG comparison chart, aligned $\Cstar$ slider for
+    human mode), (b) batch benchmark results (mean--terminal-cost and
+    mean--cumulative-cost bar charts with $\pm 1\sigma$ error bars, plus
+    aggregate table).
+\end{description}
+
+A test suite of $\approx 145$ unit tests exercises every acquisition
+policy, the GP posterior formulas, the CRN contract, and the batch
+endpoint.
+
+% ============================================================================
+\begin{thebibliography}{9}
+\bibitem{frazier2008} P.~I.~Frazier, W.~B.~Powell, and S.~Dayanik,
+  ``A knowledge-gradient policy for sequential information collection,''
+  \emph{SIAM Journal on Control and Optimization}, vol.\,47, no.\,5,
+  pp.\,2410--2439, 2008.
+
+\bibitem{frazier2009} P.~I.~Frazier, W.~B.~Powell, and S.~Dayanik,
+  ``The knowledge-gradient policy for correlated normal beliefs,''
+  \emph{INFORMS Journal on Computing}, vol.\,21, no.\,4, pp.\,599--613,
+  2009.
+
+\bibitem{ryzhov2010} I.~O.~Ryzhov, W.~B.~Powell, and P.~I.~Frazier,
+  ``The knowledge gradient algorithm for a general class of online
+  learning problems,''
+  \emph{Operations Research}, 2010.
+
+\bibitem{ryzhov2012optimal} W.~B.~Powell and I.~O.~Ryzhov,
+  \emph{Optimal Learning}, Wiley, 2012.
+
+\bibitem{rasmussen2006} C.~E.~Rasmussen and C.~K.~I.~Williams,
+  \emph{Gaussian Processes for Machine Learning}, MIT Press, 2006.
+\end{thebibliography}
+
+\end{document}
