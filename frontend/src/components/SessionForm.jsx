@@ -5,11 +5,16 @@ import { useState } from 'react';
 // request. All values are held as strings during typing and coerced to
 // numbers on submit; onBlur canonicalizes ("050" → "50").
 const ADV_DEFAULTS = {
-  // Belief prior — the GP's assumptions before it sees any data
+  // Belief prior — the GP's assumptions before it sees any data.
+  // Values are in the *reward* frame (typical run reward ~$35k, varies
+  // ~$1-3k across θ, per-run noise ~$1-2k). Session negates prior_mean
+  // internally so the belief layer keeps operating on "values to
+  // minimise" (=-reward); signal_std and noise_std are variances so are
+  // frame-independent.
   length_scale:      '0.04',
-  signal_std:        '5000',
-  noise_std:         '3000',
-  prior_mean:        '5000',
+  signal_std:        '3000',
+  noise_std:         '1500',
+  prior_mean:        '35000',
   // Simulation model (1-D app only) — the underlying truth F(θ) and its per-run noise
   jump_rate_annual:  '12',
   jump_std_log:      '0.5',
@@ -40,11 +45,11 @@ const BELIEF_FIELDS = [
   ['length_scale', 'Length scale ℓ',
     'Smoothness of prior F(θ). Larger = fewer wiggles.'],
   ['signal_std', 'Signal std σ_f',
-    'Prior amplitude of F(θ) in cost units.'],
+    'Prior amplitude — how much F(θ) is expected to vary across θ (in reward $).'],
   ['noise_std', 'Noise std σ_n',
-    'Per-observation noise the GP assumes (algorithm side).'],
+    'Per-observation reward noise the GP assumes (algorithm side).'],
   ['prior_mean', 'Prior mean m₀',
-    'Constant prior mean of F everywhere.'],
+    'Typical run reward, before any observations. (Reward frame.)'],
 ];
 
 const SIM_FIELDS = [

@@ -44,10 +44,14 @@ class SimConfigIn(BaseModel):
 class BeliefConfigIn(BaseModel):
     model_config = ConfigDict(extra="allow")
 
+    # Defaults are for the REWARD frame (cash_balance is a maximise app).
+    # Typical run reward ~$35k, ~$1-3k variation across θ, per-run noise
+    # ~$1-2k. Session negates prior_mean before feeding to the belief for
+    # maximise apps (see policy/session.py).
     length_scale: Union[float, list[float]] = 0.04
-    signal_std: float = 5_000.0
-    noise_std: float = 3_000.0
-    prior_mean: float = 5_000.0
+    signal_std: float = 3_000.0
+    noise_std: float = 1_500.0
+    prior_mean: float = 35_000.0
     jitter: float = 1e-6
 
 

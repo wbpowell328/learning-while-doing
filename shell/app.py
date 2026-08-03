@@ -634,16 +634,21 @@ def kg_vs_m(sid: str, theta: float | None = None, m_max: int = 50) -> dict:
         theta_used = float(np.clip(theta, cfg.impparam_min, cfg.impparam_max))
 
     m_max_int = int(max(1, min(m_max, 200)))
-    m_values = list(range(1, m_max_int + 1))
-    kg_values = kg_vs_batch_size(
-        session.belief, search_grid, theta_used, m_values,
+    m_positive = list(range(1, m_max_int + 1))
+    kg_positive = kg_vs_batch_size(
+        session.belief, search_grid, theta_used, m_positive,
     )
+    # Prepend m=0 anchor: with zero observations no information is gained,
+    # so KG(x; 0) = 0 by definition. Including it makes the "first
+    # observation" jump visible, matching the classical KG(x; N) plots.
+    m_values = [0] + m_positive
+    kg_values = [0.0] + [float(v) for v in kg_positive.tolist()]
     return {
         "theta": theta_used,
         "m_values": m_values,
-        "kg_values": [float(v) for v in kg_values.tolist()],
+        "kg_values": kg_values,
         "noise_std": float(session.belief.config.noise_std),
-        "base_kg": float(kg_values[0]) if len(kg_values) else 0.0,
+        "base_kg": float(kg_positive[0]) if len(kg_positive) else 0.0,
     }
 
 

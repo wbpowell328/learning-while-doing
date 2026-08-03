@@ -19,7 +19,7 @@ informative.
 Reproducibility: same (session_seed, policy, all configs) → byte-identical run.
 """
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Callable
 
 import numpy as np
@@ -81,7 +81,17 @@ class Session:
         # Acquisition RNG is seeded from session_seed; advances one draw per step()
         self._rng = np.random.default_rng(session_seed)
 
-        self._belief = BeliefModel(belief_config, dim=self._dim)
+        # For maximisation apps, the caller specifies prior_mean in the
+        # reward frame (what a typical run pays). The belief layer keeps
+        # operating on "value to minimise" (=-reward), so negate the prior
+        # mean here. signal_std and noise_std are variances → frame-
+        # independent, no change.
+        belief_config_internal = belief_config
+        if not self._minimize:
+            belief_config_internal = replace(
+                belief_config, prior_mean=-float(belief_config.prior_mean),
+            )
+        self._belief = BeliefModel(belief_config_internal, dim=self._dim)
         # For dim=1 history entries look like (float, float) as before;
         # for dim≥2 they are (np.ndarray, float).
         self._history: list[tuple] = []
