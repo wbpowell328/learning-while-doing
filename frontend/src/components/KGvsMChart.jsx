@@ -23,13 +23,17 @@ function niceTicks(lo, hi, n = 5) {
   return Array.from({ length: n }, (_, i) => lo + (i / (n - 1)) * (hi - lo));
 }
 
-export default function KGvsMChart({ data, onSigmaEpsChange, sigmaEpsPending = false }) {
-  // Local text state for the σ_ε input so mid-typing "150" doesn't fire a
-  // request on every digit. On blur (or Enter) we canonicalise + notify.
+export default function KGvsMChart({
+  data, onSigmaEpsChange, sigmaEpsPending = false,
+  mMax = 50, onMMaxChange,
+}) {
+  // Local text state so mid-typing doesn't fire a request per keystroke.
   const [sigmaStr, setSigmaStr] = useState('');
+  const [mMaxStr,  setMMaxStr]  = useState(String(mMax));
   useEffect(() => {
     if (data?.noise_std != null) setSigmaStr(String(Math.round(data.noise_std)));
   }, [data?.noise_std]);
+  useEffect(() => { setMMaxStr(String(mMax)); }, [mMax]);
 
   if (!data || !data.m_values || data.m_values.length === 0) {
     return (
@@ -58,6 +62,14 @@ export default function KGvsMChart({ data, onSigmaEpsChange, sigmaEpsPending = f
     if (!onSigmaEpsChange || noise_std_belief == null) return;
     setSigmaStr(String(Math.round(noise_std_belief)));
     onSigmaEpsChange(noise_std_belief);
+  };
+  const commitMMax = () => {
+    if (!onMMaxChange) return;
+    const v = Math.round(Number(mMaxStr));
+    if (!Number.isFinite(v) || v < 2) { setMMaxStr(String(mMax)); return; }
+    const clamped = Math.max(2, Math.min(v, 5000));
+    if (clamped === mMax) return;
+    onMMaxChange(clamped);
   };
 
   const xLo = m_values[0];
@@ -100,6 +112,20 @@ export default function KGvsMChart({ data, onSigmaEpsChange, sigmaEpsPending = f
                      borderRadius: 4, fontSize: 12 }}
           />
         </div>
+        <label style={{ fontWeight: 600, marginLeft: 8 }}>m<sub>max</sub>:</label>
+        <input
+          type="number"
+          value={mMaxStr}
+          min={2}
+          max={5000}
+          step={1}
+          onChange={e => setMMaxStr(e.target.value)}
+          onBlur={commitMMax}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commitMMax(); } }}
+          disabled={sigmaEpsPending}
+          style={{ width: 70, padding: '3px 6px', border: '1px solid #cbd5e1',
+                   borderRadius: 4, fontSize: 12 }}
+        />
         {sigmaEpsPending && <span style={{ color: '#94a3b8' }}>recomputing…</span>}
         {isOverridden && !sigmaEpsPending && (
           <>
@@ -127,14 +153,17 @@ export default function KGvsMChart({ data, onSigmaEpsChange, sigmaEpsPending = f
       {/* KG(m) curve */}
       <path d={pathD} fill="none" stroke="#16a34a" strokeWidth={2.5} />
 
-      {/* Marker at m=1 (what the main KG chart displays) */}
+      {/* Marker at m=1. When the belief is not overridden, this value is
+          exactly what the main KG chart shows at θ*. When the σ_ε override
+          is active it's the m=1 value under the what-if refit, so the
+          label drops the "main chart" reference to avoid confusion. */}
       <line x1={xS(1)} x2={xS(1)} y1={PAD.top} y2={H - PAD.bottom}
             stroke="#dc2626" strokeWidth={1.5} strokeDasharray="4,3" opacity={0.85} />
       <circle cx={xS(1)} cy={yS(base_kg)} r={5}
               fill="#dc2626" stroke="white" strokeWidth={1.5} />
       <text x={xS(1) + 8} y={PAD.top + 12}
             fontSize={11} fontWeight={600} fill="#dc2626">
-        m=1 (main chart)
+        {isOverridden ? 'm=1 (single experiment)' : 'm=1 (main chart)'}
       </text>
 
       {/* X axis */}

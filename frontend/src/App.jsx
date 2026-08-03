@@ -57,6 +57,7 @@ export default function App() {
   const [kgComparison,  setKgComparison]  = useState(null);
   const [kgVsM,         setKgVsM]         = useState(null);
   const [kgVsMSigmaEps, setKgVsMSigmaEps] = useState(null);   // user override for KG(m) σ_ε
+  const [kgVsMMMax,     setKgVsMMMax]     = useState(50);      // user override for KG(m) x-axis extent
   const [kgVsMPending,  setKgVsMPending]  = useState(false);
   const [history,       setHistory]       = useState([]);
   const [nSteps,        setNSteps]        = useState(0);
@@ -86,22 +87,35 @@ export default function App() {
     setLastResult(result);
   }, []);
 
-  // User edits σ_ε on the KG(m) card — recompute the curve in place. The
-  // override persists across subsequent steps until they reset it or
-  // start a new session.
+  // User edits σ_ε or m_max on the KG(m) card — recompute the curve in
+  // place. Overrides persist across subsequent steps; reset on new session.
   const handleKGvsMSigmaEps = useCallback(async (sigmaEps) => {
     if (!session) return;
     setKgVsMSigmaEps(sigmaEps);
     setKgVsMPending(true);
     try {
-      const kgm = await getKGvsM(session.id, 50, sigmaEps);
+      const kgm = await getKGvsM(session.id, kgVsMMMax, sigmaEps);
       setKgVsM(kgm);
     } catch (e) {
       setError(String(e));
     } finally {
       setKgVsMPending(false);
     }
-  }, [session]);
+  }, [session, kgVsMMMax]);
+
+  const handleKGvsMMMax = useCallback(async (newMMax) => {
+    if (!session) return;
+    setKgVsMMMax(newMMax);
+    setKgVsMPending(true);
+    try {
+      const kgm = await getKGvsM(session.id, newMMax, kgVsMSigmaEps);
+      setKgVsM(kgm);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setKgVsMPending(false);
+    }
+  }, [session, kgVsMSigmaEps]);
 
   const fetchReveal = useCallback(async (sid) => {
     setRevealLoading(true);
@@ -186,6 +200,7 @@ export default function App() {
     setKgComparison(null);
     setKgVsM(null);
     setKgVsMSigmaEps(null);
+    setKgVsMMMax(50);
     setPosterior2D(null);
     setKg2D(null);
 
@@ -193,7 +208,7 @@ export default function App() {
       const [post, kg, kgm] = await Promise.all([
         getPosterior(session_id),
         getKGComparison(session_id, 0.01, 50, effectiveBudget),
-        getKGvsM(session_id, 50, null),   // fresh session — belief's σ_ε
+        getKGvsM(session_id, 50, null),   // fresh session — belief's σ_ε, default m_max
       ]);
       setPosterior(post);
       setKgComparison(kg);
@@ -222,7 +237,7 @@ export default function App() {
       const [post, kg, kgm] = await Promise.all([
         getPosterior(session.id),
         getKGComparison(session.id, 0.01, 50, session.budget ?? 10),
-        getKGvsM(session.id, 50, kgVsMSigmaEps),
+        getKGvsM(session.id, kgVsMMMax, kgVsMSigmaEps),
       ]);
       applyResult(result, post, kg, kgm);
       if (session.budget && result.n_steps >= session.budget) {
@@ -233,7 +248,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [session, loading, applyResult, fetchReveal, kgVsMSigmaEps]);
+  }, [session, loading, applyResult, fetchReveal, kgVsMSigmaEps, kgVsMMMax]);
 
   // ── Automated: single step ────────────────────────────────────────────────
 
@@ -243,7 +258,7 @@ export default function App() {
       const [post, kg, kgm] = await Promise.all([
         getPosterior(sid),
         getKGComparison(sid, 0.01, 50, budget ?? 10),
-        getKGvsM(sid, 50, kgVsMSigmaEps),
+        getKGvsM(sid, kgVsMMMax, kgVsMSigmaEps),
       ]);
       applyResult(result, post, kg, kgm);
     } else {
@@ -258,7 +273,7 @@ export default function App() {
       setHistory(prev => [...prev, [result.impparam, result.total_reward]]);
       setLastResult(result);
     }
-  }, [applyResult, kgVsMSigmaEps]);
+  }, [applyResult, kgVsMSigmaEps, kgVsMMMax]);
 
   const handleStep = useCallback(async () => {
     if (!session || loading) return;
@@ -310,6 +325,7 @@ export default function App() {
     setKgComparison(null);
     setKgVsM(null);
     setKgVsMSigmaEps(null);
+    setKgVsMMMax(50);
     setHistory([]);
     setNSteps(0);
     setBestImpparam(null);
@@ -578,6 +594,8 @@ export default function App() {
                   data={kgVsM}
                   onSigmaEpsChange={handleKGvsMSigmaEps}
                   sigmaEpsPending={kgVsMPending}
+                  mMax={kgVsMMMax}
+                  onMMaxChange={handleKGvsMMMax}
                 />
               </div>
             </>
