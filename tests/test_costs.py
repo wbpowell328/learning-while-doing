@@ -1,7 +1,7 @@
 """Test 5: cost identity — total = opportunity + shortfall; both ≥ 0."""
 import pytest
 
-from sim import SimConfig, simulate
+from apps.cash_balance import SimConfig, simulate
 
 
 CFG = SimConfig(stationary=True)

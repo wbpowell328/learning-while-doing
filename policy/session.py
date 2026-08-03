@@ -19,7 +19,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from sim import SimConfig, simulate, SimResult
+from apps.cash_balance import SimConfig, simulate, SimResult
 from .belief import BeliefConfig, BeliefModel
 from .acquire import AcquisitionConfig, AcquisitionPolicy
 

@@ -9,7 +9,7 @@ Estimating F(θ) by averaging many seeds should yield:
 import numpy as np
 import pytest
 
-from sim import SimConfig, simulate
+from apps.cash_balance import SimConfig, simulate
 
 
 CFG = SimConfig(stationary=True, jump_rate_annual=24.0)  # more jumps → clearer U

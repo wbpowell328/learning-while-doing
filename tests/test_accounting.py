@@ -10,8 +10,8 @@ component separately and verify money is neither created nor destroyed.
 import numpy as np
 import pytest
 
-from sim import SimConfig, simulate
-from sim.dynamics import run_path
+from apps.cash_balance import SimConfig, simulate
+from apps.cash_balance.dynamics import run_path
 
 
 CFG_NO_JUMPS = SimConfig(

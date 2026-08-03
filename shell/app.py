@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from sim import SimConfig, simulate
+from apps.cash_balance import SimConfig, simulate
 from policy import (
     BeliefConfig, AcquisitionConfig, SessionConfig,
     RandomPolicy, IEPolicy, KGPolicy, Session,

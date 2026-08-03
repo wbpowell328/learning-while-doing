@@ -15,7 +15,7 @@ Properties verified:
 import numpy as np
 import pytest
 
-from sim import SimConfig
+from apps.cash_balance import SimConfig
 from policy.belief import BeliefConfig
 from policy.acquire import AcquisitionConfig, RandomPolicy
 from policy.session import SessionConfig, Session

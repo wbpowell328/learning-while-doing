@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from sim import SimConfig, simulate
+from apps.cash_balance import SimConfig, simulate
 
 
 CFG = SimConfig(stationary=True)

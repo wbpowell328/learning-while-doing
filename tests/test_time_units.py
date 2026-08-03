@@ -10,7 +10,7 @@ exists in the cost accumulation.
 import numpy as np
 import pytest
 
-from sim import SimConfig, simulate
+from apps.cash_balance import SimConfig, simulate
 
 
 def test_opportunity_cost_pure_cash():
