@@ -10,7 +10,7 @@ const ADV_DEFAULTS = {
   signal_std:        '5000',
   noise_std:         '3000',
   prior_mean:        '5000',
-  // Simulation model — the underlying truth F(C*) and its per-run noise
+  // Simulation model — the underlying truth F(θ) and its per-run noise
   jump_rate_annual:  '12',
   jump_std_log:      '0.5',
   sigma_net_annual:  '0.02',
@@ -20,9 +20,9 @@ const ADV_DEFAULTS = {
 // Field metadata for the advanced-parameters panel
 const BELIEF_FIELDS = [
   ['length_scale', 'Length scale ℓ',
-    'Smoothness of prior F(C*). Larger = fewer wiggles.'],
+    'Smoothness of prior F(θ). Larger = fewer wiggles.'],
   ['signal_std', 'Signal std σ_f',
-    'Prior amplitude of F(C*) in cost units.'],
+    'Prior amplitude of F(θ) in cost units.'],
   ['noise_std', 'Noise std σ_n',
     'Per-observation noise the GP assumes (algorithm side).'],
   ['prior_mean', 'Prior mean m₀',
@@ -37,7 +37,7 @@ const SIM_FIELDS = [
   ['sigma_net_annual', 'Base flow σ (/yr)',
     'Baseline daily-flow volatility (non-jump).'],
   ['r_borrow_annual', 'Borrow rate (/yr)',
-    'Rate paid when cash goes negative — controls the low-C* cliff.'],
+    'Rate paid when cash goes negative — controls the low-θ cliff.'],
 ];
 
 
@@ -113,7 +113,7 @@ export default function SessionForm({ onCreate, error }) {
       <div className="card setup-card">
         <h1 className="form-title">Learning While Doing</h1>
         <p className="form-subtitle">
-          Find the optimal cash buffer ratio C* for a mutual fund.
+          Find the optimal cash buffer ratio θ for a mutual fund.
         </p>
 
         <form onSubmit={handleSubmit}>
@@ -121,7 +121,7 @@ export default function SessionForm({ onCreate, error }) {
             <label>Mode</label>
             <select value={policy} onChange={e => setPolicy(e.target.value)}>
               <optgroup label="Single run">
-                <option value="human">Human — I pick C* each round</option>
+                <option value="human">Human — I pick θ each round</option>
                 <option value="kg">KG — offline correlated (analytic)</option>
                 <option value="ie">IE — LCB with z_alpha=0 (greedy)</option>
                 <option value="random">Random — baseline</option>
@@ -211,7 +211,7 @@ export default function SessionForm({ onCreate, error }) {
               <div className="form-row">{SIM_FIELDS.slice(2, 4).map(advField)}</div>
 
               <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 12, marginBottom: 0 }}>
-                Simulation parameters change what F(C*) actually looks like and how noisy
+                Simulation parameters change what F(θ) actually looks like and how noisy
                 a single 26-week run is. Belief parameters are what the GP algorithms
                 <em> assume</em> — mismatch between the two is itself a pedagogically
                 interesting condition.

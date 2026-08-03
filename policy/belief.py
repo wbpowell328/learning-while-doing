@@ -1,5 +1,5 @@
 """
-Gaussian Process belief model over F(C*) = E[total_cost | C*].
+Gaussian Process belief model over F(θ) = E[total_cost | θ].
 
 Kernel: squared-exponential (RBF)
     k(x, x') = signal_std² × exp(-0.5 × (x - x')² / length_scale²)
@@ -19,10 +19,10 @@ import numpy as np
 @dataclass(frozen=True)
 class BeliefConfig:
     # RBF kernel hyperparameters
-    length_scale: float = 0.04    # length scale in C* units; C* ∈ [~0.01, ~0.20]
-    signal_std: float = 5_000.0   # prior amplitude: std of F(C*) in cost units
+    length_scale: float = 0.04    # length scale in θ units; θ ∈ [~0.01, ~0.20]
+    signal_std: float = 5_000.0   # prior amplitude: std of F(θ) in cost units
     noise_std: float = 3_000.0    # per-observation noise std (single-run variance)
-    prior_mean: float = 5_000.0   # constant prior mean for F(C*)
+    prior_mean: float = 5_000.0   # constant prior mean for F(θ)
 
     # Numerical stability: added to kernel diagonal before Cholesky
     jitter: float = 1e-6
@@ -30,7 +30,7 @@ class BeliefConfig:
 
 class BeliefModel:
     """
-    GP surrogate for the expected total cost F(C*).
+    GP surrogate for the expected total cost F(θ).
 
     Usage:
         model = BeliefModel()           # or BeliefModel(BeliefConfig(...))
@@ -50,7 +50,7 @@ class BeliefModel:
     # ------------------------------------------------------------------
 
     def update(self, c_star: float, observed_cost: float) -> None:
-        """Append one (C*, cost) observation and invalidate the cached decomposition."""
+        """Append one (θ, cost) observation and invalidate the cached decomposition."""
         self._x_obs.append(float(c_star))
         self._y_obs.append(float(observed_cost))
         self._chol = None

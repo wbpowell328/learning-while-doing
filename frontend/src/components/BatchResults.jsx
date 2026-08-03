@@ -161,7 +161,7 @@ export default function BatchResults({ batch, onReset }) {
         <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', alignItems: 'baseline' }}>
           <div>
             <span style={{ fontSize: 12, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-              True best C*
+              True best θ
             </span>
             <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Georgia,serif', color: '#3d2914' }}>
               {true_best_c_star.toFixed(3)}
@@ -193,7 +193,7 @@ export default function BatchResults({ batch, onReset }) {
           policies={policies}
           meanField="mean_terminal_cost"
           stdField="std_terminal_cost"
-          yLabel="Terminal cost at final best C*"
+          yLabel="Terminal cost at final best θ"
           referenceValue={true_min_cost}
           referenceLabel={`true min = ${fmt(true_min_cost)}`}
           family={family}
@@ -226,7 +226,7 @@ export default function BatchResults({ batch, onReset }) {
             <thead>
               <tr style={{ borderBottom: '1px solid #e2e8f0', color: '#64748b', textAlign: 'right' }}>
                 <th style={{ textAlign: 'left', padding: '8px 12px' }}>Policy</th>
-                <th style={{ padding: '8px 12px' }}>Mean best C*</th>
+                <th style={{ padding: '8px 12px' }}>Mean best θ</th>
                 <th style={{ padding: '8px 12px' }}>Mean terminal cost</th>
                 <th style={{ padding: '8px 12px' }}>Std terminal cost</th>
                 <th style={{ padding: '8px 12px' }}>Mean cumulative cost</th>

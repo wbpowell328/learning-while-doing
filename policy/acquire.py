@@ -4,7 +4,7 @@ Acquisition policies for the learning-while-doing optimizer.
 Each policy implements one method:
     propose(model: BeliefModel, rng: np.random.Generator) -> float
 
-returning the next C* to evaluate.  Policies are stateless given
+returning the next θ to evaluate.  Policies are stateless given
 (model, rng); all randomness flows through the provided rng.
 
 Policies implemented here (in order of complexity):
@@ -45,7 +45,7 @@ class AcquisitionConfig:
 
 class RandomPolicy:
     """
-    Proposes a C* drawn uniformly at random from [c_star_min, c_star_max].
+    Proposes a θ drawn uniformly at random from [c_star_min, c_star_max].
     The BeliefModel is not consulted; the rng drives all randomness.
     """
 
@@ -186,7 +186,7 @@ def _expected_max_of_lines(a: np.ndarray, b: np.ndarray) -> float:
 
 class KGPolicy:
     """
-    Proposes the C* that maximally improves the expected posterior-mean minimum.
+    Proposes the θ that maximally improves the expected posterior-mean minimum.
 
     Correlated-beliefs KG:
 
@@ -243,7 +243,7 @@ class KGPolicy:
 # ---------------------------------------------------------------------------
 # KG at arbitrary candidate points — for pedagogical comparison plots.
 #
-# These helpers compute KG at any set of candidate C* values, using a fixed
+# These helpers compute KG at any set of candidate θ values, using a fixed
 # search grid.  The search set for the KG calculation is the union of the
 # fixed grid and the candidate — so the candidate itself is treated as one
 # more alternative that could become the "best" after observation.

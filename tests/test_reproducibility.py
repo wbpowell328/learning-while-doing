@@ -19,7 +19,7 @@ def test_same_inputs_identical_result():
 
 
 def test_different_experiment_index_different_cost():
-    """Test 2: same C*, different experiment_index → different costs (noise exists)."""
+    """Test 2: same θ, different experiment_index → different costs (noise exists)."""
     costs = {
         simulate(CFG, c_star=0.05, horizon_weeks=52, session_seed=42, experiment_index=i).total_cost
         for i in range(20)

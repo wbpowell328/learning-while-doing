@@ -9,19 +9,19 @@ update this file rather than silently diverging from it.
 ## D1 — Opportunity cost formulation
 
 **The conflict:** The original project spec says "charge opportunity cost only
-on cash ABOVE C*," but C* is the rebalancing target, so the manager
-deliberately steers cash *to* C*, not just above it.  The two formulations
+on cash ABOVE θ," but θ is the rebalancing target, so the manager
+deliberately steers cash *to* θ, not just above it.  The two formulations
 differ in how they compute the drag component and produce different U-shapes.
 
 | Option | Formula | Notes |
 |--------|---------|-------|
 | A (default) | `drag_rate × max(cash, 0)` | All cash earns below market.  Clean economic meaning: every dollar in cash is a dollar not invested. |
-| B | `drag_rate × max(cash − C*·AUM, 0)` | Only the overshoot above target is penalized.  Implies C* buffer is "free," which breaks the U-shape (the marginal cost of *holding* C* is zero). |
+| B | `drag_rate × max(cash − θ·AUM, 0)` | Only the overshoot above target is penalized.  Implies θ buffer is "free," which breaks the U-shape (the marginal cost of *holding* θ is zero). |
 
 **Decision:** Option A is the default (`opp_cost_on_total_cash=True`).
 Rationale: the whole point of the simulator is to surface that holding *any*
 cash has an opportunity cost, and the manager must balance that against
-shortfall risk.  If only the excess is charged, a very small C* has
+shortfall risk.  If only the excess is charged, a very small θ has
 essentially zero drag, which is economically wrong.
 
 Option B is retained as a configurable flag for sensitivity analysis.
@@ -32,7 +32,7 @@ Option B is retained as a configurable flag for sensitivity analysis.
 
 **Options considered:**
 1. Full end-of-day rebalance (`rebalance_speed=1.0`): cash is moved to exactly
-   `C* × AUM` each day.  Simple, tractable, easiest to test.
+   `θ × AUM` each day.  Simple, tractable, easiest to test.
 2. Partial adjustment (`0 < speed < 1`): each day close a fraction of the gap.
    More realistic (large block trades take time), but adds a free parameter.
 
@@ -55,7 +55,7 @@ Rationale: the fund exists to generate returns; a static-pool model would
 misstate both the opportunity cost (which scales with AUM) and the rebalancing
 targets.  The accounting test verifies this is consistent.
 
-Consequence: the absolute target `C* × AUM` drifts upward with time, which
+Consequence: the absolute target `θ × AUM` drifts upward with time, which
 is the correct economic behavior.
 
 ---
@@ -152,7 +152,7 @@ setting `r_borrow_annual` very high (e.g., 50× the market rate) or by adding a
 The following items were intentionally deferred:
 - FastAPI HTTP adapter (shell/)
 - React / JS frontend (shell/)
-- Belief model over F(C*) (policy/)
+- Belief model over F(θ) (policy/)
 - Information-Gain and Knowledge-Gradient acquisition policies (policy/)
 - Session history / persistence
 - Charts and visualization

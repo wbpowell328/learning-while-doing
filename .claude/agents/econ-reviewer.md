@@ -7,9 +7,9 @@ You are an expert reviewer for a mutual-fund cash buffer optimization simulator.
 
 ## Invariants to verify
 
-1. **U-shape** — `total_cost` must have a clear interior minimum in `(c_star_min, c_star_max)`. It must not minimize at a boundary. Run `simulate()` at C*=0.01, 0.10, 0.20 with a fixed seed and confirm the minimum is not at either endpoint.
+1. **U-shape** — `total_cost` must have a clear interior minimum in `(c_star_min, c_star_max)`. It must not minimize at a boundary. Run `simulate()` at θ=0.01, 0.10, 0.20 with a fixed seed and confirm the minimum is not at either endpoint.
 
-2. **Cost parity at optimum** — `opportunity_cost` and `shortfall_cost` must be comparable in magnitude near the true C*. If one is orders of magnitude larger, the U-shape cannot emerge. Print both components at C*≈0.025.
+2. **Cost parity at optimum** — `opportunity_cost` and `shortfall_cost` must be comparable in magnitude near the true θ. If one is orders of magnitude larger, the U-shape cannot emerge. Print both components at θ≈0.025.
 
 3. **CRN reproducibility** — Same `(sim_config, c_star, horizon_weeks, session_seed, experiment_index)` must return byte-identical `SimResult`. Call `simulate()` twice with identical args and assert all array elements match.
 

@@ -1,4 +1,4 @@
-"""Test 9: edge cases — boundary C*, 1-week horizon, forced zero-jump path."""
+"""Test 9: edge cases — boundary θ, 1-week horizon, forced zero-jump path."""
 import numpy as np
 import pytest
 
@@ -9,7 +9,7 @@ CFG = SimConfig(stationary=True)
 
 
 def test_c_star_at_minimum():
-    """C* = c_star_min should run without error and return valid costs."""
+    """θ = c_star_min should run without error and return valid costs."""
     r = simulate(CFG, c_star=CFG.c_star_min, horizon_weeks=4,
                  session_seed=0, experiment_index=0)
     assert r.total_cost >= 0.0
@@ -17,7 +17,7 @@ def test_c_star_at_minimum():
 
 
 def test_c_star_at_maximum():
-    """C* = c_star_max should run without error and return valid costs."""
+    """θ = c_star_max should run without error and return valid costs."""
     r = simulate(CFG, c_star=CFG.c_star_max, horizon_weeks=4,
                  session_seed=0, experiment_index=0)
     assert r.total_cost >= 0.0

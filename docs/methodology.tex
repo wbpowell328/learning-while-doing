@@ -24,7 +24,7 @@
 \newcommand{\Var}{\mathrm{Var}}
 \newcommand{\Cov}{\mathrm{Cov}}
 \newcommand{\Ind}{\mathbf{1}}
-\newcommand{\Cstar}{C^{\!*}}
+\newcommand{\Cstar}{\theta}
 \newcommand{\muhat}{\hat{\mu}}
 \newcommand{\muprior}{m_0}
 \newcommand{\muN}{\mu_n}
@@ -62,8 +62,8 @@ for a mutual fund while balancing two competing costs:
 The \emph{true expected cost} function $F(\Cstar)$ is unknown to the
 decision-maker. It is defined implicitly by the stochastic dynamics of the
 fund (Section~\ref{sec:sim}). The decision-maker chooses a sequence of
-candidate values $C^*_1, C^*_2, \dots$, observes a noisy realization of
-$F(C^*_i)$ after each choice, and updates their belief about $F$.
+candidate values $\theta_1, \theta_2, \dots$, observes a noisy realization of
+$F(\theta_i)$ after each choice, and updates their belief about $F$.
 
 The learning problem has two flavors:
 \begin{itemize}[nosep]
@@ -76,7 +76,7 @@ The learning problem has two flavors:
 \end{itemize}
 
 The package supports both regimes and provides a suite of policies for
-choosing the next $C^*$: pure exploration (Random), a family of
+choosing the next $\theta$: pure exploration (Random), a family of
 interval-estimation policies (IE), and five variants of the Knowledge
 Gradient (KG) — offline analytic, offline Monte Carlo, offline independent,
 online correlated (Ryzhov), and online independent.

@@ -117,7 +117,7 @@ export default function App() {
     setReveal(null);
   }, []);
 
-  // ── Human: evaluate at a chosen C* ───────────────────────────────────────
+  // ── Human: evaluate at a chosen θ ───────────────────────────────────────
 
   const handleEvaluate = useCallback(async (cStar) => {
     if (!session || loading) return;
@@ -283,7 +283,7 @@ export default function App() {
               <span className="stat-value">{nSteps}</span>
             </div>
             <div className="stat">
-              <span className="stat-label">Best C*</span>
+              <span className="stat-label">Best θ</span>
               <span className="stat-value">
                 {bestCStar != null ? bestCStar.toFixed(4) : '—'}
               </span>
@@ -336,7 +336,7 @@ export default function App() {
       )}
 
       {/* KG chart — placed above the posterior. For human mode, the aligned
-          C* slider + Run button live directly below the plot so the user can
+          θ slider + Run button live directly below the plot so the user can
           eye-ball the KG curves and pick x visually. */}
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -348,7 +348,7 @@ export default function App() {
           </span>
         </div>
         <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 8px 0' }}>
-          Same underlying GP posterior; three ways of scoring each candidate C*.
+          Same underlying GP posterior; three ways of scoring each candidate θ.
           Analytic and MC should agree closely (any gap is MC noise).
           Independent ignores the covariance cascade to nearby points.
         </p>
@@ -380,7 +380,7 @@ export default function App() {
         <div className="card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
-              Cash position — C* = {lastResult.c_star.toFixed(3)}
+              Cash position — θ = {lastResult.c_star.toFixed(3)}
             </span>
             <span style={{ fontSize: 12, color: '#64748b' }}>
               Opp. cost {fmt(lastResult.opportunity_cost)} · Shortfall {fmt(lastResult.shortfall_cost)} · Total {fmt(lastResult.total_cost)}

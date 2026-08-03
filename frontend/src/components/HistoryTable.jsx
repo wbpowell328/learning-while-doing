@@ -9,7 +9,7 @@ export default function HistoryTable({ history }) {
         <thead>
           <tr>
             <th>#</th>
-            <th>C*</th>
+            <th>θ</th>
             <th>Total cost</th>
           </tr>
         </thead>

@@ -2,8 +2,8 @@
 Session: the top-level coordinator for one learning-while-doing run.
 
 Each step():
-  1. Asks the acquisition policy for the next C* to evaluate.
-  2. Runs a deterministic simulation at that C*.
+  1. Asks the acquisition policy for the next θ to evaluate.
+  2. Runs a deterministic simulation at that θ.
   3. Updates the belief model with the observed total cost.
 
 Common Random Numbers (CRN): step i always calls
@@ -70,7 +70,7 @@ class Session:
 
     def step(self) -> SimResult:
         """
-        Propose the next C*, run the simulation, update the belief model.
+        Propose the next θ, run the simulation, update the belief model.
 
         Returns the full SimResult so callers can inspect daily series, jump
         logs, and cost breakdowns.  Increments n_steps.
@@ -90,11 +90,11 @@ class Session:
 
     def evaluate(self, c_star: float) -> SimResult:
         """
-        Run the simulator at a caller-specified C*, update the belief model.
+        Run the simulator at a caller-specified θ, update the belief model.
 
         Identical CRN contract to step(): uses experiment_index=_step_count so
         the noise path is the same regardless of whether the caller or a policy
-        chose the C* value.  Increments n_steps.
+        chose the θ value.  Increments n_steps.
         """
         result = simulate(
             config=self._sim_config,
@@ -121,7 +121,7 @@ class Session:
 
     def best_c_star(self) -> float:
         """
-        Current best estimate of the optimal C*: argmin of posterior mean.
+        Current best estimate of the optimal θ: argmin of posterior mean.
 
         With no observations returns the domain midpoint.
         """

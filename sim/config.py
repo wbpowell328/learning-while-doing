@@ -30,14 +30,14 @@ class SimConfig:
 
     # --- Opportunity cost formulation (D1 — see DECISIONS.md) ---
     # True  → drag on ALL cash held × (r_market - r_cash)
-    # False → drag only on cash ABOVE C* × AUM
+    # False → drag only on cash ABOVE θ × AUM
     opp_cost_on_total_cash: bool = True
 
     # --- Rebalancing ---
-    # 1.0 = full end-of-day rebalance to C* × AUM; <1.0 = partial (Phase 2)
+    # 1.0 = full end-of-day rebalance to θ × AUM; <1.0 = partial (Phase 2)
     rebalance_speed: float = 1.0
 
-    # --- C* domain ---
+    # --- θ domain ---
     c_star_min: float = 0.01
     c_star_max: float = 0.20
 

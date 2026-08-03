@@ -1,4 +1,4 @@
-// A C* slider whose track lines up under the KG chart's plot area.
+// A θ slider whose track lines up under the KG chart's plot area.
 //
 // The KG chart's viewBox is 720 wide with PAD.left=72 and PAD.right=96,
 // so its plot area sits at 10.00%–86.67% of the container width. This
@@ -54,7 +54,7 @@ export default function CStarSlider({ cStar, setCStar, onRun, loading, exhausted
       <div style={{
         display: 'flex', gap: 12, marginTop: 14, alignItems: 'center',
       }}>
-        <label style={{ fontSize: 13, color: '#374151', fontWeight: 600 }}>C* =</label>
+        <label style={{ fontSize: 13, color: '#374151', fontWeight: 600 }}>θ =</label>
         <input
           type="number"
           value={cStar.toFixed(3)}
@@ -85,7 +85,7 @@ export default function CStarSlider({ cStar, setCStar, onRun, loading, exhausted
             disabled={loading}
             style={{ flex: 1, padding: '10px', fontSize: '0.95rem' }}
           >
-            {loading ? 'Running simulation…' : `Run simulation at C* = ${cStar.toFixed(3)} →`}
+            {loading ? 'Running simulation…' : `Run simulation at θ = ${cStar.toFixed(3)} →`}
           </button>
         )}
       </div>

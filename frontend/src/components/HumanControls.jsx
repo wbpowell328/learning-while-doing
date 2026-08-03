@@ -1,4 +1,4 @@
-// Slim budget-remaining bar for Human mode. The C* slider + Run button
+// Slim budget-remaining bar for Human mode. The θ slider + Run button
 // now live in the KG chart card so the slider aligns with the KG plot's
 // x-axis (see CStarSlider.jsx).
 

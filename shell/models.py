@@ -160,7 +160,7 @@ class BatchResponse(BaseModel):
     sims_per_policy: int
     budget: int
     session_seed: int
-    # Ground-truth best C* (via MC on a fine grid), for reference
+    # Ground-truth best θ (via MC on a fine grid), for reference
     true_best_c_star: float
     true_min_cost: float
     policies: list[BatchPolicyResult]

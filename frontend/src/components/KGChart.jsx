@@ -1,4 +1,4 @@
-// Compare five KG-related quantities as functions of C*, on one plot with
+// Compare five KG-related quantities as functions of θ, on one plot with
 // dual y-axes (offline KG lives on cents-to-dollars scale, online KG lives
 // on the μ_n scale of thousands of dollars).
 //
@@ -130,7 +130,7 @@ export default function KGChart({ kg }) {
       ))}
       <text x={PAD.left + IW / 2} y={H - 4}
             textAnchor="middle" fontSize={12} fill="#64748b">
-        C* (cash buffer ratio)
+        θ (cash buffer ratio)
       </text>
 
       {/* Left Y axis: offline KG */}

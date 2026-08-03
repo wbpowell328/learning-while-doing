@@ -1,6 +1,6 @@
 # Learning While Doing
 
-An interactive simulation for exploring how a mutual-fund manager can learn an appropriate cash-buffer ratio (`C*`) while balancing the opportunity cost of holding cash against the cost of forced liquidations.
+An interactive simulation for exploring how a mutual-fund manager can learn an appropriate cash-buffer ratio (`θ`) while balancing the opportunity cost of holding cash against the cost of forced liquidations.
 
 The project includes a browser-based dashboard, a FastAPI backend, the simulation and policy code, and a test suite.
 
@@ -20,7 +20,7 @@ The opening screen lets you choose a random seed, simulation length, and one of 
 
 | Mode | Suggested experiment |
 | --- | --- |
-| Human | Pick `C*` yourself over a 10-round budget. Use the posterior plot to decide the next value, then reveal the true cost curve. |
+| Human | Pick `θ` yourself over a 10-round budget. Use the posterior plot to decide the next value, then reveal the true cost curve. |
 | KG | Run 10–25 automated steps and observe the Knowledge Gradient policy focus on promising values. |
 | IE | Run the uncertainty-exploration policy and compare its observations with KG. |
 | Random | Use as a baseline against the two informed policies. |

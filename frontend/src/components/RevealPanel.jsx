@@ -58,7 +58,7 @@ export default function RevealPanel({ reveal }) {
       {/* Stats row */}
       <div className="reveal-stats">
         <div className="reveal-stat">
-          <span className="reveal-stat-label">Your best C*</span>
+          <span className="reveal-stat-label">Your best θ</span>
           <span className="reveal-stat-value">{player_best_c_star.toFixed(3)}</span>
           <span className="reveal-stat-sub">~{fmt(player_best_cost)}/run</span>
         </div>
@@ -97,12 +97,12 @@ export default function RevealPanel({ reveal }) {
         <line x1={xS(0.10)} x2={xS(0.10)} y1={PAD.top} y2={H - PAD.bottom}
           stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="4,3" opacity={0.8} />
 
-        {/* Player's best C* vertical */}
+        {/* Player's best θ vertical */}
         <line x1={xS(player_best_c_star)} x2={xS(player_best_c_star)}
           y1={PAD.top} y2={H - PAD.bottom}
           stroke="#2563eb" strokeWidth={1.5} strokeDasharray="6,4" opacity={0.9} />
 
-        {/* True best C* vertical */}
+        {/* True best θ vertical */}
         <line x1={xS(true_best_c_star)} x2={xS(true_best_c_star)}
           y1={PAD.top} y2={H - PAD.bottom}
           stroke="#dc2626" strokeWidth={2} />
@@ -130,7 +130,7 @@ export default function RevealPanel({ reveal }) {
           </g>
         ))}
         <text x={PAD.left + IW / 2} y={H - 4}
-          textAnchor="middle" fontSize={12} fill="#64748b">C* (cash buffer ratio)</text>
+          textAnchor="middle" fontSize={12} fill="#64748b">θ (cash buffer ratio)</text>
 
         {/* Y axis */}
         <line x1={PAD.left} x2={PAD.left}
@@ -150,10 +150,10 @@ export default function RevealPanel({ reveal }) {
         {/* Legend */}
         <g transform={`translate(${W - PAD.right - 108},${PAD.top + 4})`}>
           <line x1={0} x2={16} y1={6} y2={6} stroke="#374151" strokeWidth={2.5} />
-          <text x={20} y={10} fontSize={9} fill="#64748b">E[cost | C*]</text>
+          <text x={20} y={10} fontSize={9} fill="#64748b">E[cost | θ]</text>
           <line x1={0} x2={16} y1={22} y2={22} stroke="#dc2626" strokeWidth={2} />
           <circle cx={8} cy={22} r={3} fill="#dc2626" stroke="white" strokeWidth={1} />
-          <text x={20} y={26} fontSize={9} fill="#dc2626">true C*</text>
+          <text x={20} y={26} fontSize={9} fill="#dc2626">true θ</text>
           <line x1={0} x2={16} y1={38} y2={38} stroke="#2563eb" strokeWidth={1.5} strokeDasharray="6,4" />
           <circle cx={8} cy={38} r={3} fill="#2563eb" stroke="white" strokeWidth={1} />
           <text x={20} y={42} fontSize={9} fill="#2563eb">your pick</text>

@@ -71,11 +71,11 @@ export default function PosteriorChart({ posterior, history, policy }) {
       {/* Mean line */}
       <path d={meanPath} fill="none" stroke={color} strokeWidth={2.5} />
 
-      {/* Best C* vertical */}
+      {/* Best θ vertical */}
       <line x1={xS(best)} x2={xS(best)} y1={PAD.top} y2={H - PAD.bottom}
         stroke={color} strokeWidth={1.5} strokeDasharray="6,4" opacity={0.8} />
       <text x={xS(best) + 5} y={PAD.top + 14} fill={color} fontSize={11} fontWeight={600}>
-        best C*={best.toFixed(3)}
+        best θ={best.toFixed(3)}
       </text>
 
       {/* Observation dots */}
@@ -99,7 +99,7 @@ export default function PosteriorChart({ posterior, history, policy }) {
       ))}
       <text x={PAD.left + IW / 2} y={H - 4}
         textAnchor="middle" fontSize={12} fill="#64748b">
-        C* (cash buffer ratio)
+        θ (cash buffer ratio)
       </text>
 
       {/* Y axis */}

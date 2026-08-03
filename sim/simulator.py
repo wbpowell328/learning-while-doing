@@ -18,7 +18,7 @@ def simulate(
 
     Same (config, c_star, horizon_weeks, session_seed, experiment_index)
     always returns a byte-identical SimResult.  Different experiment_index
-    values draw independent paths, so observed costs differ even at fixed C*.
+    values draw independent paths, so observed costs differ even at fixed θ.
     """
     if not (config.c_star_min <= c_star <= config.c_star_max):
         raise ValueError(
