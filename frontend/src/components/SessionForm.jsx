@@ -41,7 +41,16 @@ const SIM_FIELDS = [
 ];
 
 
+// Available applications — the values here must match keys in the backend's
+// apps/__init__.py REGISTRY. dim tells the frontend how to shape θ inputs
+// and which visualization to show for the belief posterior.
+const APPS = [
+  { value: 'cash_balance',    label: 'Cash balance (1-parameter)',                dim: 1 },
+  { value: 'cash_balance_2d', label: 'Cash balance (2-parameter, θ_ind, θ_inst)', dim: 2 },
+];
+
 export default function SessionForm({ onCreate, error }) {
+  const [appName, setAppName]       = useState('cash_balance');
   const [policy, setPolicy]         = useState('human');
   const [seed, setSeed]             = useState(42);
   const [horizon, setHorizon]       = useState(26);
@@ -59,30 +68,60 @@ export default function SessionForm({ onCreate, error }) {
   const canonicalize = (k) => setField(k, String(Number(adv[k]) || Number(ADV_DEFAULTS[k])));
   const numeric = (k) => Number(adv[k]) || Number(ADV_DEFAULTS[k]);
 
-  const isHuman = policy === 'human';
-  const isBatch = policy === 'kg-batch' || policy === 'ie-batch';
-  const family  = policy === 'kg-batch' ? 'KG' : policy === 'ie-batch' ? 'IE' : null;
+  // Selected app metadata.
+  const appMeta = APPS.find(a => a.value === appName) ?? APPS[0];
+  const is2D = appMeta.dim >= 2;
+
+  // Auto-flip incompatible policy selections when app changes.
+  // Human mode and batch modes are 1-D-only for now.
+  const policyAllowed = (p) => is2D ? ['random', 'ie', 'kg'].includes(p) : true;
+  const effectivePolicy = policyAllowed(policy) ? policy : 'kg';
+
+  const isHuman = effectivePolicy === 'human';
+  const isBatch = effectivePolicy === 'kg-batch' || effectivePolicy === 'ie-batch';
+  const family  = effectivePolicy === 'kg-batch' ? 'KG' : effectivePolicy === 'ie-batch' ? 'IE' : null;
+
+  // For 2-D apps, don't send single-value-tuple sim_config knobs that would
+  // clash with the app's 2-parameter defaults.  We ship only stationary; the
+  // 2-D app's own jump / flow / borrow-rate defaults take over.
+  const simConfigPayload = is2D
+    ? { stationary }
+    : {
+        stationary,
+        jump_rate_annual: numeric('jump_rate_annual'),
+        jump_std_log:     numeric('jump_std_log'),
+        sigma_net_annual: numeric('sigma_net_annual'),
+        r_borrow_annual:  numeric('r_borrow_annual'),
+      };
+
+  // For 2-D belief prior, broadcast the scalar length_scale into a per-dim
+  // pair with the second dimension having a wider length scale (the
+  // institutional-buffer axis varies over [0.01, 0.40] — 2× the individual
+  // buffer's range — so a matching wider length scale is a sensible default).
+  const beliefConfigPayload = is2D
+    ? {
+        length_scale: [numeric('length_scale'), 2 * numeric('length_scale')],
+        signal_std:   numeric('signal_std'),
+        noise_std:    numeric('noise_std'),
+        prior_mean:   numeric('prior_mean'),
+      }
+    : {
+        length_scale: numeric('length_scale'),
+        signal_std:   numeric('signal_std'),
+        noise_std:    numeric('noise_std'),
+        prior_mean:   numeric('prior_mean'),
+      };
 
   async function handleSubmit(e) {
     e.preventDefault();
     setLoading(true);
     try {
       await onCreate({
-        policy,
+        app_name: appName,
+        policy: effectivePolicy,
         session_seed: seed,
-        sim_config: {
-          stationary,
-          jump_rate_annual: numeric('jump_rate_annual'),
-          jump_std_log:     numeric('jump_std_log'),
-          sigma_net_annual: numeric('sigma_net_annual'),
-          r_borrow_annual:  numeric('r_borrow_annual'),
-        },
-        belief_config: {
-          length_scale: numeric('length_scale'),
-          signal_std:   numeric('signal_std'),
-          noise_std:    numeric('noise_std'),
-          prior_mean:   numeric('prior_mean'),
-        },
+        sim_config: simConfigPayload,
+        belief_config: beliefConfigPayload,
         session_config: { horizon_weeks: horizon },
         budget: (isHuman || isBatch) ? budget : null,
         family,
@@ -118,18 +157,35 @@ export default function SessionForm({ onCreate, error }) {
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
+            <label>Application</label>
+            <select value={appName} onChange={e => setAppName(e.target.value)}>
+              {APPS.map(a => (
+                <option key={a.value} value={a.value}>{a.label}</option>
+              ))}
+            </select>
+            {is2D && (
+              <span style={{ fontSize: 12, color: '#64748b' }}>
+                2-parameter app — Human mode and batch benchmarks are 1-D only for now;
+                automated modes (KG, IE, Random) work here.
+              </span>
+            )}
+          </div>
+
+          <div className="form-group">
             <label>Mode</label>
-            <select value={policy} onChange={e => setPolicy(e.target.value)}>
+            <select value={effectivePolicy} onChange={e => setPolicy(e.target.value)}>
               <optgroup label="Single run">
-                <option value="human">Human — I pick θ each round</option>
+                {!is2D && <option value="human">Human — I pick θ each round</option>}
                 <option value="kg">KG — offline correlated (analytic)</option>
                 <option value="ie">IE — LCB with z_alpha=0 (greedy)</option>
                 <option value="random">Random — baseline</option>
               </optgroup>
-              <optgroup label="Batch benchmark">
-                <option value="kg-batch">KG batch — all 5 variants</option>
-                <option value="ie-batch">IE batch — 21 z_alpha values</option>
-              </optgroup>
+              {!is2D && (
+                <optgroup label="Batch benchmark">
+                  <option value="kg-batch">KG batch — all 5 variants</option>
+                  <option value="ie-batch">IE batch — 21 z_alpha values</option>
+                </optgroup>
+              )}
             </select>
           </div>
 

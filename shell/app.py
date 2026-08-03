@@ -9,22 +9,37 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from apps.cash_balance import SimConfig, simulate
+import apps
+from apps.cash_balance import SimConfig, simulate  # 1-D default for legacy batch/reveal endpoints
 from policy import (
     BeliefConfig, AcquisitionConfig, SessionConfig,
     RandomPolicy, IEPolicy, KGPolicy, Session,
     KGMCPolicy, KGIndependentPolicy, OKGCorrelatedPolicy, OKGIndependentPolicy,
     kg_analytic_correlated_at, kg_mc_correlated_at, kg_independent_at,
 )
+from policy.acquire import _make_grid
 from .models import (
     CreateSessionRequest, CreateSessionResponse,
     StepResponse, JumpEventOut,
     EvaluateRequest,
     ObserveRequest, ObserveResponse,
-    StateResponse, PosteriorResponse,
+    StateResponse, PosteriorResponse, Posterior2DResponse,
     RevealResponse, KGComparisonResponse,
     BatchRequest, BatchResponse, BatchPolicyResult,
 )
+
+
+def _as_list(x) -> list[float]:
+    """Coerce scalar/ndarray/list into a plain Python list of floats."""
+    arr = np.atleast_1d(np.asarray(x, dtype=float))
+    return [float(v) for v in arr.ravel()]
+
+
+def _theta_out(theta, dim: int):
+    """Format θ for JSON responses: scalar for dim=1, list for dim>=2."""
+    if dim == 1:
+        return float(np.atleast_1d(np.asarray(theta, dtype=float))[0])
+    return _as_list(theta)
 
 app = FastAPI(title="learning-while-doing")
 
@@ -42,21 +57,28 @@ _sessions: dict[str, Session] = {}
 
 
 def _make_step_response(result, session: Session) -> StepResponse:
-    return StepResponse(
-        impparam=result.impparam,
-        total_cost=result.total_cost,
-        opportunity_cost=result.opportunity_cost,
-        shortfall_cost=result.shortfall_cost,
-        days=result.days,
-        n_steps=session.n_steps,
-        best_impparam=session.best_impparam(),
-        cash_series=result.cash_series.tolist(),
-        event_log=[
-            JumpEventOut(day=e.day, size_fraction=e.size_fraction, direction=e.direction)
-            for e in result.event_log
-        ],
-        initial_aum=session._sim_config.initial_aum,
+    dim = session.dim
+    payload = dict(
+        impparam=_theta_out(result.impparam, dim),
+        total_cost=float(result.total_cost),
+        opportunity_cost=float(result.opportunity_cost),
+        # `shortfall_cost` — for cash_balance_2d this is a computed property
+        # summing the ind + inst components; both apps expose the attribute.
+        shortfall_cost=float(getattr(result, "shortfall_cost", 0.0)),
+        days=int(result.days),
+        n_steps=int(session.n_steps),
+        best_impparam=_theta_out(session.best_impparam(), dim),
+        initial_aum=float(session._sim_config.initial_aum),
     )
+    # 1-D app carries a cash_series and event_log; expose via the extras.
+    if hasattr(result, "cash_series"):
+        payload["cash_series"] = result.cash_series.tolist()
+    if hasattr(result, "event_log"):
+        payload["event_log"] = [
+            JumpEventOut(day=e.day, size_fraction=e.size_fraction, direction=e.direction).model_dump()
+            for e in result.event_log
+        ]
+    return StepResponse(**payload)
 
 
 def _make_policy(name: str, acq_cfg: AcquisitionConfig):
@@ -82,17 +104,72 @@ def health() -> dict:
 
 @app.post("/sessions", status_code=201)
 def create_session(req: CreateSessionRequest) -> CreateSessionResponse:
-    sim_cfg    = SimConfig(**req.sim_config.model_dump())
-    belief_cfg = BeliefConfig(**req.belief_config.model_dump())
-    acq_cfg    = AcquisitionConfig(**req.acq_config.model_dump())
-    ses_cfg    = SessionConfig(**req.session_config.model_dump())
-    policy     = _make_policy(req.policy, acq_cfg)
+    # Look up the requested application in the registry.
+    try:
+        app_mod = apps.get_app(req.app_name)
+    except KeyError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-    session = Session(sim_cfg, belief_cfg, acq_cfg, ses_cfg, policy, req.session_seed)
+    # Build per-app SimConfig. Only carry over fields the client explicitly set
+    # (so we don't overwrite the app's 2-D tuple defaults with 1-D scalar defaults
+    # from the SimConfigIn schema).  Also honor any extra fields (e.g. the 2-D
+    # config's initial_aum_ind_fraction) via the model's __pydantic_extra__.
+    sim_cfg_kwargs = req.sim_config.model_dump(exclude_unset=True)
+    sim_field_names = {f for f in app_mod.SimConfig.__dataclass_fields__}
+    sim_cfg = app_mod.SimConfig(**{k: v for k, v in sim_cfg_kwargs.items() if k in sim_field_names})
+
+    # Take θ bounds from the sim config (source of truth for the box).
+    lo = _as_list(sim_cfg.impparam_min)
+    hi = _as_list(sim_cfg.impparam_max)
+    dim = int(app_mod.THETA_DIM)
+
+    # Build belief config — start with client-provided fields only, then
+    # broadcast a scalar length_scale to per-dim if the app is multi-D and the
+    # client didn't already provide a per-dim scale.
+    belief_kwargs = req.belief_config.model_dump(exclude_unset=True)
+    if dim > 1:
+        ls = belief_kwargs.get("length_scale")
+        if ls is None or isinstance(ls, (int, float)):
+            # Fall back to BeliefConfig default (0.04) if client didn't set one.
+            base = float(ls) if isinstance(ls, (int, float)) else 0.04
+            belief_kwargs["length_scale"] = [base] * dim
+    bel_field_names = {f for f in BeliefConfig.__dataclass_fields__}
+    belief_cfg = BeliefConfig(**{k: v for k, v in belief_kwargs.items() if k in bel_field_names})
+
+    # Acquisition config — bounds always come from the SimConfig (source of truth).
+    acq_kwargs = req.acq_config.model_dump(exclude_unset=True)
+    acq_kwargs["impparam_min"] = lo if dim > 1 else lo[0]
+    acq_kwargs["impparam_max"] = hi if dim > 1 else hi[0]
+    # Cap grid_size for higher dims to keep O(grid_size**dim) manageable.
+    if dim >= 2 and acq_kwargs.get("grid_size", 100) >= 50:
+        acq_kwargs["grid_size"] = 25
+    acq_field_names = {f for f in AcquisitionConfig.__dataclass_fields__}
+    acq_cfg = AcquisitionConfig(**{k: v for k, v in acq_kwargs.items() if k in acq_field_names})
+
+    ses_cfg = SessionConfig(**req.session_config.model_dump())
+    policy = _make_policy(req.policy, acq_cfg)
+
+    session = Session(
+        sim_config=sim_cfg,
+        belief_config=belief_cfg,
+        acq_config=acq_cfg,
+        session_config=ses_cfg,
+        policy=policy,
+        session_seed=req.session_seed,
+        simulate_fn=app_mod.simulate,
+    )
     sid = str(uuid4())
     _sessions[sid] = session
 
-    return CreateSessionResponse(session_id=sid, policy=req.policy)
+    return CreateSessionResponse(
+        session_id=sid,
+        policy=req.policy,
+        app_name=req.app_name,
+        dim=dim,
+        minimize=bool(app_mod.MINIMIZE),
+        impparam_min=lo,
+        impparam_max=hi,
+    )
 
 
 @app.post("/sessions/{sid}/step")
@@ -108,18 +185,20 @@ def observe(sid: str, body: ObserveRequest) -> ObserveResponse:
     session.observe(body.impparam, body.total_cost)
     return ObserveResponse(
         n_observations=session.belief.n_observations,
-        best_impparam=session.best_impparam(),
+        best_impparam=_theta_out(session.best_impparam(), session.dim),
     )
 
 
 @app.get("/sessions/{sid}/state")
 def state(sid: str) -> StateResponse:
     session = _get_or_404(sid)
+    dim = session.dim
+    hist = [(_theta_out(t, dim), float(c)) for t, c in session.history]
     return StateResponse(
         n_steps=session.n_steps,
         n_observations=session.belief.n_observations,
-        best_impparam=session.best_impparam(),
-        history=session.history,
+        best_impparam=_theta_out(session.best_impparam(), dim),
+        history=hist,
     )
 
 
@@ -128,6 +207,45 @@ def evaluate(sid: str, body: EvaluateRequest) -> StepResponse:
     session = _get_or_404(sid)
     result = session.evaluate(body.impparam)
     return _make_step_response(result, session)
+
+
+@app.get("/sessions/{sid}/posterior_2d")
+def posterior_2d(sid: str, grid_size: int = 30) -> Posterior2DResponse:
+    """
+    Return the 2-D GP posterior surface (mean + std) on a grid_size × grid_size
+    grid over the θ box, plus the observation history in flat form.  For 2-D
+    apps only; raises 400 on 1-D sessions.
+    """
+    session = _get_or_404(sid)
+    if session.dim != 2:
+        raise HTTPException(status_code=400, detail=f"posterior_2d requires a 2-D session; this one has dim={session.dim}")
+
+    cfg = session._acq_config
+    lo = _as_list(cfg.impparam_min)
+    hi = _as_list(cfg.impparam_max)
+
+    axis1 = np.linspace(lo[0], hi[0], grid_size)
+    axis2 = np.linspace(lo[1], hi[1], grid_size)
+    G1, G2 = np.meshgrid(axis1, axis2, indexing="ij")
+    grid = np.stack([G1.ravel(), G2.ravel()], axis=-1)   # (grid_size**2, 2)
+
+    mean, std = session.belief.posterior(grid)
+
+    # History flattened as rows [theta1, theta2, cost]
+    hist_rows: list[list[float]] = []
+    for t, c in session.history:
+        arr = np.atleast_1d(np.asarray(t, dtype=float))
+        hist_rows.append([float(arr[0]), float(arr[1]), float(c)])
+
+    best = _as_list(session.best_impparam())
+    return Posterior2DResponse(
+        axis1=axis1.tolist(),
+        axis2=axis2.tolist(),
+        mean=mean.tolist(),
+        std=std.tolist(),
+        history=hist_rows,
+        best_impparam=best,
+    )
 
 
 @app.get("/sessions/{sid}/reveal")

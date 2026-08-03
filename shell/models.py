@@ -1,7 +1,13 @@
 """Pydantic request / response schemas for the shell API."""
 from __future__ import annotations
-from typing import Literal
-from pydantic import BaseModel
+from typing import Any, Literal, Union
+from pydantic import BaseModel, ConfigDict
+
+
+# θ is a scalar for 1-D apps and a vector for multi-dim apps. Endpoints
+# accept either; responses carry `dim` metadata so the frontend knows the
+# shape.
+ThetaLike = Union[float, list[float]]
 
 
 # ---------------------------------------------------------------------------
@@ -9,6 +15,11 @@ from pydantic import BaseModel
 # ---------------------------------------------------------------------------
 
 class SimConfigIn(BaseModel):
+    """1-D cash_balance sim config (defaults shown). Passed through untyped
+    fields are dropped by pydantic — for 2-D apps, use `sim_config_dict`
+    on CreateSessionRequest or pass through the untyped `extra` fields."""
+    model_config = ConfigDict(extra="allow")   # accept extra fields for other apps
+
     initial_aum: float = 1_000_000.0
     mu_net_annual: float = 0.00
     sigma_net_annual: float = 0.02
@@ -25,13 +36,15 @@ class SimConfigIn(BaseModel):
     r_borrow_annual: float = 0.10
     opp_cost_on_total_cash: bool = True
     rebalance_speed: float = 1.0
-    impparam_min: float = 0.01
-    impparam_max: float = 0.20
+    impparam_min: Union[float, list[float]] = 0.01
+    impparam_max: Union[float, list[float]] = 0.20
     trading_days_per_year: int = 252
 
 
 class BeliefConfigIn(BaseModel):
-    length_scale: float = 0.04
+    model_config = ConfigDict(extra="allow")
+
+    length_scale: Union[float, list[float]] = 0.04
     signal_std: float = 5_000.0
     noise_std: float = 3_000.0
     prior_mean: float = 5_000.0
@@ -39,9 +52,12 @@ class BeliefConfigIn(BaseModel):
 
 
 class AcqConfigIn(BaseModel):
-    impparam_min: float = 0.01
-    impparam_max: float = 0.20
+    model_config = ConfigDict(extra="allow")
+
+    impparam_min: Union[float, list[float]] = 0.01
+    impparam_max: Union[float, list[float]] = 0.20
     grid_size: int = 100
+    z_alpha: float = 0.0
 
 
 class SessionConfigIn(BaseModel):
@@ -50,6 +66,8 @@ class SessionConfigIn(BaseModel):
 
 
 class CreateSessionRequest(BaseModel):
+    # NEW: which application to instantiate. Uses the apps/ registry key.
+    app_name: str = "cash_balance"
     sim_config: SimConfigIn = SimConfigIn()
     belief_config: BeliefConfigIn = BeliefConfigIn()
     acq_config: AcqConfigIn = AcqConfigIn()
@@ -65,6 +83,11 @@ class CreateSessionRequest(BaseModel):
 class CreateSessionResponse(BaseModel):
     session_id: str
     policy: str
+    app_name: str
+    dim: int                  # θ dimension (1 for cash_balance, 2 for cash_balance_2d)
+    minimize: bool
+    impparam_min: list[float] # always returned as a list (length dim)
+    impparam_max: list[float]
 
 
 class JumpEventOut(BaseModel):
@@ -74,44 +97,63 @@ class JumpEventOut(BaseModel):
 
 
 class StepResponse(BaseModel):
-    impparam: float
+    model_config = ConfigDict(extra="allow")   # per-app extras (e.g. cash_series)
+
+    impparam: ThetaLike                    # scalar (1D) or list (2D+)
     total_cost: float
     opportunity_cost: float
     shortfall_cost: float
     days: int
     n_steps: int
-    best_impparam: float
-    cash_series: list[float]
-    event_log: list[JumpEventOut]
+    best_impparam: ThetaLike
     initial_aum: float
 
 
 class ObserveRequest(BaseModel):
-    impparam: float
+    impparam: ThetaLike
     total_cost: float
 
 
 class ObserveResponse(BaseModel):
     n_observations: int
-    best_impparam: float
+    best_impparam: ThetaLike
 
 
 class StateResponse(BaseModel):
     n_steps: int
     n_observations: int
-    best_impparam: float
-    history: list[tuple[float, float]]
+    best_impparam: ThetaLike
+    history: list[tuple[ThetaLike, float]]
 
 
 class EvaluateRequest(BaseModel):
-    impparam: float
+    impparam: ThetaLike
 
 
 class PosteriorResponse(BaseModel):
+    """1-D posterior curve. Used only for 1-D apps."""
     impparams: list[float]
     mean: list[float]
     std: list[float]
     best_impparam: float
+
+
+class Posterior2DResponse(BaseModel):
+    """
+    2-D posterior surface. Used for 2-D apps to feed the 3-D belief plot.
+
+    * axis1 / axis2 : the two coordinate axes (length grid_size each).
+    * mean, std     : row-major flattened grids of length grid_size**2,
+                      matching np.meshgrid(axis1, axis2, indexing='ij').
+    * history       : list of (theta1, theta2, cost) observations.
+    * best_impparam : argmin of posterior mean, as [theta1, theta2].
+    """
+    axis1: list[float]
+    axis2: list[float]
+    mean: list[float]
+    std: list[float]
+    history: list[list[float]]            # rows are [theta1, theta2, cost]
+    best_impparam: list[float]
 
 
 class RevealResponse(BaseModel):

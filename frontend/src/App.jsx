@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef } from 'react';
-import { createSession, runStep, evaluateC, getPosterior, getReveal, getKGComparison, deleteSession, runBatch } from './api';
+import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getReveal, getKGComparison, deleteSession, runBatch } from './api';
 import SessionForm from './components/SessionForm';
 import PosteriorChart from './components/PosteriorChart';
+import Belief3DChart from './components/Belief3DChart';
 import KGChart from './components/KGChart';
 import ImpparamSlider from './components/ImpparamSlider';
 import HistoryTable from './components/HistoryTable';
@@ -30,6 +31,7 @@ export default function App() {
   const [impparam,         setImpparam]         = useState(0.10);
   const [batchResult,   setBatchResult]   = useState(null);
   const [batchProgress, setBatchProgress] = useState(null);
+  const [posterior2D,   setPosterior2D]   = useState(null);   // 2-D belief surface
   const stopRef = useRef(false);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -57,7 +59,7 @@ export default function App() {
 
   // ── Create session ────────────────────────────────────────────────────────
 
-  const handleCreate = useCallback(async ({ policy, session_seed, sim_config, belief_config, session_config, budget, family, sims_per_policy }) => {
+  const handleCreate = useCallback(async ({ app_name, policy, session_seed, sim_config, belief_config, session_config, budget, family, sims_per_policy }) => {
     setError(null);
 
     // Batch mode: stream the whole family, show progress, then BatchResults.
@@ -100,21 +102,46 @@ export default function App() {
       return;
     }
 
-    // Single-policy mode: existing flow
-    const { session_id } = await createSession({ policy, session_seed, sim_config, belief_config, session_config });
+    // Single-policy mode: existing flow.
+    const created = await createSession({
+      app_name: app_name ?? 'cash_balance',
+      policy, session_seed, sim_config, belief_config, session_config,
+    });
+    const session_id = created.session_id;
+    const dim = created.dim ?? 1;
     const effectiveBudget = budget ?? 10;
-    const [post, kg] = await Promise.all([
-      getPosterior(session_id),
-      getKGComparison(session_id, 0.01, 50, effectiveBudget),
-    ]);
-    setSession({ id: session_id, policy, seed: session_seed, budget: budget ?? null });
-    setPosterior(post);
-    setKgComparison(kg);
-    setBestImpparam(post.best_impparam);
+
+    setSession({
+      id: session_id,
+      app_name: created.app_name,
+      dim,
+      minimize: created.minimize,
+      policy,
+      seed: session_seed,
+      budget: budget ?? null,
+    });
     setHistory([]);
     setNSteps(0);
     setLastResult(null);
     setReveal(null);
+    setPosterior(null);
+    setKgComparison(null);
+    setPosterior2D(null);
+
+    if (dim === 1) {
+      const [post, kg] = await Promise.all([
+        getPosterior(session_id),
+        getKGComparison(session_id, 0.01, 50, effectiveBudget),
+      ]);
+      setPosterior(post);
+      setKgComparison(kg);
+      setBestImpparam(post.best_impparam);
+    } else {
+      // 2-D: fetch the belief surface.  The KG comparison chart is 1-D only for now.
+      const p2 = await getPosterior2D(session_id, 30);
+      setPosterior2D(p2);
+      setBestImpparam(p2.best_impparam);
+    }
   }, []);
 
   // ── Human: evaluate at a chosen θ ───────────────────────────────────────
@@ -142,20 +169,29 @@ export default function App() {
 
   // ── Automated: single step ────────────────────────────────────────────────
 
-  const doStep = useCallback(async (sid, budget) => {
+  const doStep = useCallback(async (sid, budget, dim) => {
     const result = await runStep(sid);
-    const [post, kg] = await Promise.all([
-      getPosterior(sid),
-      getKGComparison(sid, 0.01, 50, budget ?? 10),
-    ]);
-    applyResult(result, post, kg);
+    if (dim === 1) {
+      const [post, kg] = await Promise.all([
+        getPosterior(sid),
+        getKGComparison(sid, 0.01, 50, budget ?? 10),
+      ]);
+      applyResult(result, post, kg);
+    } else {
+      const p2 = await getPosterior2D(sid, 30);
+      setPosterior2D(p2);
+      setBestImpparam(result.best_impparam ?? p2.best_impparam);
+      setNSteps(result.n_steps);
+      setHistory(prev => [...prev, [result.impparam, result.total_cost]]);
+      setLastResult(result);
+    }
   }, [applyResult]);
 
   const handleStep = useCallback(async () => {
     if (!session || loading) return;
     setLoading(true);
     setError(null);
-    try { await doStep(session.id, session.budget); }
+    try { await doStep(session.id, session.budget, session.dim); }
     catch (e) { setError(String(e)); }
     finally   { setLoading(false); }
   }, [session, loading, doStep]);
@@ -171,7 +207,7 @@ export default function App() {
       for (let i = 0; i < n; i++) {
         if (stopRef.current) break;
         setAutoCount(n - i);
-        await doStep(session.id, session.budget);
+        await doStep(session.id, session.budget, session.dim);
         await new Promise(r => setTimeout(r, 80));
       }
     } catch (e) {
@@ -196,6 +232,7 @@ export default function App() {
     if (session) await deleteSession(session.id).catch(() => {});
     setSession(null);
     setPosterior(null);
+    setPosterior2D(null);
     setKgComparison(null);
     setHistory([]);
     setNSteps(0);
@@ -285,7 +322,11 @@ export default function App() {
             <div className="stat">
               <span className="stat-label">Best θ</span>
               <span className="stat-value">
-                {bestImpparam != null ? bestImpparam.toFixed(4) : '—'}
+                {bestImpparam == null
+                  ? '—'
+                  : Array.isArray(bestImpparam)
+                    ? `(${bestImpparam.map(v => v.toFixed(3)).join(', ')})`
+                    : Number(bestImpparam).toFixed(4)}
               </span>
             </div>
           </div>
@@ -313,7 +354,7 @@ export default function App() {
                 style={{ opacity: 0.85 }}>
                 Auto-run 25
               </button>
-              {nSteps > 0 && !reveal && (
+              {session.dim === 1 && nSteps > 0 && !reveal && (
                 <button className="btn btn-outline" onClick={handleReveal}
                   disabled={loading || revealLoading}>
                   {revealLoading ? 'Computing…' : 'Reveal truth'}
@@ -335,52 +376,74 @@ export default function App() {
         </div>
       )}
 
-      {/* KG chart — placed above the posterior. For human mode, the aligned
-          θ slider + Run button live directly below the plot so the user can
-          eye-ball the KG curves and pick x visually. */}
-      <div className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
-            KG(x) — 1% grid
-          </span>
-          <span style={{ fontSize: 12, color: '#94a3b8' }}>
-            correlated (analytic vs MC) vs independent beliefs
-          </span>
+      {/* 2-D belief: 3-D surface chart. Renders for cash_balance_2d. */}
+      {session.dim >= 2 && (
+        <div className="card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+              GP posterior surface — 3-D belief
+            </span>
+            <span style={{ fontSize: 12, color: '#94a3b8' }}>
+              {nSteps} observation{nSteps !== 1 ? 's' : ''}
+            </span>
+          </div>
+          <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 8px 0' }}>
+            Posterior mean of F(θ) as a 3-D surface over the 2-parameter box.
+            Red dots are past observations at their realized (noisy) cost.
+            Green circle on the base plane marks the current best θ.
+          </p>
+          <Belief3DChart posterior={posterior2D} />
         </div>
-        <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 8px 0' }}>
-          Same underlying GP posterior; three ways of scoring each candidate θ.
-          Analytic and MC should agree closely (any gap is MC noise).
-          Independent ignores the covariance cascade to nearby points.
-        </p>
-        <KGChart kg={kgComparison} />
-        {isHuman && (
-          <ImpparamSlider
-            impparam={impparam}
-            setImpparam={setImpparam}
-            onRun={() => handleEvaluate(impparam)}
-            loading={loading}
-            exhausted={budget != null && nSteps >= budget}
-          />
-        )}
-      </div>
+      )}
 
-      {/* Posterior chart */}
-      <div className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>GP posterior</span>
-          <span style={{ fontSize: 12, color: '#94a3b8' }}>
-            {nSteps} observation{nSteps !== 1 ? 's' : ''}
-          </span>
-        </div>
-        <PosteriorChart posterior={posterior} history={history} policy={policy} />
-      </div>
+      {/* 1-D belief: KG chart + posterior. Only for scalar-θ apps. */}
+      {session.dim === 1 && (
+        <>
+          <div className="card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                KG(x) — 1% grid
+              </span>
+              <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                correlated (analytic vs MC) vs independent beliefs
+              </span>
+            </div>
+            <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 8px 0' }}>
+              Same underlying GP posterior; three ways of scoring each candidate θ.
+              Analytic and MC should agree closely (any gap is MC noise).
+              Independent ignores the covariance cascade to nearby points.
+            </p>
+            <KGChart kg={kgComparison} />
+            {isHuman && (
+              <ImpparamSlider
+                impparam={impparam}
+                setImpparam={setImpparam}
+                onRun={() => handleEvaluate(impparam)}
+                loading={loading}
+                exhausted={budget != null && nSteps >= budget}
+              />
+            )}
+          </div>
 
-      {/* Last simulation result — cash chart + jump log */}
-      {lastResult && (
+          <div className="card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>GP posterior</span>
+              <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                {nSteps} observation{nSteps !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <PosteriorChart posterior={posterior} history={history} policy={policy} />
+          </div>
+        </>
+      )}
+
+      {/* Last simulation result — cash chart + jump log. 1-D apps only:
+          cash_series and event_log are cash-balance-specific. */}
+      {lastResult && session.dim === 1 && lastResult.cash_series && (
         <div className="card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
-              Cash position — θ = {lastResult.impparam.toFixed(3)}
+              Cash position — θ = {Number(lastResult.impparam).toFixed(3)}
             </span>
             <span style={{ fontSize: 12, color: '#64748b' }}>
               Opp. cost {fmt(lastResult.opportunity_cost)} · Shortfall {fmt(lastResult.shortfall_cost)} · Total {fmt(lastResult.total_cost)}
