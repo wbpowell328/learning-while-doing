@@ -45,7 +45,7 @@ export default function RevealPanel({ reveal }) {
   const vsNaive = naive_cost - player_best_cost;
 
   return (
-    <div className="card card-full reveal-panel">
+    <div className="card reveal-panel">
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>
           Session complete — true cost curve revealed

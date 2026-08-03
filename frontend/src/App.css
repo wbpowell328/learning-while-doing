@@ -22,17 +22,25 @@ body {
 .app-wide { max-width: 1400px; }
 
 /* ── 2-column chart grid (session view) ── */
-/* Cards flow into a 2-col grid on wide screens so the plots fit on a laptop
-   without scrolling. `card-full` spans the whole row (used for the reveal
-   panel, which is a comparison plot that wants full width). */
+/* Outer grid gives us two side-by-side columns; inner .chart-col is a
+   flex-column so each column's cards stack in DOM order. This lets us
+   pin KG + GP-posterior on the left so their x-axes line up, and keep
+   the reveal panel / history / cash cards on the right where they're
+   immediately visible. Collapses to one column below 1100 px. */
 .chart-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
   margin-bottom: 16px;
+  align-items: start;
 }
-.chart-grid > .card { margin-bottom: 0; }
-.chart-grid > .card-full { grid-column: 1 / -1; }
+.chart-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.chart-grid .card { margin-bottom: 0; }
 @media (max-width: 1100px) {
   .chart-grid { grid-template-columns: 1fr; }
 }
