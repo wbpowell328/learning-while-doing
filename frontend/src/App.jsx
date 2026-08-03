@@ -327,7 +327,7 @@ export default function App() {
   const isHuman = policy === 'human';
 
   return (
-    <div className="app">
+    <div className="app app-wide">
       {/* Header */}
       <div className="header">
         <h1>Learning While Doing</h1>
@@ -406,132 +406,137 @@ export default function App() {
         </div>
       )}
 
-      {/* 2-D belief: 3-D posterior surface + 3-D KG surface. */}
-      {session.dim >= 2 && (
-        <>
-          <div className="card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
-                GP posterior surface — 3-D belief
-              </span>
-              <span style={{ fontSize: 12, color: '#94a3b8' }}>
-                {nSteps} observation{nSteps !== 1 ? 's' : ''}
-              </span>
+      {/* All plot / table cards flow into a 2-column grid on wide screens,
+          collapsing to 1 column below 1100 px. Reveal panel spans the full
+          width and sits right after posterior in DOM order, so it appears
+          prominently below the posterior instead of being buried at the
+          bottom of the page. */}
+      <div className="chart-grid">
+        {/* 2-D belief: 3-D posterior surface + 3-D KG surface. */}
+        {session.dim >= 2 && (
+          <>
+            <div className="card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                  GP posterior surface — 3-D belief
+                </span>
+                <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                  {nSteps} observation{nSteps !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 8px 0' }}>
+                Posterior mean of F(θ) as a 3-D surface over the 2-parameter box.
+                Red dots are past observations at their realized (noisy) cost.
+                Green circle on the base plane marks the current best θ.
+              </p>
+              <Belief3DChart data={posterior2D && { ...posterior2D, value: posterior2D.mean }}
+                             valueLabel="Posterior mean cost"
+                             colorScheme="viridis"
+                             obsMode="atCost"
+                             emptyMessage="Waiting for posterior…" />
             </div>
-            <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 8px 0' }}>
-              Posterior mean of F(θ) as a 3-D surface over the 2-parameter box.
-              Red dots are past observations at their realized (noisy) cost.
-              Green circle on the base plane marks the current best θ.
-            </p>
-            <Belief3DChart data={posterior2D && { ...posterior2D, value: posterior2D.mean }}
-                           valueLabel="Posterior mean cost"
-                           colorScheme="viridis"
-                           obsMode="atCost"
-                           emptyMessage="Waiting for posterior…" />
-          </div>
 
-          <div className="card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
-                Knowledge gradient surface — KG(θ)
-              </span>
-              <span style={{ fontSize: 12, color: '#94a3b8' }}>
-                info value at each candidate
-              </span>
+            <div className="card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                  Knowledge gradient surface — KG(θ)
+                </span>
+                <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                  info value at each candidate
+                </span>
+              </div>
+              <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 8px 0' }}>
+                Analytic correlated KG at every θ on a 20×20 probe grid.  The
+                surface flattens (drops) as each observation reduces uncertainty
+                in its neighborhood.  Red dots on the base plane mark past
+                observations; green circle marks argmax KG — the θ this policy
+                would try next.
+              </p>
+              <Belief3DChart data={kg2D && {
+                               ...kg2D,
+                               value: kg2D.kg,
+                               best_impparam: argmaxOnGrid(kg2D.kg, kg2D.axis1, kg2D.axis2),
+                             }}
+                             valueLabel="KG(θ)"
+                             colorScheme="jet"
+                             obsMode="baseplane"
+                             dollarZ={false}
+                             bestLabel="next θ"
+                             emptyMessage="Waiting for KG surface…" />
             </div>
-            <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 8px 0' }}>
-              Analytic correlated KG at every θ on a 20×20 probe grid.  The
-              surface flattens (drops) as each observation reduces uncertainty
-              in its neighborhood.  Red dots on the base plane mark past
-              observations; green circle marks argmax KG — the θ this policy
-              would try next.
-            </p>
-            <Belief3DChart data={kg2D && {
-                             ...kg2D,
-                             value: kg2D.kg,
-                             // Override best_impparam with argmax(KG) so the marker
-                             // shows what the KG policy would sample next, not the
-                             // current best mean.
-                             best_impparam: argmaxOnGrid(kg2D.kg, kg2D.axis1, kg2D.axis2),
-                           }}
-                           valueLabel="KG(θ)"
-                           colorScheme="jet"
-                           obsMode="baseplane"
-                           dollarZ={false}
-                           bestLabel="next θ"
-                           emptyMessage="Waiting for KG surface…" />
-          </div>
-        </>
-      )}
+          </>
+        )}
 
-      {/* 1-D belief: KG chart + posterior. Only for scalar-θ apps. */}
-      {session.dim === 1 && (
-        <>
-          <div className="card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
-                KG(x) — 1% grid
-              </span>
-              <span style={{ fontSize: 12, color: '#94a3b8' }}>
-                correlated (analytic vs MC) vs independent beliefs
-              </span>
+        {/* 1-D belief: KG chart + posterior. Only for scalar-θ apps. */}
+        {session.dim === 1 && (
+          <>
+            <div className="card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                  KG(x) — 1% grid
+                </span>
+                <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                  correlated (analytic vs MC) vs independent beliefs
+                </span>
+              </div>
+              <KGChart kg={kgComparison} />
+              {isHuman && (
+                <ImpparamSlider
+                  impparam={impparam}
+                  setImpparam={setImpparam}
+                  onRun={() => handleEvaluate(impparam)}
+                  loading={loading}
+                  exhausted={budget != null && nSteps >= budget}
+                />
+              )}
             </div>
-            <KGChart kg={kgComparison} />
-            {isHuman && (
-              <ImpparamSlider
-                impparam={impparam}
-                setImpparam={setImpparam}
-                onRun={() => handleEvaluate(impparam)}
-                loading={loading}
-                exhausted={budget != null && nSteps >= budget}
-              />
+
+            <div className="card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>GP posterior</span>
+                <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                  {nSteps} observation{nSteps !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <PosteriorChart posterior={posterior} history={history} policy={policy} />
+            </div>
+
+            {/* Reveal placeholder / panel — right after posterior, full-width,
+                so it can't be missed. */}
+            {revealLoading && !reveal && (
+              <div className="card card-full" style={{ textAlign: 'center', color: '#64748b', fontSize: 13, padding: 32 }}>
+                Computing true cost curve — running {30 * 12} simulations…
+              </div>
             )}
-          </div>
+            {reveal && <RevealPanel reveal={reveal} />}
+          </>
+        )}
 
+        {/* Last simulation result — cash chart + jump log. 1-D apps only:
+            cash_series and event_log are cash-balance-specific. */}
+        {lastResult && session.dim === 1 && lastResult.cash_series && (
           <div className="card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>GP posterior</span>
-              <span style={{ fontSize: 12, color: '#94a3b8' }}>
-                {nSteps} observation{nSteps !== 1 ? 's' : ''}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                Cash position — θ = {Number(lastResult.impparam).toFixed(3)}
+              </span>
+              <span style={{ fontSize: 12, color: '#64748b' }}>
+                Opp. cost {fmt(lastResult.opportunity_cost)} · Shortfall {fmt(lastResult.shortfall_cost)} · Total {fmt(lastResult.total_cost)}
               </span>
             </div>
-            <PosteriorChart posterior={posterior} history={history} policy={policy} />
+            <CashChart result={lastResult} />
+            <JumpLog events={lastResult.event_log} initialAum={lastResult.initial_aum} />
           </div>
-        </>
-      )}
+        )}
 
-      {/* Last simulation result — cash chart + jump log. 1-D apps only:
-          cash_series and event_log are cash-balance-specific. */}
-      {lastResult && session.dim === 1 && lastResult.cash_series && (
+        {/* History */}
         <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
-              Cash position — θ = {Number(lastResult.impparam).toFixed(3)}
-            </span>
-            <span style={{ fontSize: 12, color: '#64748b' }}>
-              Opp. cost {fmt(lastResult.opportunity_cost)} · Shortfall {fmt(lastResult.shortfall_cost)} · Total {fmt(lastResult.total_cost)}
-            </span>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 12 }}>
+            Observation history
           </div>
-          <CashChart result={lastResult} />
-          <JumpLog events={lastResult.event_log} initialAum={lastResult.initial_aum} />
+          <HistoryTable history={history} />
         </div>
-      )}
-
-      {/* History */}
-      <div className="card">
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 12 }}>
-          Observation history
-        </div>
-        <HistoryTable history={history} />
       </div>
-
-      {/* End-of-session reveal */}
-      {revealLoading && !reveal && (
-        <div className="card" style={{ textAlign: 'center', color: '#64748b', fontSize: 13, padding: 32 }}>
-          Computing true cost curve — running {30 * 12} simulations…
-        </div>
-      )}
-      {reveal && <RevealPanel reveal={reveal} />}
     </div>
   );
 }
