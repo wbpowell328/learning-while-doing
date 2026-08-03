@@ -15,6 +15,22 @@ import './App.css';
 
 const POLICY_LABEL = { random: 'Random', ie: 'IE', kg: 'KG', human: 'Human' };
 
+// argmax over a 2-D grid encoded as a flat array in meshgrid(indexing="ij") order:
+// values[i * len(axis2) + j] corresponds to (axis1[i], axis2[j]).
+// Returns [axis1[i*], axis2[j*]] at the maximum, or null if inputs are missing.
+function argmaxOnGrid(values, axis1, axis2) {
+  if (!values?.length || !axis1?.length || !axis2?.length) return null;
+  let best = -Infinity;
+  let bestIdx = 0;
+  for (let k = 0; k < values.length; k++) {
+    const v = values[k];
+    if (Number.isFinite(v) && v > best) { best = v; bestIdx = k; }
+  }
+  const j = bestIdx % axis2.length;
+  const i = Math.floor(bestIdx / axis2.length);
+  return [axis1[i], axis2[j]];
+}
+
 export default function App() {
   const [session,       setSession]       = useState(null);
   const [posterior,     setPosterior]     = useState(null);
@@ -424,13 +440,22 @@ export default function App() {
               Analytic correlated KG at every θ on a 20×20 probe grid.  The
               surface flattens (drops) as each observation reduces uncertainty
               in its neighborhood.  Red dots on the base plane mark past
-              observations; green circle is the current best θ.
+              observations; green circle marks argmax KG — the θ this policy
+              would try next.
             </p>
-            <Belief3DChart data={kg2D && { ...kg2D, value: kg2D.kg }}
+            <Belief3DChart data={kg2D && {
+                             ...kg2D,
+                             value: kg2D.kg,
+                             // Override best_impparam with argmax(KG) so the marker
+                             // shows what the KG policy would sample next, not the
+                             // current best mean.
+                             best_impparam: argmaxOnGrid(kg2D.kg, kg2D.axis1, kg2D.axis2),
+                           }}
                            valueLabel="KG(θ)"
                            colorScheme="jet"
                            obsMode="baseplane"
                            dollarZ={false}
+                           bestLabel="next θ"
                            emptyMessage="Waiting for KG surface…" />
           </div>
         </>

@@ -97,6 +97,7 @@ export default function Belief3DChart({
   colorScheme = "viridis",
   obsMode = "atCost",
   dollarZ = true,
+  bestLabel = "best θ",
   emptyMessage = "Waiting for surface data…",
 }) {
   // Back-compat: accept the old `posterior` prop shape with `mean` field.
@@ -293,14 +294,14 @@ export default function Belief3DChart({
         );
       })}
 
-      {/* Best-θ marker on the base plane */}
+      {/* Marker on the base plane — semantics chosen by caller via bestLabel. */}
       {bestProj && (
         <g>
           <circle cx={bestProj[0]} cy={bestProj[1]} r={6}
                   fill="none" stroke="#16a34a" strokeWidth={2} />
           <text x={bestProj[0] + 8} y={bestProj[1] - 6}
                 fontSize={11} fill="#16a34a" fontWeight={600}>
-            best θ
+            {bestLabel}
           </text>
         </g>
       )}
@@ -312,7 +313,7 @@ export default function Belief3DChart({
         <circle cx={6} cy={26} r={4} fill="#dc2626" />
         <text x={16} y={30} fontSize={10} fill="#374151">Observation ({(history ?? []).length})</text>
         <circle cx={6} cy={42} r={5} fill="none" stroke="#16a34a" strokeWidth={2} />
-        <text x={16} y={46} fontSize={10} fill="#374151">Current best θ</text>
+        <text x={16} y={46} fontSize={10} fill="#374151">{bestLabel}</text>
       </g>
     </svg>
   );
