@@ -569,7 +569,10 @@ export default function App() {
                   averaged m independent runs there (noise → σ/√m, precision
                   → m·β). Flat-then-rising S-curves mean single-shot KG is
                   hiding a lot of information; online-KG will look tempted by
-                  μ_reward instead of exploring.
+                  μ_reward instead of exploring. Editing σ_ε below refits the
+                  whole posterior under that noise assumption (a "what if
+                  σ_ε had been X the whole time" scenario), then recomputes
+                  the KG(m) curve — the current session's belief is untouched.
                 </p>
                 <KGvsMChart
                   data={kgVsM}

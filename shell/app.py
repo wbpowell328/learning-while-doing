@@ -634,11 +634,36 @@ def kg_vs_m(sid: str, theta: float | None = None, m_max: int = 50,
     else:
         theta_used = float(np.clip(theta, cfg.impparam_min, cfg.impparam_max))
 
-    m_max_int = int(max(1, min(m_max, 200)))
+    # If the caller supplied a σ_ε override, build a FRESH belief with that
+    # noise_std and replay the observation history through it. Overriding
+    # only the future-noise term in the KG formula (leaving the posterior
+    # fit under the original noise_std) is not enough: with a well-fit
+    # posterior, KG asymptote is bounded by "what a perfect observation
+    # could tell you here", which is small once you're well-informed. To
+    # see the true S-curve you need the posterior itself to reflect the
+    # noisier observations — i.e. a proper "what if σ_ε had been X the
+    # whole time" scenario.
+    if sigma_eps is not None:
+        from dataclasses import replace as _replace
+        from policy.belief import BeliefModel as _BeliefModel
+        refit_cfg = _replace(
+            session.belief.config,
+            noise_std=max(float(sigma_eps), 1e-6),
+        )
+        refit_belief = _BeliefModel(refit_cfg, dim=session.dim)
+        # session.history stores display-frame values; negate for maximise
+        # apps so the belief sees "value to minimise" (=-reward).
+        for theta_hist, disp_val in session.history:
+            internal = float(disp_val) if session.minimize else -float(disp_val)
+            refit_belief.update(theta_hist, internal)
+        belief_for_kg = refit_belief
+    else:
+        belief_for_kg = session.belief
+
+    m_max_int = int(max(1, min(m_max, 500)))
     m_positive = list(range(1, m_max_int + 1))
     kg_positive = kg_vs_batch_size(
-        session.belief, search_grid, theta_used, m_positive,
-        noise_std_override=(None if sigma_eps is None else max(float(sigma_eps), 1e-6)),
+        belief_for_kg, search_grid, theta_used, m_positive,
     )
     # Prepend m=0 anchor: with zero observations no information is gained,
     # so KG(x; 0) = 0 by definition. Including it makes the "first
@@ -651,8 +676,7 @@ def kg_vs_m(sid: str, theta: float | None = None, m_max: int = 50,
         "kg_values": kg_values,
         # noise_std currently in effect for this response (the override if
         # supplied, else the belief's own noise_std).
-        "noise_std": float(sigma_eps) if sigma_eps is not None
-                     else float(session.belief.config.noise_std),
+        "noise_std": float(belief_for_kg.config.noise_std),
         "noise_std_belief": float(session.belief.config.noise_std),
         "base_kg": float(kg_positive[0]) if len(kg_positive) else 0.0,
     }

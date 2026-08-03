@@ -104,7 +104,7 @@ export default function KGvsMChart({ data, onSigmaEpsChange, sigmaEpsPending = f
         {isOverridden && !sigmaEpsPending && (
           <>
             <span style={{ color: '#b45309', fontStyle: 'italic' }}>
-              overriding belief's σ_ε = ${Math.round(noise_std_belief).toLocaleString()}
+              what-if refit — belief's σ_ε = ${Math.round(noise_std_belief).toLocaleString()}
             </span>
             <button
               type="button"
