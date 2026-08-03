@@ -3,7 +3,7 @@ import { createSession, runStep, evaluateC, getPosterior, getReveal, getKGCompar
 import SessionForm from './components/SessionForm';
 import PosteriorChart from './components/PosteriorChart';
 import KGChart from './components/KGChart';
-import CStarSlider from './components/CStarSlider';
+import ImpparamSlider from './components/ImpparamSlider';
 import HistoryTable from './components/HistoryTable';
 import HumanControls from './components/HumanControls';
 import CashChart from './components/CashChart';
@@ -20,14 +20,14 @@ export default function App() {
   const [kgComparison,  setKgComparison]  = useState(null);
   const [history,       setHistory]       = useState([]);
   const [nSteps,        setNSteps]        = useState(0);
-  const [bestCStar,     setBestCStar]     = useState(null);
+  const [bestImpparam,     setBestImpparam]     = useState(null);
   const [lastResult,    setLastResult]    = useState(null);
   const [reveal,        setReveal]        = useState(null);
   const [revealLoading, setRevealLoading] = useState(false);
   const [loading,       setLoading]       = useState(false);
   const [autoCount,     setAutoCount]     = useState(0);
   const [error,         setError]         = useState(null);
-  const [cStar,         setCStar]         = useState(0.10);
+  const [impparam,         setImpparam]         = useState(0.10);
   const [batchResult,   setBatchResult]   = useState(null);
   const [batchProgress, setBatchProgress] = useState(null);
   const stopRef = useRef(false);
@@ -37,9 +37,9 @@ export default function App() {
   const applyResult = useCallback((result, post, kg) => {
     setPosterior(post);
     setKgComparison(kg);
-    setBestCStar(result.best_c_star);
+    setBestImpparam(result.best_impparam);
     setNSteps(result.n_steps);
-    setHistory(prev => [...prev, [result.c_star, result.total_cost]]);
+    setHistory(prev => [...prev, [result.impparam, result.total_cost]]);
     setLastResult(result);
   }, []);
 
@@ -110,7 +110,7 @@ export default function App() {
     setSession({ id: session_id, policy, seed: session_seed, budget: budget ?? null });
     setPosterior(post);
     setKgComparison(kg);
-    setBestCStar(post.best_c_star);
+    setBestImpparam(post.best_impparam);
     setHistory([]);
     setNSteps(0);
     setLastResult(null);
@@ -119,12 +119,12 @@ export default function App() {
 
   // ── Human: evaluate at a chosen θ ───────────────────────────────────────
 
-  const handleEvaluate = useCallback(async (cStar) => {
+  const handleEvaluate = useCallback(async (impparam) => {
     if (!session || loading) return;
     setLoading(true);
     setError(null);
     try {
-      const result = await evaluateC(session.id, cStar);
+      const result = await evaluateC(session.id, impparam);
       const [post, kg] = await Promise.all([
         getPosterior(session.id),
         getKGComparison(session.id, 0.01, 50, session.budget ?? 10),
@@ -199,7 +199,7 @@ export default function App() {
     setKgComparison(null);
     setHistory([]);
     setNSteps(0);
-    setBestCStar(null);
+    setBestImpparam(null);
     setLastResult(null);
     setReveal(null);
     setError(null);
@@ -285,7 +285,7 @@ export default function App() {
             <div className="stat">
               <span className="stat-label">Best θ</span>
               <span className="stat-value">
-                {bestCStar != null ? bestCStar.toFixed(4) : '—'}
+                {bestImpparam != null ? bestImpparam.toFixed(4) : '—'}
               </span>
             </div>
           </div>
@@ -354,10 +354,10 @@ export default function App() {
         </p>
         <KGChart kg={kgComparison} />
         {isHuman && (
-          <CStarSlider
-            cStar={cStar}
-            setCStar={setCStar}
-            onRun={() => handleEvaluate(cStar)}
+          <ImpparamSlider
+            impparam={impparam}
+            setImpparam={setImpparam}
+            onRun={() => handleEvaluate(impparam)}
             loading={loading}
             exhausted={budget != null && nSteps >= budget}
           />
@@ -380,7 +380,7 @@ export default function App() {
         <div className="card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
-              Cash position — θ = {lastResult.c_star.toFixed(3)}
+              Cash position — θ = {lastResult.impparam.toFixed(3)}
             </span>
             <span style={{ fontSize: 12, color: '#64748b' }}>
               Opp. cost {fmt(lastResult.opportunity_cost)} · Shortfall {fmt(lastResult.shortfall_cost)} · Total {fmt(lastResult.total_cost)}

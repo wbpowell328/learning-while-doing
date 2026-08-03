@@ -19,10 +19,10 @@ export const createSession = (body) =>
   });
 
 export const runStep     = (sid) => call(`/sessions/${sid}/step`, { method: 'POST' });
-export const evaluateC   = (sid, c_star) => call(`/sessions/${sid}/evaluate`, {
+export const evaluateC   = (sid, impparam) => call(`/sessions/${sid}/evaluate`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ c_star }),
+  body: JSON.stringify({ impparam }),
 });
 export const getPosterior  = (sid) => call(`/sessions/${sid}/posterior`);
 export const getReveal     = (sid) => call(`/sessions/${sid}/reveal`);

@@ -56,7 +56,7 @@ export default function KGChart({ kg }) {
     );
   }
 
-  const { c_stars, mc_samples, budget, steps_used } = kg;
+  const { impparams, mc_samples, budget, steps_used } = kg;
   const remaining = Math.max(0, budget - steps_used);
 
   // Offline axis (left)
@@ -75,7 +75,7 @@ export default function KGChart({ kg }) {
   const onTicks  = Array.from({ length: 5 }, (_, i) => onLo  + (i / 4) * (onHi  - onLo));
   const xTicks = [0.01, 0.05, 0.10, 0.15, 0.20];
 
-  const linePath = (values, mapY) => c_stars
+  const linePath = (values, mapY) => impparams
     .map((c, i) => `${i === 0 ? 'M' : 'L'}${xS(c)},${mapY(values[i])}`)
     .join('');
 
@@ -98,7 +98,7 @@ export default function KGChart({ kg }) {
                 stroke={color} strokeWidth={width}
                 strokeDasharray={dash ?? undefined}
                 opacity={0.9} />
-          {c_stars.map((c, i) => (
+          {impparams.map((c, i) => (
             <circle key={i} cx={xS(c)} cy={yOff(kg[key][i])} r={2.3}
                     fill={color} opacity={0.9} />
           ))}

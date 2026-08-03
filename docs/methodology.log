@@ -1,4 +1,4 @@
-This is LuaHBTeX, Version 1.17.1 (MiKTeX 24.1) (format=lualatex 2026.8.3)  3 AUG 2026 10:31
+This is LuaHBTeX, Version 1.17.1 (MiKTeX 24.1) (format=lualatex 2026.8.3)  3 AUG 2026 10:57
  restricted system commands enabled.
 **methodology.tex
 (./methodology.tex
@@ -652,75 +652,102 @@ File: umsb.fd 2013/01/14 v3.01 AMS symbols B
 
 \openout4 = methodology.toc
  [2] [3] [4]
-Overfull \hbox (46.11594pt too wide) in paragraph at lines 229--232
+Overfull \hbox (46.11594pt too wide) in paragraph at lines 258--261
 []\TU/lmr/m/n/10.95 In-de-pen-dent sub-streams for each ex-per-i-ment in-dex are
  drawn from \TU/lmtt/m/n/10.95 numpy.random.SeedSequence.spawn\TU/lmr/m/n/10.95
  ,
  []
 
 [5] [6]
+
+LaTeX Warning: Reference `sec:overview' on page 7 undefined on input line 363.
+
+[7]
 Package hyperref Info: bookmark level for unknown algorithm defaults to 0 on in
-put line 378.
- [7] [8] [9]
-Overfull \hbox (55.96977pt too wide) in paragraph at lines 535--542
+put line 412.
+ [8] [9]
+Overfull \hbox (55.96977pt too wide) in paragraph at lines 569--576
 []\TU/lmr/m/n/10.95 The Com-mon Ran-dom Num-bers (CRN) con-tract of Sec-tion []
 []2.4[][] is pre-served by pass-ing \TU/lmtt/m/n/10.95 experiment_index=n
  []
 
-[10]
-Overfull \hbox (8.6502pt too wide) in paragraph at lines 663--663
+[10] [11]
+Overfull \hbox (8.6502pt too wide) in paragraph at lines 697--697
 []|$\OT1/cmr/m/n/10 (0\OML/cmm/m/it/10 :\OT1/cmr/m/n/10 001\OML/cmm/m/it/10 ; \
 OMS/cmsy/m/n/10 ^^@\OT1/cmr/m/n/10 0\OML/cmm/m/it/10 :\OT1/cmr/m/n/10 001)$| 
  []
 
 
+Underfull \hbox (badness 10000) in paragraph at lines 704--704
+[]|$\OT1/cmr/m/n/10 [\OML/cmm/m/it/10 []; []\OT1/cmr/m/n/10 ]$
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 704--704
+\TU/lmr/m/n/10 (\TU/lmtt/m/n/10 impparam_min\TU/lmr/m/n/10 ,
+ []
+
+
 LaTeX Warning: `h' float specifier changed to `ht'.
 
 
 LaTeX Warning: `h' float specifier changed to `ht'.
+
+
+Underfull \hbox (badness 1062) in paragraph at lines 735--735
+[]|$\OML/cmm/m/it/10 []; []$ \TU/lmr/m/n/10 (\TU/lmtt/m/n/10 impparam_min\TU/
+lmr/m/n/10 ,
+ []
 
 
 LaTeX Warning: `h' float specifier changed to `ht'.
 
 LaTeX Font Info:    Font shape `TU/lmtt/bx/n' in size <10.95> not available
-(Font)              Font shape `TU/lmtt/b/n' tried instead on input line 718.
+(Font)              Font shape `TU/lmtt/b/n' tried instead on input line 752.
 
-Overfull \hbox (28.91228pt too wide) in paragraph at lines 723--727
+Overfull \hbox (28.91228pt too wide) in paragraph at lines 757--761
 \TU/lmr/m/n/10.95 Be-lief model (\TU/lmtt/m/n/10.95 belief.py\TU/lmr/m/n/10.95 
 ), ac-qui-si-tion poli-cies (\TU/lmtt/m/n/10.95 acquire.py\TU/lmr/m/n/10.95 ), 
 and ses-sion co-or-di-na-tor (\TU/lmtt/m/n/10.95 session.py\TU/lmr/m/n/10.95 ).
  []
 
-[11]
-Overfull \hbox (83.672pt too wide) in paragraph at lines 728--733
+
+Overfull \hbox (83.672pt too wide) in paragraph at lines 762--767
 \TU/lmr/m/n/10.95 FastAPI ser-vice ex-pos-ing \TU/lmtt/m/n/10.95 POST /sessions\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/10.95 POST /sessions/{sid}/step\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/10.95 GET /sessions/{sid}/posterior\TU/lmr/m/n/10.95 ,
  []
 
 
-Overfull \hbox (6.41pt too wide) in paragraph at lines 728--733
+Overfull \hbox (6.41pt too wide) in paragraph at lines 762--767
 \TU/lmtt/m/n/10.95 GET /sessions/{sid}/reveal\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/1
 0.95 GET /sessions/{sid}/kg\TU/lmr/m/n/10.95 , and \TU/lmtt/m/n/10.95 POST /sess
 ions/batch\TU/lmr/m/n/10.95 . The
  []
 
-[12] [13] (./methodology.aux)
+[12] [13] [14] (./methodology.aux)
  ***********
 LaTeX2e <2023-11-01> patch level 1
 L3 programming layer <2024-01-04>
  ***********
+
+
+LaTeX Warning: There were undefined references.
+
+
+LaTeX Warning: Label(s) may have changed. Rerun to get cross-references right.
+
 Package rerunfilecheck Info: File `methodology.out' has not changed.
-(rerunfilecheck)             Checksum: EAC5A7AD71F69185A683E2CCFBC9EA4A;4925.
+(rerunfilecheck)             Checksum: 4BE5E39CCB80B0AAD471FF895C20E508;5073.
 )
 
 Here is how much of LuaTeX's memory you used:
- 13121 strings out of 476497
+ 13126 strings out of 476497
  125129,1977958 words of node,token memory allocated
  947 words of node memory still in use:
    7 hlist, 2 vlist, 2 rule, 2 glue, 4 kern, 6 sub_mlist, 1 glyph, 105 attribute
 , 60 glue_spec, 105 attribute_list, 1 write nodes
-   avail lists: 2:1779,3:418,4:291,5:514,6:172,7:6583,8:71,9:1247,10:10,11:433
- 34823 multiletter control sequences out of 65536+600000
- 84 fonts using 6422231 bytes
+   avail lists: 2:1783,3:412,4:279,5:511,6:170,7:6732,8:71,9:1253,10:12,11:433
+ 34826 multiletter control sequences out of 65536+600000
+ 85 fonts using 6553919 bytes
  72i,14n,75p,547b,514s stack positions out of 10000i,1000n,20000p,200000b,200000s
 <//?/c:/users/warren powell/appdata/local/programs/miktex/fonts/opentype/public/
 lm/lmmonolt10-bold.otf><//?/c:/users/warren powell/appdata/local/programs/miktex
@@ -755,9 +782,9 @@ l/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy7.pfb><C:/Users/Warren Powe
 ll/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy8.pfb><C:/Us
 ers/Warren Powell/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/symb
 ols/msbm10.pfb>
-Output written on methodology.pdf (13 pages, 304732 bytes).
+Output written on methodology.pdf (14 pages, 308226 bytes).
 
-PDF statistics: 417 PDF objects out of 1000 (max. 8388607)
- 81 named destinations out of 1000 (max. 131072)
- 217 words of extra memory for PDF output out of 10000 (max. 100000000)
+PDF statistics: 427 PDF objects out of 1000 (max. 8388607)
+ 83 named destinations out of 1000 (max. 131072)
+ 225 words of extra memory for PDF output out of 10000 (max. 100000000)
 

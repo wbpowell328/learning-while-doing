@@ -6,7 +6,7 @@ Verified at the pure-exploration end (z_alpha = 1e6): the LCB
 is dominated by the std term, so argmin(IE) equals argmax(std).
 
 Properties verified:
-  1. Proposal is always a grid point within [c_star_min, c_star_max].
+  1. Proposal is always a grid point within [impparam_min, impparam_max].
   2. Under z_alpha=1e6, proposal achieves the maximum posterior std.
   3. Well-observed points (low std) are avoided under large z_alpha.
   4. Deterministic: rng is not used; same model → same proposal.
@@ -21,7 +21,7 @@ from policy.acquire import AcquisitionConfig, IEPolicy
 
 
 # z_alpha=1e6 forces LCB into pure-exploration behavior (argmin(mu - z*std) = argmax(std)).
-CFG = AcquisitionConfig(c_star_min=0.01, c_star_max=0.20, grid_size=100, z_alpha=1e6)
+CFG = AcquisitionConfig(impparam_min=0.01, impparam_max=0.20, grid_size=100, z_alpha=1e6)
 BELIEF_CFG = BeliefConfig(length_scale=0.04, signal_std=5_000.0, noise_std=500.0)
 
 _DUMMY_RNG = np.random.default_rng(0)  # IE never uses rng; pass any instance
@@ -35,7 +35,7 @@ def make_model(*observations) -> BeliefModel:
 
 
 def grid() -> np.ndarray:
-    return np.linspace(CFG.c_star_min, CFG.c_star_max, CFG.grid_size)
+    return np.linspace(CFG.impparam_min, CFG.impparam_max, CFG.grid_size)
 
 
 # ---------------------------------------------------------------------------
@@ -56,7 +56,7 @@ def test_proposal_in_bounds():
     policy = IEPolicy(CFG)
     for model in [make_model(), make_model((0.05, 2_000.0), (0.15, 5_000.0))]:
         c = policy.propose(model, _DUMMY_RNG)
-        assert CFG.c_star_min <= c <= CFG.c_star_max
+        assert CFG.impparam_min <= c <= CFG.impparam_max
 
 
 # ---------------------------------------------------------------------------

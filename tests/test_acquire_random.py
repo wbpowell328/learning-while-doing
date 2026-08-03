@@ -2,7 +2,7 @@
 RandomPolicy tests.
 
 Properties verified:
-  1. Proposal is always within [c_star_min, c_star_max].
+  1. Proposal is always within [impparam_min, impparam_max].
   2. Proposals vary across calls (not constant — noise exists).
   3. Same rng state → identical proposal (deterministic).
   4. Works with an empty model (no observations required).
@@ -16,7 +16,7 @@ from policy.belief import BeliefConfig, BeliefModel
 from policy.acquire import AcquisitionConfig, RandomPolicy
 
 
-CFG = AcquisitionConfig(c_star_min=0.01, c_star_max=0.20)
+CFG = AcquisitionConfig(impparam_min=0.01, impparam_max=0.20)
 
 
 def make_rng(seed: int = 0) -> np.random.Generator:
@@ -43,8 +43,8 @@ def test_proposal_in_bounds():
     model = empty_model()
     for seed in range(50):
         c = policy.propose(model, make_rng(seed))
-        assert CFG.c_star_min <= c <= CFG.c_star_max, (
-            f"seed={seed}: proposal {c} outside [{CFG.c_star_min}, {CFG.c_star_max}]"
+        assert CFG.impparam_min <= c <= CFG.impparam_max, (
+            f"seed={seed}: proposal {c} outside [{CFG.impparam_min}, {CFG.impparam_max}]"
         )
 
 
@@ -78,13 +78,13 @@ def test_deterministic():
 def test_works_with_empty_model():
     policy = RandomPolicy(CFG)
     c = policy.propose(empty_model(), make_rng(0))
-    assert CFG.c_star_min <= c <= CFG.c_star_max
+    assert CFG.impparam_min <= c <= CFG.impparam_max
 
 
 def test_works_with_loaded_model():
     policy = RandomPolicy(CFG)
     c = policy.propose(loaded_model(), make_rng(0))
-    assert CFG.c_star_min <= c <= CFG.c_star_max
+    assert CFG.impparam_min <= c <= CFG.impparam_max
 
 
 # ---------------------------------------------------------------------------
@@ -92,7 +92,7 @@ def test_works_with_loaded_model():
 # ---------------------------------------------------------------------------
 
 def test_custom_bounds_respected():
-    cfg = AcquisitionConfig(c_star_min=0.05, c_star_max=0.10)
+    cfg = AcquisitionConfig(impparam_min=0.05, impparam_max=0.10)
     policy = RandomPolicy(cfg)
     model = empty_model()
     for seed in range(40):

@@ -2,7 +2,7 @@
 KGPolicy (knowledge gradient) tests.
 
 Properties verified:
-  1. Proposal is always a valid grid point within [c_star_min, c_star_max].
+  1. Proposal is always a valid grid point within [impparam_min, impparam_max].
   2. Works with no observations (prior only).
   3. KG values over the grid are non-negative (analytic KG, tight tolerance).
   4. The proposed point achieves the maximum KG value on the grid.
@@ -17,7 +17,7 @@ from policy.belief import BeliefConfig, BeliefModel
 from policy.acquire import AcquisitionConfig, KGPolicy
 
 
-CFG = AcquisitionConfig(c_star_min=0.01, c_star_max=0.20, grid_size=50)
+CFG = AcquisitionConfig(impparam_min=0.01, impparam_max=0.20, grid_size=50)
 BELIEF_CFG = BeliefConfig(length_scale=0.04, signal_std=5_000.0, noise_std=1_000.0)
 
 
@@ -33,7 +33,7 @@ def make_model(*observations) -> BeliefModel:
 
 
 def grid() -> np.ndarray:
-    return np.linspace(CFG.c_star_min, CFG.c_star_max, CFG.grid_size)
+    return np.linspace(CFG.impparam_min, CFG.impparam_max, CFG.grid_size)
 
 
 # ---------------------------------------------------------------------------
@@ -52,7 +52,7 @@ def test_proposal_in_bounds():
     policy = KGPolicy(CFG)
     for obs in [[], [(0.05, 2_000.0)], [(0.05, 2_000.0), (0.15, 5_000.0)]]:
         c = policy.propose(make_model(*obs), make_rng(0))
-        assert CFG.c_star_min <= c <= CFG.c_star_max
+        assert CFG.impparam_min <= c <= CFG.impparam_max
 
 
 # ---------------------------------------------------------------------------
@@ -62,7 +62,7 @@ def test_proposal_in_bounds():
 def test_no_observations_valid():
     policy = KGPolicy(CFG)
     c = policy.propose(make_model(), make_rng(42))
-    assert CFG.c_star_min <= c <= CFG.c_star_max
+    assert CFG.impparam_min <= c <= CFG.impparam_max
 
 
 # ---------------------------------------------------------------------------

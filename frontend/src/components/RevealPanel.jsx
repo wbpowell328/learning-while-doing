@@ -18,9 +18,9 @@ export default function RevealPanel({ reveal }) {
   if (!reveal) return null;
 
   const {
-    c_stars, mean_cost,
-    true_best_c_star, true_min_cost,
-    player_best_c_star, player_best_cost,
+    impparams, mean_cost,
+    true_best_impparam, true_min_cost,
+    player_best_impparam, player_best_cost,
     naive_cost,
   } = reveal;
 
@@ -34,7 +34,7 @@ export default function RevealPanel({ reveal }) {
   const xS = (c) => PAD.left + ((c - X_MIN) / (X_MAX - X_MIN)) * IW;
   const yS = (v) => PAD.top + ((yHi - v) / (yHi - yLo)) * IH;
 
-  const costPath = c_stars
+  const costPath = impparams
     .map((c, i) => `${i === 0 ? 'M' : 'L'}${xS(c).toFixed(1)},${yS(mean_cost[i]).toFixed(1)}`)
     .join('');
 
@@ -51,7 +51,7 @@ export default function RevealPanel({ reveal }) {
           Session complete — true cost curve revealed
         </div>
         <div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>
-          Estimated from {c_stars.length} grid points × 12 independent simulations (held-out seed)
+          Estimated from {impparams.length} grid points × 12 independent simulations (held-out seed)
         </div>
       </div>
 
@@ -59,13 +59,13 @@ export default function RevealPanel({ reveal }) {
       <div className="reveal-stats">
         <div className="reveal-stat">
           <span className="reveal-stat-label">Your best θ</span>
-          <span className="reveal-stat-value">{player_best_c_star.toFixed(3)}</span>
+          <span className="reveal-stat-value">{player_best_impparam.toFixed(3)}</span>
           <span className="reveal-stat-sub">~{fmt(player_best_cost)}/run</span>
         </div>
         <div className="reveal-stat">
           <span className="reveal-stat-label">True optimum</span>
           <span className="reveal-stat-value" style={{ color: '#dc2626' }}>
-            {true_best_c_star.toFixed(3)}
+            {true_best_impparam.toFixed(3)}
           </span>
           <span className="reveal-stat-sub">~{fmt(true_min_cost)}/run</span>
         </div>
@@ -98,12 +98,12 @@ export default function RevealPanel({ reveal }) {
           stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="4,3" opacity={0.8} />
 
         {/* Player's best θ vertical */}
-        <line x1={xS(player_best_c_star)} x2={xS(player_best_c_star)}
+        <line x1={xS(player_best_impparam)} x2={xS(player_best_impparam)}
           y1={PAD.top} y2={H - PAD.bottom}
           stroke="#2563eb" strokeWidth={1.5} strokeDasharray="6,4" opacity={0.9} />
 
         {/* True best θ vertical */}
-        <line x1={xS(true_best_c_star)} x2={xS(true_best_c_star)}
+        <line x1={xS(true_best_impparam)} x2={xS(true_best_impparam)}
           y1={PAD.top} y2={H - PAD.bottom}
           stroke="#dc2626" strokeWidth={2} />
 
@@ -111,11 +111,11 @@ export default function RevealPanel({ reveal }) {
         <path d={costPath} fill="none" stroke="#374151" strokeWidth={2.5} />
 
         {/* Dot at true minimum */}
-        <circle cx={xS(true_best_c_star)} cy={yS(true_min_cost)} r={5}
+        <circle cx={xS(true_best_impparam)} cy={yS(true_min_cost)} r={5}
           fill="#dc2626" stroke="white" strokeWidth={1.5} />
 
         {/* Dot at player position */}
-        <circle cx={xS(player_best_c_star)} cy={yS(player_best_cost)} r={5}
+        <circle cx={xS(player_best_impparam)} cy={yS(player_best_cost)} r={5}
           fill="#2563eb" stroke="white" strokeWidth={1.5} />
 
         {/* X axis */}

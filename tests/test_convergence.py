@@ -19,7 +19,7 @@ HORIZON = 26  # weeks
 
 def _batch_costs(n: int, seed_offset: int = 0) -> np.ndarray:
     return np.array([
-        simulate(CFG, c_star=C_STAR, horizon_weeks=HORIZON,
+        simulate(CFG, impparam=C_STAR, horizon_weeks=HORIZON,
                  session_seed=SEED + seed_offset + i, experiment_index=0).total_cost
         for i in range(n)
     ])

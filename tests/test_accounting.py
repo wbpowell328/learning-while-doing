@@ -22,7 +22,7 @@ CFG_NO_JUMPS = SimConfig(
 CFG_WITH_JUMPS = SimConfig(stationary=True, jump_rate_annual=12.0)
 
 
-def _reconcile(config, c_star, horizon_weeks, session_seed, experiment_index):
+def _reconcile(config, impparam, horizon_weeks, session_seed, experiment_index):
     """
     Re-run the path and verify the balance sheet at every day.
 
@@ -35,14 +35,14 @@ def _reconcile(config, c_star, horizon_weeks, session_seed, experiment_index):
       aum[t] = aum[t-1] + flow[t] + invested[t-1] * r_daily
     """
     cfg = config
-    r = simulate(cfg, c_star, horizon_weeks, session_seed, experiment_index)
+    r = simulate(cfg, impparam, horizon_weeks, session_seed, experiment_index)
     dt = 1.0 / cfg.trading_days_per_year
     r_daily = cfg.r_market_annual * dt
     n = r.days
 
     aum = r.cash_series + r.invested_series
     expected_aum = np.empty(n)
-    prev_invested = cfg.initial_aum * (1 - c_star)  # initial invested
+    prev_invested = cfg.initial_aum * (1 - impparam)  # initial invested
 
     current_aum = cfg.initial_aum
     for t in range(n):
@@ -59,20 +59,20 @@ def _reconcile(config, c_star, horizon_weeks, session_seed, experiment_index):
 
 
 def test_accounting_no_jumps():
-    _reconcile(CFG_NO_JUMPS, c_star=0.05, horizon_weeks=26,
+    _reconcile(CFG_NO_JUMPS, impparam=0.05, horizon_weeks=26,
                session_seed=1, experiment_index=0)
 
 
 def test_accounting_with_jumps():
-    _reconcile(CFG_WITH_JUMPS, c_star=0.05, horizon_weeks=26,
+    _reconcile(CFG_WITH_JUMPS, impparam=0.05, horizon_weeks=26,
                session_seed=1, experiment_index=0)
 
 
-def test_accounting_low_c_star():
-    _reconcile(CFG_WITH_JUMPS, c_star=0.01, horizon_weeks=26,
+def test_accounting_low_impparam():
+    _reconcile(CFG_WITH_JUMPS, impparam=0.01, horizon_weeks=26,
                session_seed=2, experiment_index=3)
 
 
-def test_accounting_high_c_star():
-    _reconcile(CFG_WITH_JUMPS, c_star=0.20, horizon_weeks=26,
+def test_accounting_high_impparam():
+    _reconcile(CFG_WITH_JUMPS, impparam=0.20, horizon_weeks=26,
                session_seed=3, experiment_index=1)

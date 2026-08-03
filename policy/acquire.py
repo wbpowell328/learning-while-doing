@@ -29,8 +29,8 @@ class AcquisitionPolicy(Protocol):
 
 @dataclass(frozen=True)
 class AcquisitionConfig:
-    c_star_min: float = 0.01
-    c_star_max: float = 0.20
+    impparam_min: float = 0.01
+    impparam_max: float = 0.20
     grid_size: int = 100   # evaluation grid resolution for IE and KG
     # IE (interval-estimation / lower confidence bound) tunable parameter.
     #   IE(x) = mu(x) - z_alpha * std(x); pick argmin.
@@ -45,7 +45,7 @@ class AcquisitionConfig:
 
 class RandomPolicy:
     """
-    Proposes a θ drawn uniformly at random from [c_star_min, c_star_max].
+    Proposes a θ drawn uniformly at random from [impparam_min, impparam_max].
     The BeliefModel is not consulted; the rng drives all randomness.
     """
 
@@ -54,7 +54,7 @@ class RandomPolicy:
 
     def propose(self, model: BeliefModel, rng: np.random.Generator) -> float:
         cfg = self.config
-        return float(rng.uniform(cfg.c_star_min, cfg.c_star_max))
+        return float(rng.uniform(cfg.impparam_min, cfg.impparam_max))
 
 
 # ---------------------------------------------------------------------------
@@ -80,7 +80,7 @@ class IEPolicy:
     def __init__(self, config: AcquisitionConfig | None = None) -> None:
         self.config = config or AcquisitionConfig()
         cfg = self.config
-        self._grid = np.linspace(cfg.c_star_min, cfg.c_star_max, cfg.grid_size)
+        self._grid = np.linspace(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
 
     def propose(self, model: BeliefModel, rng: np.random.Generator) -> float:
         mu, std = model.posterior(self._grid)
@@ -203,7 +203,7 @@ class KGPolicy:
     def __init__(self, config: AcquisitionConfig | None = None) -> None:
         self.config = config or AcquisitionConfig()
         cfg = self.config
-        self._grid = np.linspace(cfg.c_star_min, cfg.c_star_max, cfg.grid_size)
+        self._grid = np.linspace(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
 
     def propose(self, model: BeliefModel, rng: np.random.Generator) -> float:
         # rng is accepted for AcquisitionPolicy protocol compatibility; unused.
@@ -356,7 +356,7 @@ class KGMCPolicy:
         self.config = config or AcquisitionConfig()
         self._n_mc = int(n_mc)
         cfg = self.config
-        self._grid = np.linspace(cfg.c_star_min, cfg.c_star_max, cfg.grid_size)
+        self._grid = np.linspace(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
 
     def propose(self, model: BeliefModel, rng: np.random.Generator) -> float:
         kg = kg_mc_correlated_at(model, self._grid, self._grid, self._n_mc, rng)
@@ -372,7 +372,7 @@ class KGIndependentPolicy:
     def __init__(self, config: AcquisitionConfig | None = None) -> None:
         self.config = config or AcquisitionConfig()
         cfg = self.config
-        self._grid = np.linspace(cfg.c_star_min, cfg.c_star_max, cfg.grid_size)
+        self._grid = np.linspace(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
 
     def propose(self, model: BeliefModel, rng: np.random.Generator) -> float:
         kg = kg_independent_at(model, self._grid, self._grid)
@@ -392,7 +392,7 @@ class OKGCorrelatedPolicy:
         self.config = config
         self._budget = int(budget)
         cfg = self.config
-        self._grid = np.linspace(cfg.c_star_min, cfg.c_star_max, cfg.grid_size)
+        self._grid = np.linspace(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
 
     def propose(self, model: BeliefModel, rng: np.random.Generator) -> float:
         n = model.n_observations
@@ -413,7 +413,7 @@ class OKGIndependentPolicy:
         self.config = config
         self._budget = int(budget)
         cfg = self.config
-        self._grid = np.linspace(cfg.c_star_min, cfg.c_star_max, cfg.grid_size)
+        self._grid = np.linspace(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
 
     def propose(self, model: BeliefModel, rng: np.random.Generator) -> float:
         n = model.n_observations

@@ -11,15 +11,15 @@ const PAD_LEFT_PCT  = (72 / 720) * 100; // 10.00%
 const PAD_RIGHT_PCT = (96 / 720) * 100; // 13.33%
 const C_MIN = 0.01, C_MAX = 0.20;
 
-export default function CStarSlider({ cStar, setCStar, onRun, loading, exhausted }) {
+export default function ImpparamSlider({ impparam, setImpparam, onRun, loading, exhausted }) {
   return (
     <div style={{ paddingLeft: `${PAD_LEFT_PCT}%`, paddingRight: `${PAD_RIGHT_PCT}%` }}>
       {/* Slider — sits directly under the KG chart's x-axis */}
       <input
         type="range"
         min={C_MIN} max={C_MAX} step={0.001}
-        value={cStar}
-        onChange={(e) => setCStar(Number(e.target.value))}
+        value={impparam}
+        onChange={(e) => setImpparam(Number(e.target.value))}
         disabled={exhausted}
         style={{
           width: '100%',
@@ -57,11 +57,11 @@ export default function CStarSlider({ cStar, setCStar, onRun, loading, exhausted
         <label style={{ fontSize: 13, color: '#374151', fontWeight: 600 }}>θ =</label>
         <input
           type="number"
-          value={cStar.toFixed(3)}
+          value={impparam.toFixed(3)}
           min={C_MIN} max={C_MAX} step={0.001}
           onChange={(e) => {
             const v = Number(e.target.value);
-            if (v >= C_MIN && v <= C_MAX) setCStar(v);
+            if (v >= C_MIN && v <= C_MAX) setImpparam(v);
           }}
           disabled={exhausted}
           style={{
@@ -85,7 +85,7 @@ export default function CStarSlider({ cStar, setCStar, onRun, loading, exhausted
             disabled={loading}
             style={{ flex: 1, padding: '10px', fontSize: '0.95rem' }}
           >
-            {loading ? 'Running simulation…' : `Run simulation at θ = ${cStar.toFixed(3)} →`}
+            {loading ? 'Running simulation…' : `Run simulation at θ = ${impparam.toFixed(3)} →`}
           </button>
         )}
       </div>

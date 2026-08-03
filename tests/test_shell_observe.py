@@ -2,11 +2,11 @@
 POST /sessions/{sid}/observe tests.
 
 Properties verified:
-  1. Returns 200 with n_observations and best_c_star.
+  1. Returns 200 with n_observations and best_impparam.
   2. n_observations increments with each observe call.
   3. Does NOT increment n_steps (simulate is never called).
-  4. best_c_star is in domain.
-  5. best_c_star tracks a parabola minimum after enough observations.
+  4. best_impparam is in domain.
+  5. best_impparam tracks a parabola minimum after enough observations.
   6. Unknown session returns 404.
   7. Missing body fields return 422.
 """
@@ -30,9 +30,9 @@ def make_session() -> str:
     return r.json()["session_id"]
 
 
-def observe(sid: str, c_star: float, total_cost: float) -> dict:
+def observe(sid: str, impparam: float, total_cost: float) -> dict:
     r = client.post(f"/sessions/{sid}/observe",
-                    json={"c_star": c_star, "total_cost": total_cost})
+                    json={"impparam": impparam, "total_cost": total_cost})
     assert r.status_code == 200, r.text
     return r.json()
 
@@ -45,7 +45,7 @@ def test_observe_response_fields():
     sid = make_session()
     data = observe(sid, 0.10, 3_000.0)
     assert "n_observations" in data
-    assert "best_c_star" in data
+    assert "best_impparam" in data
 
 
 # ---------------------------------------------------------------------------
@@ -73,17 +73,17 @@ def test_observe_does_not_increment_n_steps():
 
 
 # ---------------------------------------------------------------------------
-# 4. best_c_star in domain
+# 4. best_impparam in domain
 # ---------------------------------------------------------------------------
 
-def test_observe_best_c_star_in_bounds():
+def test_observe_best_impparam_in_bounds():
     sid = make_session()
     data = observe(sid, 0.10, 3_000.0)
-    assert ACQ_MIN <= data["best_c_star"] <= ACQ_MAX
+    assert ACQ_MIN <= data["best_impparam"] <= ACQ_MAX
 
 
 # ---------------------------------------------------------------------------
-# 5. best_c_star tracks parabola minimum
+# 5. best_impparam tracks parabola minimum
 # ---------------------------------------------------------------------------
 
 def test_observe_tracks_minimum():
@@ -92,7 +92,7 @@ def test_observe_tracks_minimum():
         cost = 5_000.0 + 200_000.0 * (c - 0.10) ** 2
         observe(sid, c, cost)
     state = client.get(f"/sessions/{sid}/state").json()
-    assert abs(state["best_c_star"] - 0.10) < 0.04
+    assert abs(state["best_impparam"] - 0.10) < 0.04
 
 
 # ---------------------------------------------------------------------------
@@ -101,7 +101,7 @@ def test_observe_tracks_minimum():
 
 def test_observe_unknown_session():
     r = client.post("/sessions/no-such-id/observe",
-                    json={"c_star": 0.10, "total_cost": 1000.0})
+                    json={"impparam": 0.10, "total_cost": 1000.0})
     assert r.status_code == 404
 
 

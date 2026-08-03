@@ -139,7 +139,7 @@ function MetricBarChart({ policies, meanField, stdField, yLabel,
 export default function BatchResults({ batch, onReset }) {
   if (!batch) return null;
   const { family, sims_per_policy, budget, session_seed,
-          true_best_c_star, true_min_cost, policies } = batch;
+          true_best_impparam, true_min_cost, policies } = batch;
 
   // Cumulative-cost lower bound: play at the true optimum every step.
   const cumulativeFloor = budget * true_min_cost;
@@ -164,7 +164,7 @@ export default function BatchResults({ batch, onReset }) {
               True best θ
             </span>
             <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Georgia,serif', color: '#3d2914' }}>
-              {true_best_c_star.toFixed(3)}
+              {true_best_impparam.toFixed(3)}
             </div>
           </div>
           <div>
@@ -246,7 +246,7 @@ export default function BatchResults({ batch, onReset }) {
                   }}>
                     <td style={{ textAlign: 'left', padding: '6px 12px' }}>{p.policy}</td>
                     <td style={{ textAlign: 'right', padding: '6px 12px', fontFamily: 'monospace' }}>
-                      {p.mean_best_c_star.toFixed(3)}
+                      {p.mean_best_impparam.toFixed(3)}
                     </td>
                     <td style={{ textAlign: 'right', padding: '6px 12px', fontFamily: 'monospace' }}>
                       {fmt(p.mean_terminal_cost)}

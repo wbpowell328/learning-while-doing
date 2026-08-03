@@ -2,15 +2,15 @@
 Session.evaluate() tests.
 
 Properties verified:
-  1. Returns a SimResult with the requested c_star.
+  1. Returns a SimResult with the requested impparam.
   2. Increments n_steps.
   3. Updates the belief model.
   4. Adds to history.
   5. CRN: evaluate() at step i uses the same noise path as step() at step i
-     — a session that evaluates at a specific c_star gets the same total_cost
-     as a reference session that happens to propose the same c_star via policy.
+     — a session that evaluates at a specific impparam gets the same total_cost
+     as a reference session that happens to propose the same impparam via policy.
   6. evaluate() and step() interleave correctly (n_steps tracks both).
-  7. c_star is stored exactly as passed (no rounding).
+  7. impparam is stored exactly as passed (no rounding).
 """
 import numpy as np
 import pytest
@@ -23,7 +23,7 @@ from policy.session import SessionConfig, Session
 
 SIM_CFG    = SimConfig(stationary=True)
 BELIEF_CFG = BeliefConfig()
-ACQ_CFG    = AcquisitionConfig(c_star_min=0.01, c_star_max=0.20)
+ACQ_CFG    = AcquisitionConfig(impparam_min=0.01, impparam_max=0.20)
 SES_CFG    = SessionConfig(horizon_weeks=4)
 
 
@@ -33,13 +33,13 @@ def make_session(seed: int = 0) -> Session:
 
 
 # ---------------------------------------------------------------------------
-# 1. Returns SimResult with requested c_star
+# 1. Returns SimResult with requested impparam
 # ---------------------------------------------------------------------------
 
 def test_evaluate_returns_sim_result():
     s = make_session()
     result = s.evaluate(0.08)
-    assert result.c_star == pytest.approx(0.08)
+    assert result.impparam == pytest.approx(0.08)
     assert result.total_cost > 0
 
 
@@ -97,7 +97,7 @@ def test_evaluate_same_crn_as_step():
     ref = make_session(seed=seed)
     ref_result = ref.evaluate(c)
 
-    # Second session: same seed, same c_star via a second evaluate call
+    # Second session: same seed, same impparam via a second evaluate call
     s2 = make_session(seed=seed)
     s2_result = s2.evaluate(c)
 
@@ -119,10 +119,10 @@ def test_evaluate_interleaves_with_step():
 
 
 # ---------------------------------------------------------------------------
-# 7. c_star stored exactly
+# 7. impparam stored exactly
 # ---------------------------------------------------------------------------
 
-def test_evaluate_c_star_exact():
+def test_evaluate_impparam_exact():
     s = make_session()
     c = 0.123456
     s.evaluate(c)

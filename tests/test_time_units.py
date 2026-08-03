@@ -15,13 +15,13 @@ from sim import SimConfig, simulate
 
 def test_opportunity_cost_pure_cash():
     """
-    Config: no flows, no jumps, full rebalance, c_star = 1.0... but c_star
-    is bounded at 0.20.  Instead: set c_star=0.20, no flows, no jumps.
+    Config: no flows, no jumps, full rebalance, impparam = 1.0... but impparam
+    is bounded at 0.20.  Instead: set impparam=0.20, no flows, no jumps.
     After one year the fund holds ≈ 20% of AUM in cash every day.
-    Expected opportunity cost ≈ initial_aum * c_star * (r_market - r_cash) * 1_year.
+    Expected opportunity cost ≈ initial_aum * impparam * (r_market - r_cash) * 1_year.
 
     With mu=0, sigma=0, no jumps, full rebalance to 20%, the cash buffer
-    is always exactly c_star * AUM.  AUM grows because invested earns r_market.
+    is always exactly impparam * AUM.  AUM grows because invested earns r_market.
     We test approximate magnitude (within 5%) rather than exact, since AUM drifts.
     """
     AUM = 1_000_000.0
@@ -44,7 +44,7 @@ def test_opportunity_cost_pure_cash():
         rebalance_speed=1.0,
     )
 
-    r = simulate(cfg, c_star=C, horizon_weeks=WEEKS, session_seed=0, experiment_index=0)
+    r = simulate(cfg, impparam=C, horizon_weeks=WEEKS, session_seed=0, experiment_index=0)
 
     # Rough expected: AUM * C * (R_MKT - R_CSH) * 1yr ≈ 1e6 * 0.2 * 0.03 = 6000
     # AUM grows slightly so actual will be a bit above; allow ±10%
@@ -73,7 +73,7 @@ def test_shortfall_cost_formula():
         r_borrow_annual=0.20,
         opp_cost_on_total_cash=True,
     )
-    r = simulate(cfg, c_star=0.01, horizon_weeks=4, session_seed=5, experiment_index=0)
+    r = simulate(cfg, impparam=0.01, horizon_weeks=4, session_seed=5, experiment_index=0)
 
     # Formula: shortfall_cost = r_borrow × sum(pre-rebalance shortfall per day)
     expected_shortfall_cost = cfg.r_borrow_annual * float(np.sum(r.shortfall_series))
@@ -96,6 +96,6 @@ def test_no_cost_with_zero_rates():
         sigma_net_annual=0.0,
         mu_net_annual=0.0,
     )
-    r = simulate(cfg, c_star=0.05, horizon_weeks=4, session_seed=0, experiment_index=0)
+    r = simulate(cfg, impparam=0.05, horizon_weeks=4, session_seed=0, experiment_index=0)
     assert r.opportunity_cost == 0.0
     assert r.shortfall_cost == 0.0

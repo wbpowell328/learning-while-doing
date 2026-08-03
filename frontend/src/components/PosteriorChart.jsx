@@ -20,7 +20,7 @@ export default function PosteriorChart({ posterior, history, policy }) {
     );
   }
 
-  const { c_stars, mean, std } = posterior;
+  const { impparams, mean, std } = posterior;
   const color = POLICY_COLOR[policy] ?? '#2563eb';
 
   // Y bounds — include band and observations
@@ -39,15 +39,15 @@ export default function PosteriorChart({ posterior, history, policy }) {
   const yS = (v) => PAD.top + ((yHi - v) / (yHi - yLo)) * IH;
 
   // Confidence band polygon
-  const upper = c_stars.map((c, i) => `${xS(c)},${yS(mean[i] + std[i])}`);
-  const lower = [...c_stars].reverse().map((c, i, arr) => {
+  const upper = impparams.map((c, i) => `${xS(c)},${yS(mean[i] + std[i])}`);
+  const lower = [...impparams].reverse().map((c, i, arr) => {
     const j = arr.length - 1 - i;
     return `${xS(c)},${yS(mean[j] - std[j])}`;
   });
   const bandPts = [...upper, ...lower].join(' ');
 
   // Mean line
-  const meanPath = c_stars
+  const meanPath = impparams
     .map((c, i) => `${i === 0 ? 'M' : 'L'}${xS(c)},${yS(mean[i])}`)
     .join('');
 
@@ -55,7 +55,7 @@ export default function PosteriorChart({ posterior, history, policy }) {
   const yTicks = Array.from({ length: 5 }, (_, i) => yLo + (i / 4) * (yHi - yLo));
   const xTicks = [0.01, 0.05, 0.10, 0.15, 0.20];
 
-  const best = posterior.best_c_star;
+  const best = posterior.best_impparam;
 
   return (
     <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible' }}>

@@ -15,7 +15,7 @@ from .config import SimConfig
 
 def compute_costs(
     config: SimConfig,
-    c_star: float,
+    impparam: float,
     cash_series: np.ndarray,        # end-of-day cash (post-rebalance)
     invested_series: np.ndarray,
     shortfall_series: np.ndarray,   # pre-rebalance shortfall per day
@@ -37,7 +37,7 @@ def compute_costs(
         opp_basis = cash_series
     else:
         # D1-B: drag only on cash above target
-        target_cash = c_star * aum_series
+        target_cash = impparam * aum_series
         opp_basis = np.maximum(cash_series - target_cash, 0.0)
 
     opportunity_cost = float(np.sum(drag_rate_daily * np.maximum(opp_basis, 0.0)))

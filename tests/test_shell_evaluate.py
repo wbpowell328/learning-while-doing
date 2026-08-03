@@ -3,9 +3,9 @@ POST /sessions/{sid}/evaluate tests.
 
 Properties verified:
   1. Returns 200 with expected fields.
-  2. c_star in response matches the requested value.
+  2. impparam in response matches the requested value.
   3. n_steps increments after each call.
-  4. best_c_star is in domain.
+  4. best_impparam is in domain.
   5. total_cost is positive.
   6. Interleaves correctly with step().
   7. Unknown session returns 404.
@@ -33,8 +33,8 @@ def make_session(policy: str = "human") -> str:
     return r.json()["session_id"]
 
 
-def evaluate(sid: str, c_star: float) -> dict:
-    r = client.post(f"/sessions/{sid}/evaluate", json={"c_star": c_star})
+def evaluate(sid: str, impparam: float) -> dict:
+    r = client.post(f"/sessions/{sid}/evaluate", json={"impparam": impparam})
     assert r.status_code == 200, r.text
     return r.json()
 
@@ -46,17 +46,17 @@ def evaluate(sid: str, c_star: float) -> dict:
 def test_evaluate_response_fields():
     sid = make_session()
     data = evaluate(sid, 0.08)
-    assert set(data.keys()) >= {"c_star", "total_cost", "days", "n_steps", "best_c_star"}
+    assert set(data.keys()) >= {"impparam", "total_cost", "days", "n_steps", "best_impparam"}
 
 
 # ---------------------------------------------------------------------------
-# 2. c_star echoed back
+# 2. impparam echoed back
 # ---------------------------------------------------------------------------
 
-def test_evaluate_c_star_echoed():
+def test_evaluate_impparam_echoed():
     sid = make_session()
     data = evaluate(sid, 0.07)
-    assert abs(data["c_star"] - 0.07) < 1e-9
+    assert abs(data["impparam"] - 0.07) < 1e-9
 
 
 # ---------------------------------------------------------------------------
@@ -71,13 +71,13 @@ def test_evaluate_n_steps_increments():
 
 
 # ---------------------------------------------------------------------------
-# 4. best_c_star in domain
+# 4. best_impparam in domain
 # ---------------------------------------------------------------------------
 
-def test_evaluate_best_c_star_in_domain():
+def test_evaluate_best_impparam_in_domain():
     sid = make_session()
     data = evaluate(sid, 0.10)
-    assert ACQ_MIN <= data["best_c_star"] <= ACQ_MAX
+    assert ACQ_MIN <= data["best_impparam"] <= ACQ_MAX
 
 
 # ---------------------------------------------------------------------------
@@ -109,7 +109,7 @@ def test_evaluate_interleaves_with_step():
 # ---------------------------------------------------------------------------
 
 def test_evaluate_unknown_session():
-    r = client.post("/sessions/ghost/evaluate", json={"c_star": 0.10})
+    r = client.post("/sessions/ghost/evaluate", json={"impparam": 0.10})
     assert r.status_code == 404
 
 

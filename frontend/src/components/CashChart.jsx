@@ -12,9 +12,9 @@ function fmt(v) {
 
 export default function CashChart({ result }) {
   if (!result) return null;
-  const { cash_series, event_log, c_star, initial_aum, days } = result;
+  const { cash_series, event_log, impparam, initial_aum, days } = result;
 
-  const target = c_star * initial_aum;
+  const target = impparam * initial_aum;
   const cashMin = Math.min(...cash_series);
   const cashMax = Math.max(...cash_series);
   const rawMin = Math.min(cashMin, 0);
@@ -51,7 +51,7 @@ export default function CashChart({ result }) {
         </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
           <svg width="18" height="2"><line x1="0" y1="1" x2="18" y2="1" stroke="#475569" strokeWidth="1.5" strokeDasharray="5,3" /></svg>
-          Target ({(c_star * 100).toFixed(1)}% of AUM = {fmt(target)})
+          Target ({(impparam * 100).toFixed(1)}% of AUM = {fmt(target)})
         </span>
         {event_log.length > 0 && (
           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -91,7 +91,7 @@ export default function CashChart({ result }) {
         <line x1={PAD.left} x2={W - PAD.right} y1={targetY} y2={targetY}
           stroke="#475569" strokeWidth={1.5} strokeDasharray="6,4" />
         <text x={W - PAD.right + 4} y={targetY + 4} fontSize={9} fill="#475569">
-          {(c_star * 100).toFixed(0)}%
+          {(impparam * 100).toFixed(0)}%
         </text>
 
         {/* Jump event markers */}

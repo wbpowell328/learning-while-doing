@@ -25,8 +25,8 @@ class SimConfigIn(BaseModel):
     r_borrow_annual: float = 0.10
     opp_cost_on_total_cash: bool = True
     rebalance_speed: float = 1.0
-    c_star_min: float = 0.01
-    c_star_max: float = 0.20
+    impparam_min: float = 0.01
+    impparam_max: float = 0.20
     trading_days_per_year: int = 252
 
 
@@ -39,14 +39,14 @@ class BeliefConfigIn(BaseModel):
 
 
 class AcqConfigIn(BaseModel):
-    c_star_min: float = 0.01
-    c_star_max: float = 0.20
+    impparam_min: float = 0.01
+    impparam_max: float = 0.20
     grid_size: int = 100
 
 
 class SessionConfigIn(BaseModel):
     horizon_weeks: int = 26
-    best_c_star_grid: int = 200
+    best_impparam_grid: int = 200
 
 
 class CreateSessionRequest(BaseModel):
@@ -74,52 +74,52 @@ class JumpEventOut(BaseModel):
 
 
 class StepResponse(BaseModel):
-    c_star: float
+    impparam: float
     total_cost: float
     opportunity_cost: float
     shortfall_cost: float
     days: int
     n_steps: int
-    best_c_star: float
+    best_impparam: float
     cash_series: list[float]
     event_log: list[JumpEventOut]
     initial_aum: float
 
 
 class ObserveRequest(BaseModel):
-    c_star: float
+    impparam: float
     total_cost: float
 
 
 class ObserveResponse(BaseModel):
     n_observations: int
-    best_c_star: float
+    best_impparam: float
 
 
 class StateResponse(BaseModel):
     n_steps: int
     n_observations: int
-    best_c_star: float
+    best_impparam: float
     history: list[tuple[float, float]]
 
 
 class EvaluateRequest(BaseModel):
-    c_star: float
+    impparam: float
 
 
 class PosteriorResponse(BaseModel):
-    c_stars: list[float]
+    impparams: list[float]
     mean: list[float]
     std: list[float]
-    best_c_star: float
+    best_impparam: float
 
 
 class RevealResponse(BaseModel):
-    c_stars: list[float]
+    impparams: list[float]
     mean_cost: list[float]
-    true_best_c_star: float
+    true_best_impparam: float
     true_min_cost: float
-    player_best_c_star: float
+    player_best_impparam: float
     player_best_cost: float
     naive_cost: float
 
@@ -143,14 +143,14 @@ class BatchPolicyResult(BaseModel):
     policy: str                               # human-readable label
     param: float                              # numeric parameter (z_alpha for IE, arbitrary for KG)
     # Aggregates across sims (mean and std)
-    mean_best_c_star: float
-    std_best_c_star: float
-    mean_terminal_cost: float                 # E[cost at final best_c_star], MC over noise
+    mean_best_impparam: float
+    std_best_impparam: float
+    mean_terminal_cost: float                 # E[cost at final best_impparam], MC over noise
     std_terminal_cost: float
     mean_cumulative_cost: float               # sum of observed costs across the budget
     std_cumulative_cost: float
     # Per-sim raw arrays for plotting error bars / distributions
-    best_c_stars: list[float]
+    best_impparams: list[float]
     terminal_costs: list[float]
     cumulative_costs: list[float]
 
@@ -161,7 +161,7 @@ class BatchResponse(BaseModel):
     budget: int
     session_seed: int
     # Ground-truth best θ (via MC on a fine grid), for reference
-    true_best_c_star: float
+    true_best_impparam: float
     true_min_cost: float
     policies: list[BatchPolicyResult]
 
@@ -175,7 +175,7 @@ class KGComparisonResponse(BaseModel):
         online_KG(x) = mu_n(x) - (N - n) * offline_KG(x)
     with N = budget (measurement horizon) and n = steps used so far.
     """
-    c_stars: list[float]                    # probe grid
+    impparams: list[float]                    # probe grid
     posterior_mean: list[float]             # mu_n(x) at each probe point
     # Offline KG — value-of-information only
     analytic_correlated: list[float]        # exact FPD closed form

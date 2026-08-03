@@ -44,6 +44,35 @@
 \bigskip
 
 % ============================================================================
+\section*{Notation conventions}
+\addcontentsline{toc}{section}{Notation conventions}
+% ============================================================================
+
+Two distinct kinds of tunable parameter appear throughout this document.
+They are given deliberately different symbols to avoid confusion.
+
+\begin{center}\small
+\begin{tabular}{@{}p{2.5cm}p{3.5cm}p{9.5cm}@{}}
+  \toprule
+  Symbol & Code identifier & Meaning \\
+  \midrule
+  $\theta$ & \code{impparam} &
+    The \emph{implementation parameter}. The scalar (or, eventually, vector)
+    that governs the deployed system's behavior — for the fund example,
+    the cash-buffer ratio previously written $C^{*}$. This is what the
+    learner is trying to tune. \\[3pt]
+  $\rho$   & \code{learnparam} &
+    A tunable parameter of the \emph{learning policy} itself — e.g.\
+    the exploration weight of an IE (LCB) rule. Currently only IE has
+    such a parameter; a future modified KG will as well. \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+Wherever a symbol appears alone in the text without qualification, this
+convention is in force.
+
+% ============================================================================
 \section{Overview}
 % ============================================================================
 
@@ -163,9 +192,9 @@ $r_{\mathrm{mkt}} \Delta t$:
 $\Cstar \cdot \code{AUM}_{t+1}^{-}$ and the gap is $g_t = \Cstar
 \code{AUM}_{t+1}^{-} - \code{Cash}_{t+1}^{-}$. The transfer applied is
 \[
-  \tau_t \;=\; \max\!\bigl(\rho \cdot g_t,\; -\code{Inv}_{t+1}^{-}\bigr),
+  \tau_t \;=\; \max\!\bigl(\eta \cdot g_t,\; -\code{Inv}_{t+1}^{-}\bigr),
 \]
-where $\rho \in (0,1]$ is the rebalance speed (default $1$, i.e.\
+where $\eta \in (0,1]$ is the rebalance speed (default $1$, i.e.\
 full-rebalance). Post-transfer:
 \[
   \code{Cash}_{t+1} \;=\; \code{Cash}_{t+1}^{-} + \tau_t, \qquad
@@ -327,20 +356,25 @@ control against which informed policies must justify their added complexity.
 
 The interval-estimation (equivalently, lower-confidence-bound) score is
 \begin{equation}
-  \code{IE}(x) \;=\; \muN(x) \;-\; z_\alpha \cdot \sigN(x).
+  \code{IE}(x;\, \rho) \;=\; \muN(x) \;-\; \rho \cdot \sigN(x),
   \label{eq:ie-lcb}
 \end{equation}
-The policy picks $\Cstar_{n+1} = \arg\min_{x \in \mathcal{G}} \code{IE}(x)$.
-The parameter $z_\alpha \geq 0$ controls the exploration--exploitation
-tradeoff:
+where $\rho$ is the learning-policy parameter (Notation conventions,
+p.~\pageref{sec:overview}). The policy picks
+$\theta_{n+1} = \arg\min_{x \in \mathcal{G}} \code{IE}(x;\rho)$.
+$\rho \geq 0$ controls the exploration--exploitation tradeoff:
 \begin{itemize}[nosep]
-  \item $z_\alpha = 0$: pure exploitation ($\arg\min \muN$).
-  \item $z_\alpha \approx 1.96$: 95\% lower confidence bound.
-  \item $z_\alpha \to \infty$: pure exploration ($\arg\max \sigN$, i.e.\
+  \item $\rho = 0$: pure exploitation ($\arg\min \muN$).
+  \item $\rho \approx 1.96$: 95\% lower confidence bound.
+  \item $\rho \to \infty$: pure exploration ($\arg\max \sigN$, i.e.\
     maximum-entropy reduction).
 \end{itemize}
-The IE batch benchmark evaluates 21 values of $z_\alpha \in \{0, 0.2, 0.4,
-\dots, 4.0\}$.
+The IE batch benchmark evaluates 21 values of $\rho \in \{0, 0.2, 0.4,
+\dots, 4.0\}$. In the code, $\rho$ is currently stored on the
+\code{AcquisitionConfig} as the field \code{z\_alpha} (retaining its
+semantic name from the classical confidence-bound literature); future
+learning policies that also carry a tunable parameter will expose it
+under the more generic name \code{learnparam}.
 
 \subsection{Knowledge Gradient: offline correlated, analytic}
 \label{sec:policies:kg-analytic}
@@ -562,7 +596,7 @@ each $S$ times, and reports per-policy aggregated performance metrics.
 \begin{itemize}[nosep]
   \item \textbf{KG family (5 policies):} the five variants listed in
     Section~\ref{sec:policies:summary}.
-  \item \textbf{IE family (21 policies):} \code{IEPolicy} at $z_\alpha \in
+  \item \textbf{IE family (21 policies):} \code{IEPolicy} at $\rho \in
     \{0, 0.2, 0.4, \dots, 4.0\}$.
 \end{itemize}
 
@@ -666,8 +700,8 @@ in the ``Default'' column are the ones shipped in \code{SimConfig},
   $r_{\mathrm{cash}}$ (\code{r\_cash\_annual})     & $0.04$   & Cash return (annual). \\
   $r_{\mathrm{borrow}}$ (\code{r\_borrow\_annual}) & $0.10$   & Shortfall penalty rate (per \$ of forced liquidation). \\
   \code{opp\_cost\_on\_total\_cash}                & \code{True} & Apply drag to all cash (True) or only excess (False). \\
-  $\rho$ (\code{rebalance\_speed})                 & $1.0$    & Fraction of gap closed each end-of-day rebalance. \\
-  $[\Cstar_{\min}, \Cstar_{\max}]$                 & $[0.01, 0.20]$ & Legal range of $\Cstar$. \\
+  $\eta$ (\code{rebalance\_speed})                 & $1.0$    & Fraction of gap closed each end-of-day rebalance. \\
+  $[\theta_{\min}, \theta_{\max}]$ (\code{impparam\_min}, \code{impparam\_max}) & $[0.01, 0.20]$ & Legal range of $\theta$. \\
   \code{trading\_days\_per\_year}                  & $252$    & Calendar convention. \\
   \bottomrule
 \end{tabular}
@@ -698,9 +732,9 @@ in the ``Default'' column are the ones shipped in \code{SimConfig},
   \toprule
   Symbol / field & Default & Description \\
   \midrule
-  $\Cstar_{\min}$, $\Cstar_{\max}$ & $0.01, 0.20$ & Acquisition-grid endpoints (mirror \code{SimConfig}). \\
+  $\theta_{\min}, \theta_{\max}$ (\code{impparam\_min}, \code{impparam\_max}) & $0.01, 0.20$ & Acquisition-grid endpoints (mirror \code{SimConfig}). \\
   $M$ (\code{grid\_size})       & $100$        & Number of grid points $\mathcal{G}$. \\
-  $z_\alpha$ (\code{z\_alpha})  & $0.0$        & Exploration weight in IE (see Eq.~\eqref{eq:ie-lcb}). \\
+  $\rho$ (\code{z\_alpha})      & $0.0$        & Exploration weight in IE — the learning-policy parameter (see Eq.~\eqref{eq:ie-lcb}). \\
   \bottomrule
 \end{tabular}
 \caption{Acquisition config parameters (\code{AcquisitionConfig}).}

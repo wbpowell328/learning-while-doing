@@ -14,7 +14,7 @@ class JumpEvent(NamedTuple):
 @dataclass
 class SimResult:
     # --- Identity: enough to replay byte-identically ---
-    c_star: float
+    impparam: float
     session_seed: int
     experiment_index: int
 

@@ -38,8 +38,8 @@ class SimConfig:
     rebalance_speed: float = 1.0
 
     # --- θ domain ---
-    c_star_min: float = 0.01
-    c_star_max: float = 0.20
+    impparam_min: float = 0.01
+    impparam_max: float = 0.20
 
     # --- Calendar ---
     trading_days_per_year: int = 252

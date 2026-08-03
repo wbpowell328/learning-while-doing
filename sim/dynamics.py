@@ -27,7 +27,7 @@ def _make_rng(session_seed: int, experiment_index: int) -> np.random.Generator:
 
 def run_path(
     config: SimConfig,
-    c_star: float,
+    impparam: float,
     n_days: int,
     session_seed: int,
     experiment_index: int,
@@ -64,7 +64,7 @@ def run_path(
 
     # --- Initial state ---
     aum = cfg.initial_aum
-    cash = c_star * aum
+    cash = impparam * aum
     invested = aum - cash
     regime = cfg.initial_regime
 
@@ -109,8 +109,8 @@ def run_path(
         invested *= (1.0 + r_market_daily)
         aum = cash + invested
 
-        # 8. End-of-day rebalance: steer cash toward c_star * AUM
-        target_cash = c_star * aum
+        # 8. End-of-day rebalance: steer cash toward impparam * AUM
+        target_cash = impparam * aum
         gap = target_cash - cash                    # positive → need more cash
         transfer = cfg.rebalance_speed * gap        # partial if speed < 1
         # Can only transfer what's available in invested (no leverage)

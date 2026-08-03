@@ -15,9 +15,9 @@ from sim import SimConfig, simulate
 CFG = SimConfig(stationary=True, jump_rate_annual=24.0)  # more jumps → clearer U
 
 
-def _mean_cost(c_star: float, n: int = 80, seed_offset: int = 0) -> float:
+def _mean_cost(impparam: float, n: int = 80, seed_offset: int = 0) -> float:
     return np.mean([
-        simulate(CFG, c_star=c_star, horizon_weeks=52, session_seed=s + seed_offset, experiment_index=0).total_cost
+        simulate(CFG, impparam=impparam, horizon_weeks=52, session_seed=s + seed_offset, experiment_index=0).total_cost
         for s in range(n)
     ])
 
@@ -41,20 +41,20 @@ def test_u_shape():
     )
 
 
-def test_low_c_star_has_shortfall():
+def test_low_impparam_has_shortfall():
     """At very low θ, shortfall cost should be non-trivial (not zero)."""
     results = [
-        simulate(CFG, c_star=0.01, horizon_weeks=52, session_seed=s, experiment_index=0)
+        simulate(CFG, impparam=0.01, horizon_weeks=52, session_seed=s, experiment_index=0)
         for s in range(40)
     ]
     mean_shortfall = np.mean([r.shortfall_cost for r in results])
     assert mean_shortfall > 0, "Expected non-zero shortfall at θ=0.01"
 
 
-def test_high_c_star_has_drag():
+def test_high_impparam_has_drag():
     """At very high θ, opportunity cost should be non-trivial."""
     results = [
-        simulate(CFG, c_star=0.20, horizon_weeks=52, session_seed=s, experiment_index=0)
+        simulate(CFG, impparam=0.20, horizon_weeks=52, session_seed=s, experiment_index=0)
         for s in range(40)
     ]
     mean_drag = np.mean([r.opportunity_cost for r in results])

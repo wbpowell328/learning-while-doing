@@ -8,7 +8,7 @@ from .result import SimResult
 
 def simulate(
     config: SimConfig,
-    c_star: float,
+    impparam: float,
     horizon_weeks: int,
     session_seed: int,
     experiment_index: int,
@@ -16,20 +16,20 @@ def simulate(
     """
     Pure, seedable simulation of one fund path.
 
-    Same (config, c_star, horizon_weeks, session_seed, experiment_index)
+    Same (config, impparam, horizon_weeks, session_seed, experiment_index)
     always returns a byte-identical SimResult.  Different experiment_index
     values draw independent paths, so observed costs differ even at fixed θ.
     """
-    if not (config.c_star_min <= c_star <= config.c_star_max):
+    if not (config.impparam_min <= impparam <= config.impparam_max):
         raise ValueError(
-            f"c_star={c_star} outside [{config.c_star_min}, {config.c_star_max}]"
+            f"impparam={impparam} outside [{config.impparam_min}, {config.impparam_max}]"
         )
 
     n_days = horizon_weeks * 5  # 5 trading days per week
 
     cash_series, invested_series, flow_series, shortfall_series, event_log = run_path(
         config=config,
-        c_star=c_star,
+        impparam=impparam,
         n_days=n_days,
         session_seed=session_seed,
         experiment_index=experiment_index,
@@ -37,7 +37,7 @@ def simulate(
 
     opportunity_cost, shortfall_cost = compute_costs(
         config=config,
-        c_star=c_star,
+        impparam=impparam,
         cash_series=cash_series,
         invested_series=invested_series,
         shortfall_series=shortfall_series,
@@ -46,7 +46,7 @@ def simulate(
     total_cost = opportunity_cost + shortfall_cost
 
     return SimResult(
-        c_star=c_star,
+        impparam=impparam,
         session_seed=session_seed,
         experiment_index=experiment_index,
         total_cost=total_cost,

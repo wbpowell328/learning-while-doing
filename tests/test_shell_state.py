@@ -42,7 +42,7 @@ def get_state(sid: str) -> dict:
 def test_state_response_fields():
     sid = make_session()
     data = get_state(sid)
-    assert set(data.keys()) >= {"n_steps", "n_observations", "best_c_star", "history"}
+    assert set(data.keys()) >= {"n_steps", "n_observations", "best_impparam", "history"}
 
 
 # ---------------------------------------------------------------------------
@@ -73,7 +73,7 @@ def test_state_accumulates():
     sid = make_session()
     client.post(f"/sessions/{sid}/step")
     client.post(f"/sessions/{sid}/observe",
-                json={"c_star": 0.10, "total_cost": 3_000.0})
+                json={"impparam": 0.10, "total_cost": 3_000.0})
     client.post(f"/sessions/{sid}/step")
 
     data = get_state(sid)
@@ -83,15 +83,15 @@ def test_state_accumulates():
 
 
 # ---------------------------------------------------------------------------
-# 5. History entries are valid [c_star, cost] pairs
+# 5. History entries are valid [impparam, cost] pairs
 # ---------------------------------------------------------------------------
 
 def test_state_history_entries_valid():
     sid = make_session()
     client.post(f"/sessions/{sid}/observe",
-                json={"c_star": 0.07, "total_cost": 2_500.0})
+                json={"impparam": 0.07, "total_cost": 2_500.0})
     client.post(f"/sessions/{sid}/observe",
-                json={"c_star": 0.13, "total_cost": 4_000.0})
+                json={"impparam": 0.13, "total_cost": 4_000.0})
 
     history = get_state(sid)["history"]
     assert len(history) == 2

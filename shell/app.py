@@ -43,13 +43,13 @@ _sessions: dict[str, Session] = {}
 
 def _make_step_response(result, session: Session) -> StepResponse:
     return StepResponse(
-        c_star=result.c_star,
+        impparam=result.impparam,
         total_cost=result.total_cost,
         opportunity_cost=result.opportunity_cost,
         shortfall_cost=result.shortfall_cost,
         days=result.days,
         n_steps=session.n_steps,
-        best_c_star=session.best_c_star(),
+        best_impparam=session.best_impparam(),
         cash_series=result.cash_series.tolist(),
         event_log=[
             JumpEventOut(day=e.day, size_fraction=e.size_fraction, direction=e.direction)
@@ -105,10 +105,10 @@ def step(sid: str) -> StepResponse:
 @app.post("/sessions/{sid}/observe")
 def observe(sid: str, body: ObserveRequest) -> ObserveResponse:
     session = _get_or_404(sid)
-    session.observe(body.c_star, body.total_cost)
+    session.observe(body.impparam, body.total_cost)
     return ObserveResponse(
         n_observations=session.belief.n_observations,
-        best_c_star=session.best_c_star(),
+        best_impparam=session.best_impparam(),
     )
 
 
@@ -118,7 +118,7 @@ def state(sid: str) -> StateResponse:
     return StateResponse(
         n_steps=session.n_steps,
         n_observations=session.belief.n_observations,
-        best_c_star=session.best_c_star(),
+        best_impparam=session.best_impparam(),
         history=session.history,
     )
 
@@ -126,7 +126,7 @@ def state(sid: str) -> StateResponse:
 @app.post("/sessions/{sid}/evaluate")
 def evaluate(sid: str, body: EvaluateRequest) -> StepResponse:
     session = _get_or_404(sid)
-    result = session.evaluate(body.c_star)
+    result = session.evaluate(body.impparam)
     return _make_step_response(result, session)
 
 
@@ -137,13 +137,13 @@ def reveal(sid: str, grid_size: int = 30, n_reps: int = 12) -> RevealResponse:
     sc = session._sc
     base_seed = session._session_seed + 999_000
 
-    grid = np.linspace(cfg.c_star_min, cfg.c_star_max, grid_size)
+    grid = np.linspace(cfg.impparam_min, cfg.impparam_max, grid_size)
     mean_costs: list[float] = []
     for c in grid:
         costs = [
             simulate(
                 config=cfg,
-                c_star=float(c),
+                impparam=float(c),
                 horizon_weeks=sc.horizon_weeks,
                 session_seed=base_seed,
                 experiment_index=i,
@@ -153,14 +153,14 @@ def reveal(sid: str, grid_size: int = 30, n_reps: int = 12) -> RevealResponse:
         mean_costs.append(float(np.mean(costs)))
 
     true_best_idx = int(np.argmin(mean_costs))
-    player_c = session.best_c_star()
+    player_c = session.best_impparam()
     player_idx = int(np.argmin(np.abs(grid - player_c)))
 
-    naive_c = float(np.clip(0.10, cfg.c_star_min, cfg.c_star_max))
+    naive_c = float(np.clip(0.10, cfg.impparam_min, cfg.impparam_max))
     naive_costs = [
         simulate(
             config=cfg,
-            c_star=naive_c,
+            impparam=naive_c,
             horizon_weeks=sc.horizon_weeks,
             session_seed=base_seed,
             experiment_index=i,
@@ -169,11 +169,11 @@ def reveal(sid: str, grid_size: int = 30, n_reps: int = 12) -> RevealResponse:
     ]
 
     return RevealResponse(
-        c_stars=grid.tolist(),
+        impparams=grid.tolist(),
         mean_cost=mean_costs,
-        true_best_c_star=float(grid[true_best_idx]),
+        true_best_impparam=float(grid[true_best_idx]),
         true_min_cost=mean_costs[true_best_idx],
-        player_best_c_star=player_c,
+        player_best_impparam=player_c,
         player_best_cost=mean_costs[player_idx],
         naive_cost=float(np.mean(naive_costs)),
     )
@@ -189,7 +189,7 @@ def batch_run(req: BatchRequest):
        "total_runs": N*S}
       {"type": "progress", "completed": k, "total": N*S,
        "current_policy": "...", "sim_idx": i}   (emitted after each run)
-      {"type": "ground_truth", "true_best_c_star": ..., "true_min_cost": ...}
+      {"type": "ground_truth", "true_best_impparam": ..., "true_min_cost": ...}
       {"type": "result", ... full BatchResponse fields ...}
 
     Common Random Numbers: policies within the same sim_idx share a seed,
@@ -214,7 +214,7 @@ def batch_run(req: BatchRequest):
         for k in range(21):
             z = round(k * 0.2, 3)
             cfg_z = AcquisitionConfig(
-                c_star_min=acq_cfg.c_star_min, c_star_max=acq_cfg.c_star_max,
+                impparam_min=acq_cfg.impparam_min, impparam_max=acq_cfg.impparam_max,
                 grid_size=acq_cfg.grid_size, z_alpha=z,
             )
             family.append((f"IE (z={z:.2f})", z, (lambda c=cfg_z: IEPolicy(c))))
@@ -247,7 +247,7 @@ def batch_run(req: BatchRequest):
                 for _ in range(req.budget):
                     result = session.step()
                     cumulative += result.total_cost
-                best = session.best_c_star()
+                best = session.best_impparam()
                 term = _evaluate_expected_cost(sim_cfg, ses_cfg, best,
                                                 base_seed + 999_000, n_reps=12)
                 per_policy[label]["best"].append(best)
@@ -270,7 +270,7 @@ def batch_run(req: BatchRequest):
         )
         yield json.dumps({
             "type": "ground_truth",
-            "true_best_c_star": true_best,
+            "true_best_impparam": true_best,
             "true_min_cost": true_min,
         }) + "\n"
 
@@ -287,10 +287,10 @@ def batch_run(req: BatchRequest):
             m_cum, s_cum = _agg(d["cum"])
             results.append({
                 "policy": label, "param": param,
-                "mean_best_c_star": m_best, "std_best_c_star": s_best,
+                "mean_best_impparam": m_best, "std_best_impparam": s_best,
                 "mean_terminal_cost": m_term, "std_terminal_cost": s_term,
                 "mean_cumulative_cost": m_cum, "std_cumulative_cost": s_cum,
-                "best_c_stars": d["best"],
+                "best_impparams": d["best"],
                 "terminal_costs": d["term"],
                 "cumulative_costs": d["cum"],
             })
@@ -301,7 +301,7 @@ def batch_run(req: BatchRequest):
             "sims_per_policy": req.sims_per_policy,
             "budget": req.budget,
             "session_seed": req.session_seed,
-            "true_best_c_star": true_best,
+            "true_best_impparam": true_best,
             "true_min_cost": true_min,
             "policies": results,
         }) + "\n"
@@ -315,9 +315,9 @@ def batch_run(req: BatchRequest):
 
 
 def _evaluate_expected_cost(sim_cfg: SimConfig, ses_cfg: SessionConfig,
-                             c_star: float, base_seed: int, n_reps: int = 12) -> float:
+                             impparam: float, base_seed: int, n_reps: int = 12) -> float:
     costs = [
-        simulate(config=sim_cfg, c_star=float(c_star),
+        simulate(config=sim_cfg, impparam=float(impparam),
                  horizon_weeks=ses_cfg.horizon_weeks,
                  session_seed=base_seed, experiment_index=i).total_cost
         for i in range(n_reps)
@@ -327,7 +327,7 @@ def _evaluate_expected_cost(sim_cfg: SimConfig, ses_cfg: SessionConfig,
 
 def _ground_truth(sim_cfg: SimConfig, ses_cfg: SessionConfig, acq_cfg: AcquisitionConfig,
                    base_seed_prefix: int, grid_size: int = 30, n_reps: int = 12) -> tuple[float, float]:
-    grid = np.linspace(acq_cfg.c_star_min, acq_cfg.c_star_max, grid_size)
+    grid = np.linspace(acq_cfg.impparam_min, acq_cfg.impparam_max, grid_size)
     mean_costs = [
         _evaluate_expected_cost(sim_cfg, ses_cfg, float(c), base_seed_prefix, n_reps)
         for c in grid
@@ -345,7 +345,7 @@ def kg_comparison(
     budget: int = 10,
 ) -> KGComparisonResponse:
     """
-    KG at a coarse probe grid (default 5% spacing across [c_star_min, c_star_max]).
+    KG at a coarse probe grid (default 5% spacing across [impparam_min, impparam_max]).
 
     Three offline KG series (value-of-information only):
       - analytic_correlated: exact FPD closed form (the one the policy uses)
@@ -359,16 +359,16 @@ def kg_comparison(
     session = _get_or_404(sid)
     cfg = session._acq_config
 
-    # Build probe grid: multiples of `spacing` inside [c_star_min, c_star_max].
-    first = float(np.ceil(cfg.c_star_min / spacing) * spacing)
-    if first < cfg.c_star_min - 1e-9:
+    # Build probe grid: multiples of `spacing` inside [impparam_min, impparam_max].
+    first = float(np.ceil(cfg.impparam_min / spacing) * spacing)
+    if first < cfg.impparam_min - 1e-9:
         first += spacing
-    probes = np.arange(first, cfg.c_star_max + spacing * 1e-6, spacing)
+    probes = np.arange(first, cfg.impparam_max + spacing * 1e-6, spacing)
     if probes.size == 0:
-        probes = np.array([0.5 * (cfg.c_star_min + cfg.c_star_max)])
+        probes = np.array([0.5 * (cfg.impparam_min + cfg.impparam_max)])
 
     # Search grid: the same 100-point grid the KG policy uses.
-    search_grid = np.linspace(cfg.c_star_min, cfg.c_star_max, cfg.grid_size)
+    search_grid = np.linspace(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
 
     ana = kg_analytic_correlated_at(session.belief, search_grid, probes)
     mc = kg_mc_correlated_at(
@@ -388,7 +388,7 @@ def kg_comparison(
     online_ind = (mu_probes - remaining * ind).tolist()
 
     return KGComparisonResponse(
-        c_stars=probes.tolist(),
+        impparams=probes.tolist(),
         posterior_mean=mu_probes.tolist(),
         analytic_correlated=ana.tolist(),
         mc_correlated=mc.tolist(),
@@ -406,13 +406,13 @@ def kg_comparison(
 def posterior(sid: str, grid_size: int = 200) -> PosteriorResponse:
     session = _get_or_404(sid)
     cfg = session._acq_config
-    grid = np.linspace(cfg.c_star_min, cfg.c_star_max, grid_size)
+    grid = np.linspace(cfg.impparam_min, cfg.impparam_max, grid_size)
     mean, std = session.belief.posterior(grid)
     return PosteriorResponse(
-        c_stars=grid.tolist(),
+        impparams=grid.tolist(),
         mean=mean.tolist(),
         std=std.tolist(),
-        best_c_star=session.best_c_star(),
+        best_impparam=session.best_impparam(),
     )
 
 

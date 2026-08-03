@@ -34,7 +34,7 @@ class BeliefModel:
 
     Usage:
         model = BeliefModel()           # or BeliefModel(BeliefConfig(...))
-        model.update(c_star, cost)      # add one observation
+        model.update(impparam, cost)      # add one observation
         mean, std = model.posterior(grid)  # query the posterior
     """
 
@@ -49,34 +49,34 @@ class BeliefModel:
     # Public API
     # ------------------------------------------------------------------
 
-    def update(self, c_star: float, observed_cost: float) -> None:
+    def update(self, impparam: float, observed_cost: float) -> None:
         """Append one (θ, cost) observation and invalidate the cached decomposition."""
-        self._x_obs.append(float(c_star))
+        self._x_obs.append(float(impparam))
         self._y_obs.append(float(observed_cost))
         self._chol = None
         self._alpha = None
 
-    def posterior(self, c_stars: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    def posterior(self, impparams: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """
-        Return (mean, std) at each query point in c_stars.
+        Return (mean, std) at each query point in impparams.
 
         std is the posterior standard deviation, clipped to zero to absorb
         small negative values from floating-point arithmetic.
         """
-        c_stars = np.asarray(c_stars, dtype=float)
+        impparams = np.asarray(impparams, dtype=float)
         cfg = self.config
 
         if not self._x_obs:
-            mean = np.full_like(c_stars, cfg.prior_mean)
-            std = np.full_like(c_stars, cfg.signal_std)
+            mean = np.full_like(impparams, cfg.prior_mean)
+            std = np.full_like(impparams, cfg.signal_std)
             return mean, std
 
         self._build_cache()
 
         X = np.array(self._x_obs)
 
-        # k(c_stars, X): shape (m, n)
-        K_star_X = self._rbf(c_stars[:, None], X[None, :])
+        # k(impparams, X): shape (m, n)
+        K_star_X = self._rbf(impparams[:, None], X[None, :])
 
         # Posterior mean: m₀ + k(x*, X) α
         mean = cfg.prior_mean + K_star_X @ self._alpha  # type: ignore[operator]
@@ -89,22 +89,22 @@ class BeliefModel:
 
         return mean, std
 
-    def posterior_at(self, c_star: float) -> tuple[float, float]:
+    def posterior_at(self, impparam: float) -> tuple[float, float]:
         """Convenience wrapper: return (mean, std) at a single point."""
-        mean, std = self.posterior(np.array([float(c_star)]))
+        mean, std = self.posterior(np.array([float(impparam)]))
         return float(mean[0]), float(std[0])
 
-    def posterior_cov_matrix(self, c_stars: np.ndarray) -> np.ndarray:
+    def posterior_cov_matrix(self, impparams: np.ndarray) -> np.ndarray:
         """
         Full posterior covariance matrix at query points, shape (m, m).
 
         Cov_n(x_i, x_j) = k(x_i, x_j) − V_i · V_j
-        where V = L⁻¹ k(X, c_stars), L = Cholesky(K(X,X) + noise·I).
+        where V = L⁻¹ k(X, impparams), L = Cholesky(K(X,X) + noise·I).
 
-        With no observations this equals the prior covariance k(c_stars, c_stars).
+        With no observations this equals the prior covariance k(impparams, impparams).
         """
-        c_stars = np.asarray(c_stars, dtype=float)
-        K_star = self._rbf(c_stars[:, None], c_stars[None, :])  # (m, m)
+        impparams = np.asarray(impparams, dtype=float)
+        K_star = self._rbf(impparams[:, None], impparams[None, :])  # (m, m)
 
         if not self._x_obs:
             return K_star
@@ -112,7 +112,7 @@ class BeliefModel:
         self._build_cache()
 
         X = np.array(self._x_obs)
-        k_X_grid = self._rbf(X[:, None], c_stars[None, :])     # (n, m)
+        k_X_grid = self._rbf(X[:, None], impparams[None, :])     # (n, m)
         V = np.linalg.solve(self._chol, k_X_grid)              # (n, m)
         return K_star - V.T @ V                                 # (m, m)
 
@@ -122,7 +122,7 @@ class BeliefModel:
 
     @property
     def observations(self) -> tuple[list[float], list[float]]:
-        """Return (c_stars, costs) as independent copies."""
+        """Return (impparams, costs) as independent copies."""
         return list(self._x_obs), list(self._y_obs)
 
     # ------------------------------------------------------------------
