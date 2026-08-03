@@ -57,7 +57,7 @@ export default function App() {
 
   // ── Create session ────────────────────────────────────────────────────────
 
-  const handleCreate = useCallback(async ({ policy, session_seed, sim_config, session_config, budget, family, sims_per_policy }) => {
+  const handleCreate = useCallback(async ({ policy, session_seed, sim_config, belief_config, session_config, budget, family, sims_per_policy }) => {
     setError(null);
 
     // Batch mode: stream the whole family, show progress, then BatchResults.
@@ -70,6 +70,7 @@ export default function App() {
             sims_per_policy,
             budget: budget ?? 10,
             sim_config,
+            belief_config,
             session_config,
             session_seed,
           },
@@ -100,7 +101,7 @@ export default function App() {
     }
 
     // Single-policy mode: existing flow
-    const { session_id } = await createSession({ policy, session_seed, sim_config, session_config });
+    const { session_id } = await createSession({ policy, session_seed, sim_config, belief_config, session_config });
     const effectiveBudget = budget ?? 10;
     const [post, kg] = await Promise.all([
       getPosterior(session_id),
