@@ -10,7 +10,7 @@ const ADV_DEFAULTS = {
   signal_std:        '5000',
   noise_std:         '3000',
   prior_mean:        '5000',
-  // Simulation model — the underlying truth F(θ) and its per-run noise
+  // Simulation model (1-D app only) — the underlying truth F(θ) and its per-run noise
   jump_rate_annual:  '12',
   jump_std_log:      '0.5',
   sigma_net_annual:  '0.02',
@@ -20,6 +20,19 @@ const ADV_DEFAULTS = {
   theta1_max:        '0.20',
   theta2_min:        '0.01',
   theta2_max:        '0.40',
+  // Objective / market rates (2-D app)
+  r_market_annual:       '0.10',   // annual return on invested
+  r_cash_annual:         '0.04',   // annual return on cash
+  trading_days_per_year: '210',    // number of days market is open per year
+  // Individual investor process (2-D app) — GBM on aum_ind
+  mu_ind_annual:         '0.00',   // drift of individual net flow
+  sigma_ind_annual:      '0.03',   // volatility of individual net flow
+  r_borrow_ind_annual:   '0.005',  // goodwill cost per $ of deferred individual redemption
+  // Institutional investor process (2-D app) — Poisson × lognormal on aum_inst
+  jump_rate_inst_annual: '12',     // jumps/year
+  jump_mean_log_inst:    '-2.5',   // median jump ~exp(-2.5) ≈ 8% of aum_inst
+  jump_std_log_inst:     '0.6',    // log-space std of jump sizes
+  r_borrow_inst_annual:  '0.02',   // 2% redemption fee on forced institutional liquidation
 };
 
 // Field metadata for the advanced-parameters panel
@@ -56,6 +69,37 @@ const RANGE_FIELDS_2D = [
   ['theta1_max', 'θ₁ max (individual)', 'Upper bound for individual buffer θ₁.'],
   ['theta2_min', 'θ₂ min (institutional)', 'Lower bound for institutional buffer θ₂.'],
   ['theta2_max', 'θ₂ max (institutional)', 'Upper bound for institutional buffer θ₂.'],
+];
+
+// --- 2-D-only stochastic + objective parameters ---
+
+const MARKET_FIELDS_2D = [
+  ['r_market_annual',       'Market return (r_market, /yr)',
+    'Annual return on invested assets. Daily rate = value / trading_days_per_year.'],
+  ['r_cash_annual',         'Cash return (r_cash, /yr)',
+    'Annual return on cash reserves. Drag on cash = r_market − r_cash.'],
+  ['trading_days_per_year', 'Trading days per year',
+    'Divide annual rates by this to get daily rates.'],
+];
+
+const IND_FIELDS_2D = [
+  ['mu_ind_annual',       'Individual drift (μ_ind, /yr)',
+    'Annualized mean of individual net flow / aum_ind.'],
+  ['sigma_ind_annual',    'Individual volatility (σ_ind, /yr)',
+    'Annualized std of individual daily flow / aum_ind.'],
+  ['r_borrow_ind_annual', 'Individual deferral fee',
+    'Cost per $ of deferred individual redemption (small — they can wait).'],
+];
+
+const INST_FIELDS_2D = [
+  ['jump_rate_inst_annual', 'Institutional jump rate (/yr)',
+    'Poisson rate of large institutional in/outflows.'],
+  ['jump_mean_log_inst',    'Jump size mean (log)',
+    'Mean of log(|J|/aum_inst). Median jump = exp(this).'],
+  ['jump_std_log_inst',     'Jump size std (log)',
+    'Log-space spread of jump sizes.'],
+  ['r_borrow_inst_annual',  'Institutional redemption fee',
+    'Cost per $ of forced liquidation to meet an institutional withdrawal.'],
 ];
 
 
@@ -107,11 +151,27 @@ export default function SessionForm({ onCreate, error }) {
     ? [numeric('theta1_max'), numeric('theta2_max')]
     : numeric('theta1_max');
 
-  // For 2-D apps, don't send single-value-tuple sim_config knobs that would
-  // clash with the app's 2-parameter defaults.  We ship only stationary and
-  // the θ bounds; the 2-D app's own jump / flow / borrow-rate defaults take over.
+  // sim_config payload — field names are app-specific. Unknown fields are
+  // dropped server-side; we just include everything the target app understands.
   const simConfigPayload = is2D
-    ? { stationary, impparam_min: impparamMin, impparam_max: impparamMax }
+    ? {
+        stationary,
+        impparam_min: impparamMin,
+        impparam_max: impparamMax,
+        // Objective / market
+        r_market_annual:       numeric('r_market_annual'),
+        r_cash_annual:         numeric('r_cash_annual'),
+        trading_days_per_year: Math.round(numeric('trading_days_per_year')),
+        // Individual investor process
+        mu_ind_annual:         numeric('mu_ind_annual'),
+        sigma_ind_annual:      numeric('sigma_ind_annual'),
+        r_borrow_ind_annual:   numeric('r_borrow_ind_annual'),
+        // Institutional investor process
+        jump_rate_inst_annual: numeric('jump_rate_inst_annual'),
+        jump_mean_log_inst:    numeric('jump_mean_log_inst'),
+        jump_std_log_inst:     numeric('jump_std_log_inst'),
+        r_borrow_inst_annual:  numeric('r_borrow_inst_annual'),
+      }
     : {
         stationary,
         jump_rate_annual: numeric('jump_rate_annual'),
@@ -295,6 +355,34 @@ export default function SessionForm({ onCreate, error }) {
                   </div>
                   <div className="form-row">{SIM_FIELDS.slice(0, 2).map(advField)}</div>
                   <div className="form-row">{SIM_FIELDS.slice(2, 4).map(advField)}</div>
+                </>
+              )}
+
+              {is2D && (
+                <>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b',
+                                textTransform: 'uppercase', letterSpacing: 0.6,
+                                marginTop: 16, marginBottom: 8 }}>
+                    Market rates &amp; calendar
+                  </div>
+                  <div className="form-row">{MARKET_FIELDS_2D.slice(0, 2).map(advField)}</div>
+                  <div className="form-row">{MARKET_FIELDS_2D.slice(2, 3).map(advField)}</div>
+
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b',
+                                textTransform: 'uppercase', letterSpacing: 0.6,
+                                marginTop: 16, marginBottom: 8 }}>
+                    Individual investors — GBM on aum_ind (small, frequent)
+                  </div>
+                  <div className="form-row">{IND_FIELDS_2D.slice(0, 2).map(advField)}</div>
+                  <div className="form-row">{IND_FIELDS_2D.slice(2, 3).map(advField)}</div>
+
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b',
+                                textTransform: 'uppercase', letterSpacing: 0.6,
+                                marginTop: 16, marginBottom: 8 }}>
+                    Institutional investors — Poisson × lognormal on aum_inst (rare, large)
+                  </div>
+                  <div className="form-row">{INST_FIELDS_2D.slice(0, 2).map(advField)}</div>
+                  <div className="form-row">{INST_FIELDS_2D.slice(2, 4).map(advField)}</div>
                 </>
               )}
 

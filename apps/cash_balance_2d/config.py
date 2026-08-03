@@ -42,10 +42,10 @@ class SimConfig:
     initial_regime: int = 0
 
     # --- Rates ---
-    r_market_annual: float = 0.07
-    r_cash_annual: float = 0.04
-    r_borrow_inst_annual: float = 0.10      # forced-liquidation penalty (institutional)
-    r_borrow_ind_annual: float = 0.02       # deferred-payment penalty (individual)
+    r_market_annual: float = 0.10           # market return on invested (per year)
+    r_cash_annual: float = 0.04             # return on cash reserves (per year)
+    r_borrow_inst_annual: float = 0.02      # forced-liquidation fee (institutional)
+    r_borrow_ind_annual: float = 0.005      # small goodwill-cost for deferred individual payment
 
     # --- Opportunity-cost formulation ---
     # True  → drag on ALL cash held × (r_market - r_cash)
@@ -62,4 +62,4 @@ class SimConfig:
     impparam_max: tuple[float, float] = (0.20, 0.40)
 
     # --- Calendar ---
-    trading_days_per_year: int = 252
+    trading_days_per_year: int = 210
