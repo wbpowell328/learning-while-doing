@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import numpy as np
+
 from .config import SimConfig
 from .costs import compute_costs
 from .dynamics import run_path
@@ -8,7 +10,7 @@ from .result import SimResult
 
 def simulate(
     config: SimConfig,
-    impparam: float,
+    impparam,                    # array-like of length 2: (theta_ind, theta_inst)
     horizon_weeks: int,
     session_seed: int,
     experiment_index: int,
@@ -19,43 +21,64 @@ def simulate(
     Same (config, impparam, horizon_weeks, session_seed, experiment_index)
     always returns a byte-identical SimResult.  Different experiment_index
     values draw independent paths, so observed costs differ even at fixed θ.
+
+    impparam: 2-vector (theta_ind, theta_inst) — the individual/institutional
+    buffer fractions.  Both components must lie in the box specified by
+    config.impparam_min / config.impparam_max.
     """
-    if not (config.impparam_min <= impparam <= config.impparam_max):
+    theta = np.asarray(impparam, dtype=float).reshape(-1)
+    if theta.shape != (2,):
+        raise ValueError(f"impparam must be shape (2,); got {theta.shape}")
+    lo = np.asarray(config.impparam_min, dtype=float)
+    hi = np.asarray(config.impparam_max, dtype=float)
+    if np.any(theta < lo) or np.any(theta > hi):
         raise ValueError(
-            f"impparam={impparam} outside [{config.impparam_min}, {config.impparam_max}]"
+            f"impparam={theta.tolist()} outside box [{lo.tolist()}, {hi.tolist()}]"
         )
 
     n_days = horizon_weeks * 5  # 5 trading days per week
 
-    cash_series, invested_series, flow_series, shortfall_series, event_log = run_path(
+    (cash_series, invested_series,
+     aum_ind_series, aum_inst_series,
+     flow_ind_series, flow_inst_series,
+     shortfall_ind_series, shortfall_inst_series,
+     event_log) = run_path(
         config=config,
-        impparam=impparam,
+        impparam=theta,
         n_days=n_days,
         session_seed=session_seed,
         experiment_index=experiment_index,
     )
 
-    opportunity_cost, shortfall_cost = compute_costs(
+    opportunity_cost, shortfall_ind_cost, shortfall_inst_cost = compute_costs(
         config=config,
-        impparam=impparam,
+        impparam=theta,
         cash_series=cash_series,
         invested_series=invested_series,
-        shortfall_series=shortfall_series,
+        aum_ind_series=aum_ind_series,
+        aum_inst_series=aum_inst_series,
+        shortfall_ind_series=shortfall_ind_series,
+        shortfall_inst_series=shortfall_inst_series,
     )
 
-    total_cost = opportunity_cost + shortfall_cost
+    total_cost = opportunity_cost + shortfall_ind_cost + shortfall_inst_cost
 
     return SimResult(
-        impparam=impparam,
+        impparam=theta,
         session_seed=session_seed,
         experiment_index=experiment_index,
         total_cost=total_cost,
         opportunity_cost=opportunity_cost,
-        shortfall_cost=shortfall_cost,
+        shortfall_ind_cost=shortfall_ind_cost,
+        shortfall_inst_cost=shortfall_inst_cost,
         cash_series=cash_series,
         invested_series=invested_series,
-        flow_series=flow_series,
-        shortfall_series=shortfall_series,
+        aum_ind_series=aum_ind_series,
+        aum_inst_series=aum_inst_series,
+        flow_ind_series=flow_ind_series,
+        flow_inst_series=flow_inst_series,
+        shortfall_ind_series=shortfall_ind_series,
+        shortfall_inst_series=shortfall_inst_series,
         event_log=event_log,
         days=n_days,
     )

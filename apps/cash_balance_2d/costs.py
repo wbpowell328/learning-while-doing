@@ -1,10 +1,16 @@
 """
-Cost accounting for one simulated path.
+Cost accounting for one simulated fund path — 2-parameter variant.
 
-Opportunity cost uses the annual drag rate converted to per-day (÷ trading_days).
-Shortfall cost is a PROPORTIONAL PENALTY (see DECISIONS.md D8): r_borrow × shortfall,
-with no time-unit scaling.  r_borrow is therefore a penalty rate per dollar of
-forced liquidation, not a daily interest rate.
+Three cost streams:
+
+  opportunity_cost   drag on cash held (same formulation as the 1D version).
+  shortfall_ind      deferred-payment penalty for individual-caused shortfalls
+                     (proportional to r_borrow_ind_annual, typically small).
+  shortfall_inst     forced-liquidation penalty for institutional-caused shortfalls
+                     (proportional to r_borrow_inst_annual, typically large).
+
+Neither shortfall penalty is scaled by time — both r_borrow rates are
+"friction per dollar of shortfall," not daily rates.
 """
 from __future__ import annotations
 
@@ -15,35 +21,34 @@ from .config import SimConfig
 
 def compute_costs(
     config: SimConfig,
-    impparam: float,
-    cash_series: np.ndarray,        # end-of-day cash (post-rebalance)
+    impparam: np.ndarray,               # shape (2,): (theta_ind, theta_inst)
+    cash_series: np.ndarray,
     invested_series: np.ndarray,
-    shortfall_series: np.ndarray,   # pre-rebalance shortfall per day
-) -> tuple[float, float]:
+    aum_ind_series: np.ndarray,
+    aum_inst_series: np.ndarray,
+    shortfall_ind_series: np.ndarray,
+    shortfall_inst_series: np.ndarray,
+) -> tuple[float, float, float]:
     """
-    Return (opportunity_cost, shortfall_cost) over the horizon.
-
-    Both values are non-negative by construction.
+    Return (opportunity_cost, shortfall_ind_cost, shortfall_inst_cost) over the horizon.
+    All non-negative by construction.
     """
     cfg = config
+    theta = np.asarray(impparam, dtype=float).reshape(-1)
+    theta_ind, theta_inst = float(theta[0]), float(theta[1])
     dt = 1.0 / cfg.trading_days_per_year
 
     drag_rate_daily = (cfg.r_market_annual - cfg.r_cash_annual) * dt
 
-    aum_series = cash_series + invested_series
-
     if cfg.opp_cost_on_total_cash:
-        # D1-A: drag on ALL cash held
         opp_basis = cash_series
     else:
-        # D1-B: drag only on cash above target
-        target_cash = impparam * aum_series
+        target_cash = theta_ind * aum_ind_series + theta_inst * aum_inst_series
         opp_basis = np.maximum(cash_series - target_cash, 0.0)
 
     opportunity_cost = float(np.sum(drag_rate_daily * np.maximum(opp_basis, 0.0)))
 
-    # D8: shortfall cost is a proportional penalty, NOT rate × time.
-    # r_borrow is the friction cost per dollar of forced asset liquidation.
-    shortfall_cost = float(cfg.r_borrow_annual * np.sum(shortfall_series))
+    shortfall_ind_cost  = float(cfg.r_borrow_ind_annual  * np.sum(shortfall_ind_series))
+    shortfall_inst_cost = float(cfg.r_borrow_inst_annual * np.sum(shortfall_inst_series))
 
-    return opportunity_cost, shortfall_cost
+    return opportunity_cost, shortfall_ind_cost, shortfall_inst_cost
