@@ -602,7 +602,8 @@ def kg_comparison(
 
 
 @app.get("/sessions/{sid}/kg_vs_m")
-def kg_vs_m(sid: str, theta: float | None = None, m_max: int = 50) -> dict:
+def kg_vs_m(sid: str, theta: float | None = None, m_max: int = 50,
+            sigma_eps: float | None = None) -> dict:
     """
     KG(θ) at a single θ as a function of the effective batch size m.
 
@@ -637,6 +638,7 @@ def kg_vs_m(sid: str, theta: float | None = None, m_max: int = 50) -> dict:
     m_positive = list(range(1, m_max_int + 1))
     kg_positive = kg_vs_batch_size(
         session.belief, search_grid, theta_used, m_positive,
+        noise_std_override=(None if sigma_eps is None else max(float(sigma_eps), 1e-6)),
     )
     # Prepend m=0 anchor: with zero observations no information is gained,
     # so KG(x; 0) = 0 by definition. Including it makes the "first
@@ -647,7 +649,11 @@ def kg_vs_m(sid: str, theta: float | None = None, m_max: int = 50) -> dict:
         "theta": theta_used,
         "m_values": m_values,
         "kg_values": kg_values,
-        "noise_std": float(session.belief.config.noise_std),
+        # noise_std currently in effect for this response (the override if
+        # supplied, else the belief's own noise_std).
+        "noise_std": float(sigma_eps) if sigma_eps is not None
+                     else float(session.belief.config.noise_std),
+        "noise_std_belief": float(session.belief.config.noise_std),
         "base_kg": float(kg_positive[0]) if len(kg_positive) else 0.0,
     }
 

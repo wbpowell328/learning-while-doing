@@ -331,7 +331,8 @@ def _kg_pre_compute(model: BeliefModel, grid: np.ndarray, candidates: np.ndarray
 
 
 def kg_vs_batch_size(model: BeliefModel, grid: np.ndarray,
-                     theta, m_values) -> np.ndarray:
+                     theta, m_values,
+                     noise_std_override: float | None = None) -> np.ndarray:
     """
     KG at a single θ as a function of the effective precision m·β, where β =
     1/σ²_noise and m = number of repeat observations at the same θ. m = 1
@@ -371,7 +372,13 @@ def kg_vs_batch_size(model: BeliefModel, grid: np.ndarray,
     cross = cross_cov[0]                                        # (m_grid,)
     current_min = float(np.min(mu_ext_base))
 
-    base_noise_var = float(model.config.noise_std) ** 2
+    # noise_std_override lets pedagogy tools ask "what if σ_ε were X?"
+    # without refitting the posterior — the posterior mean and covariance
+    # (computed from the actual belief) stay fixed, only the future
+    # observation-noise term in the KG formula changes.
+    sigma_eps = (float(noise_std_override) if noise_std_override is not None
+                 else float(model.config.noise_std))
+    base_noise_var = sigma_eps ** 2
 
     m_arr = np.asarray(list(m_values), dtype=int)
     out = np.zeros(m_arr.shape[0], dtype=float)

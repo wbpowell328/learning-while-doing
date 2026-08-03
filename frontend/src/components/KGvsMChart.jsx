@@ -5,6 +5,8 @@
 // online-KG policy dismisses in favour of the μ_reward term, while a
 // small batch of the same experiment would unlock a much larger KG.
 
+import { useState, useEffect } from 'react';
+
 const W = 640, H = 260;
 const PAD = { top: 20, right: 24, bottom: 48, left: 68 };
 const IW = W - PAD.left - PAD.right;
@@ -21,7 +23,14 @@ function niceTicks(lo, hi, n = 5) {
   return Array.from({ length: n }, (_, i) => lo + (i / (n - 1)) * (hi - lo));
 }
 
-export default function KGvsMChart({ data }) {
+export default function KGvsMChart({ data, onSigmaEpsChange, sigmaEpsPending = false }) {
+  // Local text state for the σ_ε input so mid-typing "150" doesn't fire a
+  // request on every digit. On blur (or Enter) we canonicalise + notify.
+  const [sigmaStr, setSigmaStr] = useState('');
+  useEffect(() => {
+    if (data?.noise_std != null) setSigmaStr(String(Math.round(data.noise_std)));
+  }, [data?.noise_std]);
+
   if (!data || !data.m_values || data.m_values.length === 0) {
     return (
       <div style={{ height: H, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -31,7 +40,25 @@ export default function KGvsMChart({ data }) {
     );
   }
 
-  const { theta, m_values, kg_values, noise_std, base_kg } = data;
+  const { theta, m_values, kg_values, noise_std, noise_std_belief, base_kg } = data;
+  const isOverridden = noise_std_belief != null &&
+                       Math.abs(noise_std - noise_std_belief) > 1e-6;
+
+  const commit = () => {
+    if (!onSigmaEpsChange) return;
+    const v = Number(sigmaStr);
+    if (!Number.isFinite(v) || v <= 0) {
+      setSigmaStr(String(Math.round(noise_std)));
+      return;
+    }
+    if (Math.abs(v - noise_std) < 1e-6) return;   // no change
+    onSigmaEpsChange(v);
+  };
+  const resetToBelief = () => {
+    if (!onSigmaEpsChange || noise_std_belief == null) return;
+    setSigmaStr(String(Math.round(noise_std_belief)));
+    onSigmaEpsChange(noise_std_belief);
+  };
 
   const xLo = m_values[0];
   const xHi = m_values[m_values.length - 1];
@@ -52,7 +79,45 @@ export default function KGvsMChart({ data }) {
   if (xTicks[0] !== xLo) xTicks.unshift(xLo);
 
   return (
-    <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible' }}>
+    <div>
+      {/* σ_ε control — recomputes the KG(m) curve in-place using the
+          override, without disturbing the current session's belief. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10,
+                    fontSize: 12, color: '#475569', marginBottom: 8, flexWrap: 'wrap' }}>
+        <label style={{ fontWeight: 600 }}>σ_ε (per-run reward noise):</label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span>$</span>
+          <input
+            type="number"
+            value={sigmaStr}
+            min={1}
+            step="any"
+            onChange={e => setSigmaStr(e.target.value)}
+            onBlur={commit}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }}
+            disabled={sigmaEpsPending}
+            style={{ width: 90, padding: '3px 6px', border: '1px solid #cbd5e1',
+                     borderRadius: 4, fontSize: 12 }}
+          />
+        </div>
+        {sigmaEpsPending && <span style={{ color: '#94a3b8' }}>recomputing…</span>}
+        {isOverridden && !sigmaEpsPending && (
+          <>
+            <span style={{ color: '#b45309', fontStyle: 'italic' }}>
+              overriding belief's σ_ε = ${Math.round(noise_std_belief).toLocaleString()}
+            </span>
+            <button
+              type="button"
+              onClick={resetToBelief}
+              style={{ background: 'transparent', border: '1px solid #cbd5e1',
+                       borderRadius: 4, padding: '2px 8px', fontSize: 11,
+                       color: '#475569', cursor: 'pointer' }}>
+              reset
+            </button>
+          </>
+        )}
+      </div>
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible' }}>
       {/* Gridlines */}
       {yTicks.map((v, i) => (
         <line key={i} x1={PAD.left} x2={W - PAD.right}
@@ -110,6 +175,7 @@ export default function KGvsMChart({ data }) {
             fontSize={10} fill="#94a3b8" fontStyle="italic">
         σ_ε = ${(noise_std/1000).toFixed(1)}k · precision β = 1/σ_ε² · effective precision at m = m·β
       </text>
-    </svg>
+      </svg>
+    </div>
   );
 }

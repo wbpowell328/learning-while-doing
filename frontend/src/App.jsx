@@ -56,6 +56,8 @@ export default function App() {
   const [posterior,     setPosterior]     = useState(null);
   const [kgComparison,  setKgComparison]  = useState(null);
   const [kgVsM,         setKgVsM]         = useState(null);
+  const [kgVsMSigmaEps, setKgVsMSigmaEps] = useState(null);   // user override for KG(m) σ_ε
+  const [kgVsMPending,  setKgVsMPending]  = useState(false);
   const [history,       setHistory]       = useState([]);
   const [nSteps,        setNSteps]        = useState(0);
   const [bestImpparam,     setBestImpparam]     = useState(null);
@@ -83,6 +85,23 @@ export default function App() {
     setHistory(prev => [...prev, [result.impparam, result.total_reward]]);
     setLastResult(result);
   }, []);
+
+  // User edits σ_ε on the KG(m) card — recompute the curve in place. The
+  // override persists across subsequent steps until they reset it or
+  // start a new session.
+  const handleKGvsMSigmaEps = useCallback(async (sigmaEps) => {
+    if (!session) return;
+    setKgVsMSigmaEps(sigmaEps);
+    setKgVsMPending(true);
+    try {
+      const kgm = await getKGvsM(session.id, 50, sigmaEps);
+      setKgVsM(kgm);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setKgVsMPending(false);
+    }
+  }, [session]);
 
   const fetchReveal = useCallback(async (sid) => {
     setRevealLoading(true);
@@ -166,6 +185,7 @@ export default function App() {
     setPosterior(null);
     setKgComparison(null);
     setKgVsM(null);
+    setKgVsMSigmaEps(null);
     setPosterior2D(null);
     setKg2D(null);
 
@@ -173,7 +193,7 @@ export default function App() {
       const [post, kg, kgm] = await Promise.all([
         getPosterior(session_id),
         getKGComparison(session_id, 0.01, 50, effectiveBudget),
-        getKGvsM(session_id, 50),
+        getKGvsM(session_id, 50, null),   // fresh session — belief's σ_ε
       ]);
       setPosterior(post);
       setKgComparison(kg);
@@ -202,7 +222,7 @@ export default function App() {
       const [post, kg, kgm] = await Promise.all([
         getPosterior(session.id),
         getKGComparison(session.id, 0.01, 50, session.budget ?? 10),
-        getKGvsM(session.id, 50),
+        getKGvsM(session.id, 50, kgVsMSigmaEps),
       ]);
       applyResult(result, post, kg, kgm);
       if (session.budget && result.n_steps >= session.budget) {
@@ -213,7 +233,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [session, loading, applyResult, fetchReveal]);
+  }, [session, loading, applyResult, fetchReveal, kgVsMSigmaEps]);
 
   // ── Automated: single step ────────────────────────────────────────────────
 
@@ -223,7 +243,7 @@ export default function App() {
       const [post, kg, kgm] = await Promise.all([
         getPosterior(sid),
         getKGComparison(sid, 0.01, 50, budget ?? 10),
-        getKGvsM(sid, 50),
+        getKGvsM(sid, 50, kgVsMSigmaEps),
       ]);
       applyResult(result, post, kg, kgm);
     } else {
@@ -238,7 +258,7 @@ export default function App() {
       setHistory(prev => [...prev, [result.impparam, result.total_reward]]);
       setLastResult(result);
     }
-  }, [applyResult]);
+  }, [applyResult, kgVsMSigmaEps]);
 
   const handleStep = useCallback(async () => {
     if (!session || loading) return;
@@ -289,6 +309,7 @@ export default function App() {
     setKg2D(null);
     setKgComparison(null);
     setKgVsM(null);
+    setKgVsMSigmaEps(null);
     setHistory([]);
     setNSteps(0);
     setBestImpparam(null);
@@ -550,7 +571,11 @@ export default function App() {
                   hiding a lot of information; online-KG will look tempted by
                   μ_reward instead of exploring.
                 </p>
-                <KGvsMChart data={kgVsM} />
+                <KGvsMChart
+                  data={kgVsM}
+                  onSigmaEpsChange={handleKGvsMSigmaEps}
+                  sigmaEpsPending={kgVsMPending}
+                />
               </div>
             </>
           )}
