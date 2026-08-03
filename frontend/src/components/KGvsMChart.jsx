@@ -26,14 +26,19 @@ function niceTicks(lo, hi, n = 5) {
 export default function KGvsMChart({
   data, onSigmaEpsChange, sigmaEpsPending = false,
   mMax = 50, onMMaxChange,
+  onThetaChange,
 }) {
   // Local text state so mid-typing doesn't fire a request per keystroke.
   const [sigmaStr, setSigmaStr] = useState('');
   const [mMaxStr,  setMMaxStr]  = useState(String(mMax));
+  const [thetaStr, setThetaStr] = useState('');
   useEffect(() => {
     if (data?.noise_std != null) setSigmaStr(String(Math.round(data.noise_std)));
   }, [data?.noise_std]);
   useEffect(() => { setMMaxStr(String(mMax)); }, [mMax]);
+  useEffect(() => {
+    if (data?.theta != null) setThetaStr(data.theta.toFixed(3));
+  }, [data?.theta]);
 
   if (!data || !data.m_values || data.m_values.length === 0) {
     return (
@@ -75,6 +80,18 @@ export default function KGvsMChart({
     const clamped = Math.max(2, Math.min(v, 5000));
     if (clamped === mMax) return;
     onMMaxChange(clamped);
+  };
+  const commitTheta = () => {
+    if (!onThetaChange) return;
+    const v = Number(thetaStr);
+    if (!Number.isFinite(v) || v <= 0) { setThetaStr(theta.toFixed(3)); return; }
+    if (Math.abs(v - theta) < 1e-6) return;
+    onThetaChange(v);
+  };
+  const resetThetaToArgmaxKG = () => {
+    if (!onThetaChange) return;
+    setThetaStr('');   // sending null makes the backend pick argmax(offline_KG)
+    onThetaChange(null);
   };
 
   const xLo = m_values[0];
@@ -136,6 +153,28 @@ export default function KGvsMChart({
           style={{ width: 70, padding: '3px 6px', border: '1px solid #cbd5e1',
                    borderRadius: 4, fontSize: 12 }}
         />
+        <label style={{ fontWeight: 600, marginLeft: 8 }}>θ:</label>
+        <input
+          type="number"
+          value={thetaStr}
+          step="any"
+          onChange={e => setThetaStr(e.target.value)}
+          onBlur={commitTheta}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commitTheta(); } }}
+          disabled={sigmaEpsPending}
+          style={{ width: 80, padding: '3px 6px', border: '1px solid #cbd5e1',
+                   borderRadius: 4, fontSize: 12 }}
+        />
+        <button
+          type="button"
+          onClick={resetThetaToArgmaxKG}
+          disabled={sigmaEpsPending}
+          title="Reset θ to argmax(offline KG) — the θ the KG policy would sample next"
+          style={{ background: 'transparent', border: '1px solid #cbd5e1',
+                   borderRadius: 4, padding: '2px 8px', fontSize: 11,
+                   color: '#475569', cursor: 'pointer' }}>
+          θ = argmax KG
+        </button>
         {sigmaEpsPending && <span style={{ color: '#94a3b8' }}>recomputing…</span>}
         {isOverridden && !sigmaEpsPending && (
           <>

@@ -58,6 +58,7 @@ export default function App() {
   const [kgVsM,         setKgVsM]         = useState(null);
   const [kgVsMSigmaEps, setKgVsMSigmaEps] = useState(null);   // user override for KG(m) σ_ε
   const [kgVsMMMax,     setKgVsMMMax]     = useState(50);      // user override for KG(m) x-axis extent
+  const [kgVsMTheta,    setKgVsMTheta]    = useState(null);    // user override for the θ we evaluate KG(m) at
   const [kgVsMPending,  setKgVsMPending]  = useState(false);
   const [history,       setHistory]       = useState([]);
   const [nSteps,        setNSteps]        = useState(0);
@@ -94,28 +95,42 @@ export default function App() {
     setKgVsMSigmaEps(sigmaEps);
     setKgVsMPending(true);
     try {
-      const kgm = await getKGvsM(session.id, kgVsMMMax, sigmaEps);
+      const kgm = await getKGvsM(session.id, kgVsMMMax, sigmaEps, kgVsMTheta);
       setKgVsM(kgm);
     } catch (e) {
       setError(String(e));
     } finally {
       setKgVsMPending(false);
     }
-  }, [session, kgVsMMMax]);
+  }, [session, kgVsMMMax, kgVsMTheta]);
 
   const handleKGvsMMMax = useCallback(async (newMMax) => {
     if (!session) return;
     setKgVsMMMax(newMMax);
     setKgVsMPending(true);
     try {
-      const kgm = await getKGvsM(session.id, newMMax, kgVsMSigmaEps);
+      const kgm = await getKGvsM(session.id, newMMax, kgVsMSigmaEps, kgVsMTheta);
       setKgVsM(kgm);
     } catch (e) {
       setError(String(e));
     } finally {
       setKgVsMPending(false);
     }
-  }, [session, kgVsMSigmaEps]);
+  }, [session, kgVsMSigmaEps, kgVsMTheta]);
+
+  const handleKGvsMTheta = useCallback(async (newTheta) => {
+    if (!session) return;
+    setKgVsMTheta(newTheta);   // null → backend picks argmax(offline KG)
+    setKgVsMPending(true);
+    try {
+      const kgm = await getKGvsM(session.id, kgVsMMMax, kgVsMSigmaEps, newTheta);
+      setKgVsM(kgm);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setKgVsMPending(false);
+    }
+  }, [session, kgVsMMMax, kgVsMSigmaEps]);
 
   const fetchReveal = useCallback(async (sid) => {
     setRevealLoading(true);
@@ -201,6 +216,7 @@ export default function App() {
     setKgVsM(null);
     setKgVsMSigmaEps(null);
     setKgVsMMMax(50);
+    setKgVsMTheta(null);
     setPosterior2D(null);
     setKg2D(null);
 
@@ -237,7 +253,7 @@ export default function App() {
       const [post, kg, kgm] = await Promise.all([
         getPosterior(session.id),
         getKGComparison(session.id, 0.01, 50, session.budget ?? 10),
-        getKGvsM(session.id, kgVsMMMax, kgVsMSigmaEps),
+        getKGvsM(session.id, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta),
       ]);
       applyResult(result, post, kg, kgm);
       if (session.budget && result.n_steps >= session.budget) {
@@ -248,7 +264,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [session, loading, applyResult, fetchReveal, kgVsMSigmaEps, kgVsMMMax]);
+  }, [session, loading, applyResult, fetchReveal, kgVsMSigmaEps, kgVsMMMax, kgVsMTheta]);
 
   // ── Automated: single step ────────────────────────────────────────────────
 
@@ -258,7 +274,7 @@ export default function App() {
       const [post, kg, kgm] = await Promise.all([
         getPosterior(sid),
         getKGComparison(sid, 0.01, 50, budget ?? 10),
-        getKGvsM(sid, kgVsMMMax, kgVsMSigmaEps),
+        getKGvsM(sid, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta),
       ]);
       applyResult(result, post, kg, kgm);
     } else {
@@ -273,7 +289,7 @@ export default function App() {
       setHistory(prev => [...prev, [result.impparam, result.total_reward]]);
       setLastResult(result);
     }
-  }, [applyResult, kgVsMSigmaEps, kgVsMMMax]);
+  }, [applyResult, kgVsMSigmaEps, kgVsMMMax, kgVsMTheta]);
 
   const handleStep = useCallback(async () => {
     if (!session || loading) return;
@@ -326,6 +342,7 @@ export default function App() {
     setKgVsM(null);
     setKgVsMSigmaEps(null);
     setKgVsMMMax(50);
+    setKgVsMTheta(null);
     setHistory([]);
     setNSteps(0);
     setBestImpparam(null);
@@ -600,6 +617,7 @@ export default function App() {
                   sigmaEpsPending={kgVsMPending}
                   mMax={kgVsMMMax}
                   onMMaxChange={handleKGvsMMMax}
+                  onThetaChange={handleKGvsMTheta}
                 />
               </div>
             </>
