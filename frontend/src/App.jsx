@@ -473,15 +473,6 @@ export default function App() {
                 correlated (analytic vs MC) vs independent beliefs
               </span>
             </div>
-            <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 8px 0' }}>
-              Same underlying GP posterior; three ways of scoring each candidate θ.
-              Analytic and MC should agree closely (any gap is MC noise).
-              Independent ignores the covariance cascade to nearby points.
-              Each curve is ringed at its own extremum — the θ that policy
-              would sample next; the dashed green vertical is the primary KG
-              policy (offline analytic correlated), which is what the KG
-              "step" action would actually try.
-            </p>
             <KGChart kg={kgComparison} />
             {isHuman && (
               <ImpparamSlider

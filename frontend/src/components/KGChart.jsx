@@ -13,8 +13,9 @@
 //
 // argmin of the online curves is the online-KG policy's next-measurement pick.
 
-const W = 720, H = 340;
-const PAD = { top: 24, right: 96, bottom: 56, left: 72 };
+const W = 720, H = 370;
+// PAD.top reserves room for the two-row legend that sits above the plot area.
+const PAD = { top: 60, right: 96, bottom: 56, left: 72 };
 const IW = W - PAD.left - PAD.right;
 const IH = H - PAD.top - PAD.bottom;
 
@@ -229,10 +230,12 @@ export default function KGChart({ kg }) {
         Online KG(x)  = μ(x) − (N−n)·offline KG
       </text>
 
-      {/* Legend — two columns: offline on left, online on right */}
-      <g transform={`translate(${PAD.left + 8},${PAD.top + 4})`}>
+      {/* Legend — two horizontal rows ABOVE the plot area so it never
+          overlaps the curves. Row 1 = offline series, row 2 = online
+          series + N info. Columns are fixed so labels line up. */}
+      <g transform={`translate(${PAD.left},8)`}>
         {OFFLINE_SERIES.map(({ label, color, dash }, i) => (
-          <g key={i} transform={`translate(0,${i * 14})`}>
+          <g key={i} transform={`translate(${i * 200},0)`}>
             <line x1={0} x2={22} y1={6} y2={6} stroke={color} strokeWidth={2}
                   strokeDasharray={dash ?? undefined} />
             <text x={28} y={9} fontSize={10} fill="#374151">
@@ -240,16 +243,18 @@ export default function KGChart({ kg }) {
             </text>
           </g>
         ))}
-        {ONLINE_SERIES.map(({ label, color, dash }, i) => (
-          <g key={`on-${i}`} transform={`translate(220,${i * 14})`}>
-            <line x1={0} x2={22} y1={6} y2={6} stroke={color} strokeWidth={1.6}
-                  strokeDasharray={dash ?? undefined} />
-            <text x={28} y={9} fontSize={10} fill="#374151">{label}</text>
-          </g>
-        ))}
-        <text x={220} y={9 + 2 * 14 + 2} fontSize={10} fill="#64748b" fontStyle="italic">
-          N={budget}, n={steps_used}, N−n={remaining}
-        </text>
+        <g transform={`translate(0,20)`}>
+          {ONLINE_SERIES.map(({ label, color, dash }, i) => (
+            <g key={`on-${i}`} transform={`translate(${i * 200},0)`}>
+              <line x1={0} x2={22} y1={6} y2={6} stroke={color} strokeWidth={1.6}
+                    strokeDasharray={dash ?? undefined} />
+              <text x={28} y={9} fontSize={10} fill="#374151">{label}</text>
+            </g>
+          ))}
+          <text x={400} y={9} fontSize={10} fill="#64748b" fontStyle="italic">
+            N={budget}, n={steps_used}, N−n={remaining}
+          </text>
+        </g>
       </g>
     </svg>
   );
