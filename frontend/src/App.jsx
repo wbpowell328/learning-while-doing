@@ -381,10 +381,13 @@ export default function App() {
                 style={{ opacity: 0.85 }}>
                 Auto-run 25
               </button>
-              {session.dim === 1 && nSteps > 0 && !reveal && (
+              {session.dim === 1 && (
                 <button className="btn btn-outline" onClick={handleReveal}
-                  disabled={loading || revealLoading}>
-                  {revealLoading ? 'Computing…' : 'Reveal truth'}
+                  disabled={loading || revealLoading || reveal != null}
+                  title={reveal != null
+                    ? 'Ground-truth cost curve already shown below'
+                    : 'Plot the true underlying cost curve F(θ) to compare with your beliefs'}>
+                  {revealLoading ? 'Computing…' : reveal != null ? 'Truth revealed' : 'Reveal truth'}
                 </button>
               )}
             </div>
