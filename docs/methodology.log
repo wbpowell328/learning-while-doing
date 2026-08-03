@@ -1,4 +1,4 @@
-This is LuaHBTeX, Version 1.17.1 (MiKTeX 24.1) (format=lualatex 2026.8.3)  3 AUG 2026 10:24
+This is LuaHBTeX, Version 1.17.1 (MiKTeX 24.1) (format=lualatex 2026.8.3)  3 AUG 2026 10:31
  restricted system commands enabled.
 **methodology.tex
 (./methodology.tex
@@ -93,6 +93,10 @@ Package: iftex 2022/02/03 v1.0f TeX engine tests
 
 ("C:/Users/Warren Powell/AppData/Local/Programs/MiKTeX/tex/latex/geometry/geome
 try.cfg"))
+("C:/Users/Warren Powell/AppData/Local/Programs/MiKTeX/tex/latex/setspace/setsp
+ace.sty"
+Package: setspace 2022/12/04 v6.7b set line spacing
+)
 ("C:/Users/Warren Powell/AppData/Local/Programs/MiKTeX/tex/latex/amsmath/amsmat
 h.sty"
 Package: amsmath 2023/05/13 v2.17o AMS math features
@@ -502,7 +506,7 @@ Package xcolor Info: Model `HSB' substituted by `hsb' on input line 1371.
 Package xcolor Info: Model `Gray' substituted by `gray' on input line 1372.
 Package xcolor Info: Model `wave' substituted by `hsb' on input line 1373.
 )
-Package hyperref Info: Option `colorlinks' set `true' on input line 19.
+Package hyperref Info: Option `colorlinks' set `true' on input line 20.
 
 ("C:/Users/Warren Powell/AppData/Local/Programs/MiKTeX/tex/latex/l3backend/l3ba
 ckend-luatex.def"
@@ -513,33 +517,33 @@ Inserting `l3color' in `luaotfload.parse_color'.
 ) (./methodology.aux)
 \openout1 = methodology.aux
 
-LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 39.
-LaTeX Font Info:    ... okay on input line 39.
-LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 39.
-LaTeX Font Info:    ... okay on input line 39.
-LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 39.
-LaTeX Font Info:    ... okay on input line 39.
-LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 39.
-LaTeX Font Info:    ... okay on input line 39.
-LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 39.
-LaTeX Font Info:    Trying to load font information for TS1+cmr on input line 3
-9.
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 40.
+LaTeX Font Info:    ... okay on input line 40.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 40.
+LaTeX Font Info:    ... okay on input line 40.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 40.
+LaTeX Font Info:    ... okay on input line 40.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 40.
+LaTeX Font Info:    ... okay on input line 40.
+LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 40.
+LaTeX Font Info:    Trying to load font information for TS1+cmr on input line 4
+0.
 
 ("C:/Users/Warren Powell/AppData/Local/Programs/MiKTeX/tex/latex/base/ts1cmr.fd
 "
 File: ts1cmr.fd 2023/04/13 v2.5m Standard LaTeX font definitions
 )
-LaTeX Font Info:    ... okay on input line 39.
-LaTeX Font Info:    Checking defaults for TU/lmr/m/n on input line 39.
-LaTeX Font Info:    ... okay on input line 39.
-LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 39.
-LaTeX Font Info:    ... okay on input line 39.
-LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 39.
-LaTeX Font Info:    ... okay on input line 39.
-LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 39.
-LaTeX Font Info:    ... okay on input line 39.
-LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 39.
-LaTeX Font Info:    ... okay on input line 39.
+LaTeX Font Info:    ... okay on input line 40.
+LaTeX Font Info:    Checking defaults for TU/lmr/m/n on input line 40.
+LaTeX Font Info:    ... okay on input line 40.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 40.
+LaTeX Font Info:    ... okay on input line 40.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 40.
+LaTeX Font Info:    ... okay on input line 40.
+LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 40.
+LaTeX Font Info:    ... okay on input line 40.
+LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 40.
+LaTeX Font Info:    ... okay on input line 40.
 
 *geometry* driver: auto-detecting
 *geometry* detected driver: luatex
@@ -597,7 +601,7 @@ Package graphics Info: Driver file: luatex.def on input line 107.
 \Gin@req@height=\dimen187
 \Gin@req@width=\dimen188
 )
-Package hyperref Info: Link coloring ON on input line 39.
+Package hyperref Info: Link coloring ON on input line 40.
  (./methodology.out) (./methodology.out)
 \@outlinefile=\write3
 
@@ -628,44 +632,43 @@ Package epstopdf-base Info: Redefining graphics rule for `.eps' on input line 4
 pdf-sys.cfg"
 File: epstopdf-sys.cfg 2021/03/18 v2.0 Configuration of epstopdf for MiKTeX
 ))
-LaTeX Font Info:    Trying to load font information for U+msa on input line 41.
+LaTeX Font Info:    Trying to load font information for U+msa on input line 43.
 
 
 ("C:/Users/Warren Powell/AppData/Local/Programs/MiKTeX/tex/latex/amsfonts/umsa.
 fd"
 File: umsa.fd 2013/01/14 v3.01 AMS symbols A
 )
-LaTeX Font Info:    Trying to load font information for U+msb on input line 41.
+LaTeX Font Info:    Trying to load font information for U+msb on input line 43.
 
 
 ("C:/Users/Warren Powell/AppData/Local/Programs/MiKTeX/tex/latex/amsfonts/umsb.
 fd"
 File: umsb.fd 2013/01/14 v3.01 AMS symbols B
-) (./methodology.toc)
+) (./methodology.toc [1
+
+{C:/Users/Warren Powell/AppData/Local/MiKTeX/fonts/map/pdftex/pdftex.map}])
 \tf@toc=\write4
 
 \openout4 = methodology.toc
- [1
-
-{C:/Users/Warren Powell/AppData/Local/MiKTeX/fonts/map/pdftex/pdftex.map}] [2] 
-[3]
-Overfull \hbox (46.11594pt too wide) in paragraph at lines 227--230
+ [2] [3] [4]
+Overfull \hbox (46.11594pt too wide) in paragraph at lines 229--232
 []\TU/lmr/m/n/10.95 In-de-pen-dent sub-streams for each ex-per-i-ment in-dex are
  drawn from \TU/lmtt/m/n/10.95 numpy.random.SeedSequence.spawn\TU/lmr/m/n/10.95
  ,
  []
 
-[4] [5]
+[5] [6]
 Package hyperref Info: bookmark level for unknown algorithm defaults to 0 on in
-put line 376.
- [6] [7]
-Overfull \hbox (55.96977pt too wide) in paragraph at lines 533--540
+put line 378.
+ [7] [8] [9]
+Overfull \hbox (55.96977pt too wide) in paragraph at lines 535--542
 []\TU/lmr/m/n/10.95 The Com-mon Ran-dom Num-bers (CRN) con-tract of Sec-tion []
 []2.4[][] is pre-served by pass-ing \TU/lmtt/m/n/10.95 experiment_index=n
  []
 
-[8] [9]
-Overfull \hbox (8.6502pt too wide) in paragraph at lines 661--661
+[10]
+Overfull \hbox (8.6502pt too wide) in paragraph at lines 663--663
 []|$\OT1/cmr/m/n/10 (0\OML/cmm/m/it/10 :\OT1/cmr/m/n/10 001\OML/cmm/m/it/10 ; \
 OMS/cmsy/m/n/10 ^^@\OT1/cmr/m/n/10 0\OML/cmm/m/it/10 :\OT1/cmr/m/n/10 001)$| 
  []
@@ -673,28 +676,34 @@ OMS/cmsy/m/n/10 ^^@\OT1/cmr/m/n/10 0\OML/cmm/m/it/10 :\OT1/cmr/m/n/10 001)$|
 
 LaTeX Warning: `h' float specifier changed to `ht'.
 
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
 LaTeX Font Info:    Font shape `TU/lmtt/bx/n' in size <10.95> not available
-(Font)              Font shape `TU/lmtt/b/n' tried instead on input line 716.
-[10]
-Overfull \hbox (28.91228pt too wide) in paragraph at lines 721--725
+(Font)              Font shape `TU/lmtt/b/n' tried instead on input line 718.
+
+Overfull \hbox (28.91228pt too wide) in paragraph at lines 723--727
 \TU/lmr/m/n/10.95 Be-lief model (\TU/lmtt/m/n/10.95 belief.py\TU/lmr/m/n/10.95 
 ), ac-qui-si-tion poli-cies (\TU/lmtt/m/n/10.95 acquire.py\TU/lmr/m/n/10.95 ), 
 and ses-sion co-or-di-na-tor (\TU/lmtt/m/n/10.95 session.py\TU/lmr/m/n/10.95 ).
  []
 
-
-Overfull \hbox (83.672pt too wide) in paragraph at lines 726--731
+[11]
+Overfull \hbox (83.672pt too wide) in paragraph at lines 728--733
 \TU/lmr/m/n/10.95 FastAPI ser-vice ex-pos-ing \TU/lmtt/m/n/10.95 POST /sessions\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/10.95 POST /sessions/{sid}/step\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/10.95 GET /sessions/{sid}/posterior\TU/lmr/m/n/10.95 ,
  []
 
 
-Overfull \hbox (6.41pt too wide) in paragraph at lines 726--731
+Overfull \hbox (6.41pt too wide) in paragraph at lines 728--733
 \TU/lmtt/m/n/10.95 GET /sessions/{sid}/reveal\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/1
 0.95 GET /sessions/{sid}/kg\TU/lmr/m/n/10.95 , and \TU/lmtt/m/n/10.95 POST /sess
 ions/batch\TU/lmr/m/n/10.95 . The
  []
 
-[11] (./methodology.aux)
+[12] [13] (./methodology.aux)
  ***********
 LaTeX2e <2023-11-01> patch level 1
 L3 programming layer <2024-01-04>
@@ -704,13 +713,13 @@ Package rerunfilecheck Info: File `methodology.out' has not changed.
 )
 
 Here is how much of LuaTeX's memory you used:
- 13072 strings out of 476497
+ 13121 strings out of 476497
  125129,1977958 words of node,token memory allocated
  947 words of node memory still in use:
    7 hlist, 2 vlist, 2 rule, 2 glue, 4 kern, 6 sub_mlist, 1 glyph, 105 attribute
 , 60 glue_spec, 105 attribute_list, 1 write nodes
-   avail lists: 2:1631,3:462,4:301,5:560,6:181,7:6684,8:71,9:1608,10:10,11:480
- 34781 multiletter control sequences out of 65536+600000
+   avail lists: 2:1779,3:418,4:291,5:514,6:172,7:6583,8:71,9:1247,10:10,11:433
+ 34823 multiletter control sequences out of 65536+600000
  84 fonts using 6422231 bytes
  72i,14n,75p,547b,514s stack positions out of 10000i,1000n,20000p,200000b,200000s
 <//?/c:/users/warren powell/appdata/local/programs/miktex/fonts/opentype/public/
@@ -746,9 +755,9 @@ l/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy7.pfb><C:/Users/Warren Powe
 ll/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy8.pfb><C:/Us
 ers/Warren Powell/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/symb
 ols/msbm10.pfb>
-Output written on methodology.pdf (11 pages, 302933 bytes).
+Output written on methodology.pdf (13 pages, 304732 bytes).
 
-PDF statistics: 409 PDF objects out of 1000 (max. 8388607)
- 79 named destinations out of 1000 (max. 131072)
+PDF statistics: 417 PDF objects out of 1000 (max. 8388607)
+ 81 named destinations out of 1000 (max. 131072)
  217 words of extra memory for PDF output out of 10000 (max. 100000000)
 
