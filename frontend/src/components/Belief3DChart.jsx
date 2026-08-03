@@ -27,23 +27,15 @@ const IH = H - PAD.top - PAD.bottom;
 const TILT_X = 0.6;    // fraction of "y" axis pushed to the right
 const TILT_Y = 0.5;    // fraction of "y" axis pushed up (compressed depth)
 
-// Interpolate a viridis-like colormap (blue → green → yellow).
-function viridis(t) {
+// Generic linear-interpolation colormap runner.
+function interp(t, stops) {
   t = Math.max(0, Math.min(1, t));
-  // 5-stop approximation of the matplotlib "viridis" cmap.
-  const stops = [
-    [0.00, [ 68,   1,  84]],
-    [0.25, [ 59,  82, 139]],
-    [0.50, [ 33, 145, 140]],
-    [0.75, [ 94, 201,  98]],
-    [1.00, [253, 231,  37]],
-  ];
   for (let i = 0; i < stops.length - 1; i++) {
     const [a, ca] = stops[i], [b, cb] = stops[i + 1];
     if (t <= b) {
       const u = (t - a) / (b - a);
-      const r = Math.round(ca[0] + u * (cb[0] - ca[0]));
-      const g = Math.round(ca[1] + u * (cb[1] - ca[1]));
+      const r  = Math.round(ca[0] + u * (cb[0] - ca[0]));
+      const g  = Math.round(ca[1] + u * (cb[1] - ca[1]));
       const bl = Math.round(ca[2] + u * (cb[2] - ca[2]));
       return `rgb(${r},${g},${bl})`;
     }
@@ -51,29 +43,85 @@ function viridis(t) {
   return `rgb(${stops.at(-1)[1].join(',')})`;
 }
 
-function fmt(v) {
+const VIRIDIS_STOPS = [
+  [0.00, [ 68,   1,  84]],
+  [0.25, [ 59,  82, 139]],
+  [0.50, [ 33, 145, 140]],
+  [0.75, [ 94, 201,  98]],
+  [1.00, [253, 231,  37]],
+];
+// Matlab-style jet: blue → cyan → green → yellow → red.
+const JET_STOPS = [
+  [0.00, [  0,   0, 143]],
+  [0.20, [  0,  63, 255]],
+  [0.40, [  0, 235, 255]],
+  [0.60, [174, 255,   0]],
+  [0.80, [255, 127,   0]],
+  [1.00, [128,   0,   0]],
+];
+
+const COLORMAPS = {
+  viridis: (t) => interp(t, VIRIDIS_STOPS),
+  jet:     (t) => interp(t, JET_STOPS),
+};
+
+function fmtDollars(v) {
   if (Math.abs(v) >= 1000) return `$${(v / 1000).toFixed(1)}k`;
   return `$${v.toFixed(0)}`;
 }
+function fmtPlain(v) {
+  if (Math.abs(v) >= 1000) return `${(v / 1000).toFixed(1)}k`;
+  return v.toFixed(0);
+}
 
-export default function Belief3DChart({ posterior }) {
-  if (!posterior || !posterior.axis1 || !posterior.axis2) {
+/**
+ * Belief3DChart — generic 3-D surface renderer over a 2-parameter box.
+ *
+ * @param data {
+ *   axis1, axis2   : coordinate axes (length G)
+ *   value          : flattened row-major G*G surface values
+ *   history        : observations as [[θ1, θ2, cost], ...]  (optional)
+ *   best_impparam  : [θ1, θ2] marker on the base plane  (optional)
+ * }
+ * @param valueLabel   : Z-axis label (e.g. "Posterior mean cost", "KG(θ)")
+ * @param colorScheme  : "viridis" (default) or "jet"
+ * @param obsMode      : "atCost"    — draw each observation dot at its (θ, cost) z-value on the surface,
+ *                       "baseplane" — draw markers on the base plane only (best for KG surface)
+ * @param dollarZ      : format Z-axis ticks as dollars (default true)
+ * @param emptyMessage : text shown when data is missing
+ */
+export default function Belief3DChart({
+  data, posterior,
+  valueLabel = "Posterior mean cost",
+  colorScheme = "viridis",
+  obsMode = "atCost",
+  dollarZ = true,
+  emptyMessage = "Waiting for surface data…",
+}) {
+  // Back-compat: accept the old `posterior` prop shape with `mean` field.
+  const d = data ?? (posterior
+    ? { ...posterior, value: posterior.mean }
+    : null);
+
+  if (!d || !d.axis1 || !d.axis2 || !d.value) {
     return (
       <div style={{ height: H, display: 'flex', alignItems: 'center', justifyContent: 'center',
                     color: '#94a3b8', fontSize: 14 }}>
-        Waiting for posterior…
+        {emptyMessage}
       </div>
     );
   }
 
-  const { axis1, axis2, mean, history, best_impparam } = posterior;
+  const { axis1, axis2, value, history, best_impparam } = d;
   const G = axis1.length;
+  const fmt = dollarZ ? fmtDollars : fmtPlain;
+  const cmap = COLORMAPS[colorScheme] ?? COLORMAPS.viridis;
 
-  // Value bounds (include observation z-values so overlaid dots are visible).
-  const allZ = [...mean];
-  if (history) history.forEach(h => allZ.push(h[2]));
-  const zMin = Math.min(...allZ);
-  const zMax = Math.max(...allZ);
+  // Value bounds (include observation z-values only for the atCost mode).
+  const allZ = [...value];
+  if (history && obsMode === "atCost") history.forEach(h => allZ.push(h[2]));
+  const zMin = Math.min(...allZ, 0);
+  const zMax = Math.max(...allZ, 1);
   const zSpan = Math.max(zMax - zMin, 1);
 
   // The plot area maps:  x ∈ [x1_min, x1_max] × y ∈ [x2_min, x2_max] × z ∈ [zMin, zMax]
@@ -104,7 +152,7 @@ export default function Belief3DChart({ posterior }) {
   // Build the mesh polygons.  Iterate over quad cells and draw each as a
   // filled polygon.  Painter's algorithm: draw back-to-front (large-y first).
   const polys = [];
-  const at = (i, j) => mean[i * G + j];  // row-major, i indexes axis1, j indexes axis2
+  const at = (i, j) => value[i * G + j];  // row-major, i indexes axis1, j indexes axis2
   for (let i = 0; i < G - 1; i++) {
     for (let j = G - 2; j >= 0; j--) {  // reverse-j so back rows draw first
       const z00 = at(i, j),     z01 = at(i, j + 1);
@@ -118,7 +166,7 @@ export default function Belief3DChart({ posterior }) {
       const points = `${p00[0]},${p00[1]} ${p10[0]},${p10[1]} ${p11[0]},${p11[1]} ${p01[0]},${p01[1]}`;
       polys.push(
         <polygon key={`${i}-${j}`} points={points}
-                 fill={viridis(t)} stroke="rgba(255,255,255,0.35)"
+                 fill={cmap(t)} stroke="rgba(255,255,255,0.35)"
                  strokeWidth={0.5} />
       );
     }
@@ -179,7 +227,7 @@ export default function Belief3DChart({ posterior }) {
             <text x={bottom[0] - 34} y={(bottom[1] + top[1]) / 2}
                   transform={`rotate(-90, ${bottom[0] - 34}, ${(bottom[1] + top[1]) / 2})`}
                   textAnchor="middle" fontSize={12} fill="#64748b">
-              Posterior mean cost
+              {valueLabel}
             </text>
           </>
         );
@@ -219,14 +267,23 @@ export default function Belief3DChart({ posterior }) {
         θ₂ (institutional buffer)
       </text>
 
-      {/* Observation dots at their reported cost */}
+      {/* Observations — atCost (dot at the observed z value, w/ drop line) or
+          baseplane (marker on the base plane only, for KG surfaces where the
+          observation has no natural z). */}
       {(history ?? []).map((h, k) => {
         const [t1, t2, cost] = h;
-        const p = proj(t1, t2, cost);
         const pBase = proj(t1, t2, zMin);
+        if (obsMode === "baseplane") {
+          return (
+            <g key={`obs-${k}`}>
+              <circle cx={pBase[0]} cy={pBase[1]} r={4}
+                      fill="#dc2626" stroke="white" strokeWidth={1.2} opacity={0.9} />
+            </g>
+          );
+        }
+        const p = proj(t1, t2, cost);
         return (
           <g key={`obs-${k}`}>
-            {/* Vertical dashed drop line to the base plane */}
             <line x1={pBase[0]} y1={pBase[1]} x2={p[0]} y2={p[1]}
                   stroke="#dc2626" strokeWidth={1} strokeDasharray="3,2" opacity={0.55} />
             <circle cx={p[0]} cy={p[1]} r={5}
@@ -248,9 +305,9 @@ export default function Belief3DChart({ posterior }) {
       )}
 
       {/* Legend */}
-      <g transform={`translate(${W - PAD.right - 130}, 10)`}>
-        <rect x={0} y={0} width={12} height={12} fill={viridis(0.5)} opacity={0.85} />
-        <text x={16} y={10} fontSize={10} fill="#374151">Posterior mean</text>
+      <g transform={`translate(${W - PAD.right - 150}, 10)`}>
+        <rect x={0} y={0} width={12} height={12} fill={cmap(0.5)} opacity={0.85} />
+        <text x={16} y={10} fontSize={10} fill="#374151">{valueLabel}</text>
         <circle cx={6} cy={26} r={4} fill="#dc2626" />
         <text x={16} y={30} fontSize={10} fill="#374151">Observation ({(history ?? []).length})</text>
         <circle cx={6} cy={42} r={5} fill="none" stroke="#16a34a" strokeWidth={2} />

@@ -156,6 +156,26 @@ class Posterior2DResponse(BaseModel):
     best_impparam: list[float]
 
 
+class KG2DResponse(BaseModel):
+    """
+    2-D Knowledge Gradient surface — KG(θ) at every point on a grid_size ×
+    grid_size grid.  Same axis convention as Posterior2DResponse.
+
+    * kg  : row-major flattened array of length grid_size**2, matching
+            np.meshgrid(axis1, axis2, indexing='ij').  Non-negative by
+            theory (small negatives are floating-point roundoff).
+    * history : same observation list as Posterior2DResponse — but note that
+            KG has no natural z-value at each observation (observations
+            don't sit on the KG surface), so the frontend should render
+            them as base-plane markers rather than surface dots.
+    """
+    axis1: list[float]
+    axis2: list[float]
+    kg: list[float]
+    history: list[list[float]]
+    best_impparam: list[float]
+
+
 class RevealResponse(BaseModel):
     impparams: list[float]
     mean_cost: list[float]

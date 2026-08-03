@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getReveal, getKGComparison, deleteSession, runBatch } from './api';
+import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, deleteSession, runBatch } from './api';
 import SessionForm from './components/SessionForm';
 import PosteriorChart from './components/PosteriorChart';
 import Belief3DChart from './components/Belief3DChart';
@@ -32,6 +32,7 @@ export default function App() {
   const [batchResult,   setBatchResult]   = useState(null);
   const [batchProgress, setBatchProgress] = useState(null);
   const [posterior2D,   setPosterior2D]   = useState(null);   // 2-D belief surface
+  const [kg2D,          setKg2D]          = useState(null);   // 2-D KG surface
   const stopRef = useRef(false);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -127,6 +128,7 @@ export default function App() {
     setPosterior(null);
     setKgComparison(null);
     setPosterior2D(null);
+    setKg2D(null);
 
     if (dim === 1) {
       const [post, kg] = await Promise.all([
@@ -137,9 +139,13 @@ export default function App() {
       setKgComparison(kg);
       setBestImpparam(post.best_impparam);
     } else {
-      // 2-D: fetch the belief surface.  The KG comparison chart is 1-D only for now.
-      const p2 = await getPosterior2D(session_id, 30);
+      // 2-D: fetch belief surface AND KG surface in parallel.
+      const [p2, kg2] = await Promise.all([
+        getPosterior2D(session_id, 30),
+        getKG2D(session_id, 20),
+      ]);
       setPosterior2D(p2);
+      setKg2D(kg2);
       setBestImpparam(p2.best_impparam);
     }
   }, []);
@@ -178,8 +184,12 @@ export default function App() {
       ]);
       applyResult(result, post, kg);
     } else {
-      const p2 = await getPosterior2D(sid, 30);
+      const [p2, kg2] = await Promise.all([
+        getPosterior2D(sid, 30),
+        getKG2D(sid, 20),
+      ]);
       setPosterior2D(p2);
+      setKg2D(kg2);
       setBestImpparam(result.best_impparam ?? p2.best_impparam);
       setNSteps(result.n_steps);
       setHistory(prev => [...prev, [result.impparam, result.total_cost]]);
@@ -233,6 +243,7 @@ export default function App() {
     setSession(null);
     setPosterior(null);
     setPosterior2D(null);
+    setKg2D(null);
     setKgComparison(null);
     setHistory([]);
     setNSteps(0);
@@ -376,24 +387,53 @@ export default function App() {
         </div>
       )}
 
-      {/* 2-D belief: 3-D surface chart. Renders for cash_balance_2d. */}
+      {/* 2-D belief: 3-D posterior surface + 3-D KG surface. */}
       {session.dim >= 2 && (
-        <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
-              GP posterior surface — 3-D belief
-            </span>
-            <span style={{ fontSize: 12, color: '#94a3b8' }}>
-              {nSteps} observation{nSteps !== 1 ? 's' : ''}
-            </span>
+        <>
+          <div className="card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                GP posterior surface — 3-D belief
+              </span>
+              <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                {nSteps} observation{nSteps !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 8px 0' }}>
+              Posterior mean of F(θ) as a 3-D surface over the 2-parameter box.
+              Red dots are past observations at their realized (noisy) cost.
+              Green circle on the base plane marks the current best θ.
+            </p>
+            <Belief3DChart data={posterior2D && { ...posterior2D, value: posterior2D.mean }}
+                           valueLabel="Posterior mean cost"
+                           colorScheme="viridis"
+                           obsMode="atCost"
+                           emptyMessage="Waiting for posterior…" />
           </div>
-          <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 8px 0' }}>
-            Posterior mean of F(θ) as a 3-D surface over the 2-parameter box.
-            Red dots are past observations at their realized (noisy) cost.
-            Green circle on the base plane marks the current best θ.
-          </p>
-          <Belief3DChart posterior={posterior2D} />
-        </div>
+
+          <div className="card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                Knowledge gradient surface — KG(θ)
+              </span>
+              <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                info value at each candidate
+              </span>
+            </div>
+            <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 8px 0' }}>
+              Analytic correlated KG at every θ on a 20×20 probe grid.  The
+              surface flattens (drops) as each observation reduces uncertainty
+              in its neighborhood.  Red dots on the base plane mark past
+              observations; green circle is the current best θ.
+            </p>
+            <Belief3DChart data={kg2D && { ...kg2D, value: kg2D.kg }}
+                           valueLabel="KG(θ)"
+                           colorScheme="jet"
+                           obsMode="baseplane"
+                           dollarZ={false}
+                           emptyMessage="Waiting for KG surface…" />
+          </div>
+        </>
       )}
 
       {/* 1-D belief: KG chart + posterior. Only for scalar-θ apps. */}

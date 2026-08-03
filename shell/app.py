@@ -23,7 +23,7 @@ from .models import (
     StepResponse, JumpEventOut,
     EvaluateRequest,
     ObserveRequest, ObserveResponse,
-    StateResponse, PosteriorResponse, Posterior2DResponse,
+    StateResponse, PosteriorResponse, Posterior2DResponse, KG2DResponse,
     RevealResponse, KGComparisonResponse,
     BatchRequest, BatchResponse, BatchPolicyResult,
 )
@@ -243,6 +243,44 @@ def posterior_2d(sid: str, grid_size: int = 30) -> Posterior2DResponse:
         axis2=axis2.tolist(),
         mean=mean.tolist(),
         std=std.tolist(),
+        history=hist_rows,
+        best_impparam=best,
+    )
+
+
+@app.get("/sessions/{sid}/kg_2d")
+def kg_2d(sid: str, grid_size: int = 20) -> KG2DResponse:
+    """
+    Return the analytic correlated-KG surface KG(θ) at every point on a
+    grid_size × grid_size grid.  For 2-D apps only.
+    """
+    session = _get_or_404(sid)
+    if session.dim != 2:
+        raise HTTPException(status_code=400,
+            detail=f"kg_2d requires a 2-D session; this one has dim={session.dim}")
+
+    cfg = session._acq_config
+    lo = _as_list(cfg.impparam_min)
+    hi = _as_list(cfg.impparam_max)
+
+    axis1 = np.linspace(lo[0], hi[0], grid_size)
+    axis2 = np.linspace(lo[1], hi[1], grid_size)
+    G1, G2 = np.meshgrid(axis1, axis2, indexing="ij")
+    grid = np.stack([G1.ravel(), G2.ravel()], axis=-1)   # (grid_size**2, 2)
+
+    # candidates == grid — KG at every grid point using itself as the search set.
+    kg = kg_analytic_correlated_at(session.belief, grid, grid)
+
+    hist_rows: list[list[float]] = []
+    for t, c in session.history:
+        arr = np.atleast_1d(np.asarray(t, dtype=float))
+        hist_rows.append([float(arr[0]), float(arr[1]), float(c)])
+
+    best = _as_list(session.best_impparam())
+    return KG2DResponse(
+        axis1=axis1.tolist(),
+        axis2=axis2.tolist(),
+        kg=kg.tolist(),
         history=hist_rows,
         best_impparam=best,
     )
