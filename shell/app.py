@@ -16,6 +16,7 @@ from policy import (
     RandomPolicy, IEPolicy, KGPolicy, Session,
     KGMCPolicy, KGIndependentPolicy, OKGCorrelatedPolicy, OKGIndependentPolicy,
     kg_analytic_correlated_at, kg_mc_correlated_at, kg_independent_at,
+    kg_vs_batch_size,
 )
 from policy.acquire import _make_grid
 from .models import (
@@ -598,6 +599,52 @@ def kg_comparison(
         mc_samples=mc_samples,
         mc_seed=mc_seed,
     )
+
+
+@app.get("/sessions/{sid}/kg_vs_m")
+def kg_vs_m(sid: str, theta: float | None = None, m_max: int = 50) -> dict:
+    """
+    KG(θ) at a single θ as a function of the effective batch size m.
+
+    Motivates the "S-curve" effect: a single experiment (m=1) at a θ with
+    low signal-to-noise can produce a tiny KG, which is what makes the
+    online-KG policies default to μ_reward and never explore. Batching m
+    repeat observations there (noise → σ/√m) can unlock a much larger
+    information gain.
+
+    If `theta` is omitted the endpoint uses argmax of the single-shot
+    analytic-correlated KG surface — i.e. the θ the offline KG policy
+    would sample next.
+
+    Returns { theta, m_values, kg_values, noise_std, base_kg }.
+    """
+    session = _get_or_404(sid)
+    if session.dim != 1:
+        raise HTTPException(status_code=400,
+            detail=f"kg_vs_m requires a 1-D session; this one has dim={session.dim}")
+
+    cfg = session._acq_config
+    search_grid = np.linspace(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
+
+    # Default: the θ the KG policy would pick next.
+    if theta is None:
+        kg_curve = kg_analytic_correlated_at(session.belief, search_grid, search_grid)
+        theta_used = float(search_grid[int(np.argmax(kg_curve))])
+    else:
+        theta_used = float(np.clip(theta, cfg.impparam_min, cfg.impparam_max))
+
+    m_max_int = int(max(1, min(m_max, 200)))
+    m_values = list(range(1, m_max_int + 1))
+    kg_values = kg_vs_batch_size(
+        session.belief, search_grid, theta_used, m_values,
+    )
+    return {
+        "theta": theta_used,
+        "m_values": m_values,
+        "kg_values": [float(v) for v in kg_values.tolist()],
+        "noise_std": float(session.belief.config.noise_std),
+        "base_kg": float(kg_values[0]) if len(kg_values) else 0.0,
+    }
 
 
 @app.get("/sessions/{sid}/posterior")

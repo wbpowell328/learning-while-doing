@@ -3,6 +3,7 @@ from .acquire import (
     AcquisitionConfig, AcquisitionPolicy, RandomPolicy, IEPolicy, KGPolicy,
     KGMCPolicy, KGIndependentPolicy, OKGCorrelatedPolicy, OKGIndependentPolicy,
     kg_analytic_correlated_at, kg_mc_correlated_at, kg_independent_at,
+    kg_vs_batch_size,
 )
 from .session import SessionConfig, Session
 
@@ -12,5 +13,6 @@ __all__ = [
     "RandomPolicy", "IEPolicy", "KGPolicy",
     "KGMCPolicy", "KGIndependentPolicy", "OKGCorrelatedPolicy", "OKGIndependentPolicy",
     "kg_analytic_correlated_at", "kg_mc_correlated_at", "kg_independent_at",
+    "kg_vs_batch_size",
     "SessionConfig", "Session",
 ]

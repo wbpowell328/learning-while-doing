@@ -330,6 +330,65 @@ def _kg_pre_compute(model: BeliefModel, grid: np.ndarray, candidates: np.ndarray
     return mu_grid, cand_mean, cand_var, cross_cov, sigma_tilde, delta_at_cand
 
 
+def kg_vs_batch_size(model: BeliefModel, grid: np.ndarray,
+                     theta, m_values) -> np.ndarray:
+    """
+    KG at a single θ as a function of the effective precision m·β, where β =
+    1/σ²_noise and m = number of repeat observations at the same θ. m = 1
+    recovers the standard single-experiment analytic KG at that θ; larger m
+    behaves as if we ran m repeats and averaged them (noise variance
+    reduced by factor m, i.e. σ_noise → σ_noise/√m).
+
+    Motivation: the S-curve effect. A single experiment can produce a tiny
+    value of information when we're on the flat lower portion of the S; a
+    batch of m experiments moves us up onto the steep part. Plotting
+    KG(θ; m) exposes when a policy is "trapped" by single-shot KG being
+    small even though the true information at that θ is large.
+
+    Parameters
+    ----------
+    model : BeliefModel
+    grid  : (m_grid, dim) search grid — the same grid the KG policy uses.
+    theta : the single candidate θ (scalar for 1-D, length-dim vector otherwise).
+    m_values : iterable of positive ints.
+
+    Returns
+    -------
+    (len(m_values),) ndarray of KG values in belief-frame units.
+    """
+    # _kg_pre_compute expects a batch of candidates; wrap the single θ.
+    cand_arr = np.atleast_1d(np.asarray(theta, dtype=float))
+    if cand_arr.ndim == 1 and grid.ndim > 1 and grid.shape[1] > 1:
+        cand_arr = cand_arr.reshape(1, -1)                     # multi-d single point
+    elif cand_arr.ndim == 1:
+        cand_arr = cand_arr.reshape(-1, 1)                     # 1-D → column
+    mu_grid, cand_mean, cand_var, cross_cov, _, _ = _kg_pre_compute(
+        model, grid, cand_arr
+    )
+    # Single candidate expected.
+    v = float(cand_var[0])
+    mu_ext_base = np.concatenate([mu_grid, [cand_mean[0]]])
+    cross = cross_cov[0]                                        # (m_grid,)
+    current_min = float(np.min(mu_ext_base))
+
+    base_noise_var = float(model.config.noise_std) ** 2
+
+    m_arr = np.asarray(list(m_values), dtype=int)
+    out = np.zeros(m_arr.shape[0], dtype=float)
+    for k, m in enumerate(m_arr):
+        if m < 1:
+            continue
+        noise_var_m = base_noise_var / float(m)
+        sigma_tilde_m = float(np.sqrt(v + noise_var_m))
+        if sigma_tilde_m <= 1e-12:
+            continue
+        w_ext = np.concatenate([cross / sigma_tilde_m, [v / sigma_tilde_m]])
+        e_max = _expected_max_of_lines(-mu_ext_base, -w_ext)
+        expected_future_min = -float(e_max)
+        out[k] = current_min - expected_future_min
+    return out
+
+
 def kg_analytic_correlated_at(model: BeliefModel, grid: np.ndarray,
                                candidates: np.ndarray) -> np.ndarray:
     """

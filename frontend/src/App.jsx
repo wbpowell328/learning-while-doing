@@ -1,9 +1,10 @@
 import { useState, useCallback, useRef } from 'react';
-import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, deleteSession, runBatch } from './api';
+import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, getKGvsM, deleteSession, runBatch } from './api';
 import SessionForm from './components/SessionForm';
 import PosteriorChart from './components/PosteriorChart';
 import Belief3DChart from './components/Belief3DChart';
 import KGChart from './components/KGChart';
+import KGvsMChart from './components/KGvsMChart';
 import ImpparamSlider from './components/ImpparamSlider';
 import HistoryTable from './components/HistoryTable';
 import HumanControls from './components/HumanControls';
@@ -54,6 +55,7 @@ export default function App() {
   const [session,       setSession]       = useState(null);
   const [posterior,     setPosterior]     = useState(null);
   const [kgComparison,  setKgComparison]  = useState(null);
+  const [kgVsM,         setKgVsM]         = useState(null);
   const [history,       setHistory]       = useState([]);
   const [nSteps,        setNSteps]        = useState(0);
   const [bestImpparam,     setBestImpparam]     = useState(null);
@@ -72,9 +74,10 @@ export default function App() {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  const applyResult = useCallback((result, post, kg) => {
+  const applyResult = useCallback((result, post, kg, kgm) => {
     setPosterior(post);
     setKgComparison(kg);
+    if (kgm !== undefined) setKgVsM(kgm);
     setBestImpparam(result.best_impparam);
     setNSteps(result.n_steps);
     setHistory(prev => [...prev, [result.impparam, result.total_reward]]);
@@ -162,16 +165,19 @@ export default function App() {
     setReveal(null);
     setPosterior(null);
     setKgComparison(null);
+    setKgVsM(null);
     setPosterior2D(null);
     setKg2D(null);
 
     if (dim === 1) {
-      const [post, kg] = await Promise.all([
+      const [post, kg, kgm] = await Promise.all([
         getPosterior(session_id),
         getKGComparison(session_id, 0.01, 50, effectiveBudget),
+        getKGvsM(session_id, 50),
       ]);
       setPosterior(post);
       setKgComparison(kg);
+      setKgVsM(kgm);
       setBestImpparam(post.best_impparam);
     } else {
       // 2-D: fetch belief surface AND KG surface in parallel.
@@ -193,11 +199,12 @@ export default function App() {
     setError(null);
     try {
       const result = await evaluateC(session.id, impparam);
-      const [post, kg] = await Promise.all([
+      const [post, kg, kgm] = await Promise.all([
         getPosterior(session.id),
         getKGComparison(session.id, 0.01, 50, session.budget ?? 10),
+        getKGvsM(session.id, 50),
       ]);
-      applyResult(result, post, kg);
+      applyResult(result, post, kg, kgm);
       if (session.budget && result.n_steps >= session.budget) {
         await fetchReveal(session.id);
       }
@@ -213,11 +220,12 @@ export default function App() {
   const doStep = useCallback(async (sid, budget, dim) => {
     const result = await runStep(sid);
     if (dim === 1) {
-      const [post, kg] = await Promise.all([
+      const [post, kg, kgm] = await Promise.all([
         getPosterior(sid),
         getKGComparison(sid, 0.01, 50, budget ?? 10),
+        getKGvsM(sid, 50),
       ]);
-      applyResult(result, post, kg);
+      applyResult(result, post, kg, kgm);
     } else {
       const [p2, kg2] = await Promise.all([
         getPosterior2D(sid, 30),
@@ -280,6 +288,7 @@ export default function App() {
     setPosterior2D(null);
     setKg2D(null);
     setKgComparison(null);
+    setKgVsM(null);
     setHistory([]);
     setNSteps(0);
     setBestImpparam(null);
@@ -521,6 +530,27 @@ export default function App() {
                   </span>
                 </div>
                 <PosteriorChart posterior={posterior} history={history} policy={policy} />
+              </div>
+
+              {/* KG(θ*; m) — S-curve diagnostic. Explains when single-shot KG
+                  is small enough that the online policies default to μ_reward. */}
+              <div className="card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                    KG vs batch size m
+                  </span>
+                  <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                    at θ* = argmax offline KG
+                  </span>
+                </div>
+                <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 8px 0' }}>
+                  Info value at the θ the KG policy would sample next if we
+                  averaged m independent runs there (noise → σ/√m, precision
+                  → m·β). Flat-then-rising S-curves mean single-shot KG is
+                  hiding a lot of information; online-KG will look tempted by
+                  μ_reward instead of exploring.
+                </p>
+                <KGvsMChart data={kgVsM} />
               </div>
             </>
           )}
