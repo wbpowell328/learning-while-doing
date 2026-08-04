@@ -575,12 +575,9 @@ export default function App() {
               </div>
               <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 8px 0' }}>
                 Info value at the (θ₁, θ₂) point if we averaged m independent
-                runs there (noise → σ/√m, precision → m·β). Same two curves as
-                the 1-D card: <b style={{color:'#16a34a'}}>correlated</b> (the
-                GP that the KG policy actually uses) and
-                <b style={{color:'#2563eb'}}> independent beliefs</b> (each
-                grid cell a separate alternative). σ_ε is a future-batch
-                scenario; the session's belief is not refit.
+                runs there (noise → σ/√m, precision → m·β). Uses the correlated
+                GP posterior — the same one the KG policy consumes. σ_ε is a
+                future-batch scenario; the session's belief is not refit.
               </p>
               <KGvsMChart
                 data={kgVsM}
@@ -640,18 +637,13 @@ export default function App() {
                 </div>
                 <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 8px 0' }}>
                   Info value at θ if we averaged m independent runs there
-                  (noise → σ/√m, precision → m·β). Two curves:
-                  <b style={{color:'#16a34a'}}> correlated</b> is what the KG
-                  policy actually uses (GP with the belief's length_scale);
-                  <b style={{color:'#2563eb'}}> independent beliefs</b> treats
-                  each grid cell as a separate alternative with its own
-                  conjugate Normal-Normal belief, updated only by observations
-                  in its own bin — no cross-θ spillover. The σ_ε input is a
-                  <b> future-batch scenario</b>: "what if the hypothetical m
-                  runs had noise σ_ε?" — the session's belief (posterior μ
-                  and V) is <em>not</em> refit, so Δ stays substantial while
-                  σ̃(m=1) collapses at high σ_ε — that's when the classical
-                  S emerges.
+                  (noise → σ/√m, precision → m·β). Uses the correlated GP
+                  posterior — the same one the KG policy consumes. The σ_ε
+                  input is a <b>future-batch scenario</b>: "what if the
+                  hypothetical m runs had noise σ_ε?" — the session's belief
+                  (posterior μ and V) is <em>not</em> refit, so Δ stays
+                  substantial while σ̃(m=1) collapses at high σ_ε — that's
+                  when the classical S emerges.
                 </p>
                 <KGvsMChart
                   data={kgVsM}

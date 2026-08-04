@@ -8,8 +8,7 @@
 import { useState, useEffect } from 'react';
 
 const W = 640, H = 260;
-// Extra room on the right for the second (independent) y-axis.
-const PAD = { top: 20, right: 72, bottom: 48, left: 68 };
+const PAD = { top: 20, right: 24, bottom: 48, left: 68 };
 const IW = W - PAD.left - PAD.right;
 const IH = H - PAD.top - PAD.bottom;
 
@@ -61,18 +60,17 @@ export default function KGvsMChart({
   }
 
   const { theta, m_values, kg_values, noise_std, noise_std_belief, base_kg } = data;
-  // kg_values is the CORRELATED KG curve (what the policy uses); the
-  // INDEPENDENT-scalar curve is served alongside for pedagogical
-  // comparison and exhibits the classical S when the noise regime lines
-  // up. Both are on the same y-scale.
-  const kg_values_indep = data.kg_values_independent ?? [];
-  // Diagnostic readouts — control whether the S is visible or not.
+  // kg_values is the CORRELATED KG curve — the only one displayed. The
+  // independent-beliefs curve was dropped (2025 cleanup): under a strict
+  // independent formulation, σ̃(∞) is bounded by √V_x per candidate, so
+  // any candidate with Δ ≫ √V_x — the common case in the sparse-
+  // observation regime — shows KG(m) ≈ 0 for all m. That flatness is a
+  // real feature but a misleading picture pedagogically; correlated KG
+  // (what the policy actually uses) is the one that carries the pattern.
+  // Backend still returns the independent fields for possible future use.
   const delta_corr        = data.delta_corr;
   const sigma_tilde_corr  = data.sigma_tilde_corr;
-  const delta_indep       = data.delta_indep;
-  const sigma_tilde_indep = data.sigma_tilde_indep;
   const zscore_corr  = (delta_corr  != null && sigma_tilde_corr  > 1e-12) ? delta_corr  / sigma_tilde_corr  : null;
-  const zscore_indep = (delta_indep != null && sigma_tilde_indep > 1e-12) ? delta_indep / sigma_tilde_indep : null;
   const isOverridden = noise_std_belief != null &&
                        Math.abs(noise_std - noise_std_belief) > 1e-6;
 
@@ -129,32 +127,18 @@ export default function KGvsMChart({
   const xLo = m_values[0];
   const xHi = m_values[m_values.length - 1];
 
-  // Dual y-axis: correlated (LEFT axis, green) and independent (RIGHT
-  // axis, blue) each auto-scale to their own maximum so both curves are
-  // visible at their natural scale — matching the pattern of the main
-  // KG comparison chart.
-  const yMaxCorr  = Math.max(...kg_values, base_kg, 1);
-  const yMaxIndep = kg_values_indep.length
-    ? Math.max(...kg_values_indep, 1)
-    : yMaxCorr;
-  const yHiCorr  = yMaxCorr  * 1.10 || 1;
-  const yHiIndep = yMaxIndep * 1.10 || 1;
+  // Single y-axis on the correlated KG curve.
+  const yMax = Math.max(...kg_values, base_kg, 1);
+  const yHi  = yMax * 1.10 || 1;
 
-  const xS      = (m) => PAD.left + ((m - xLo) / Math.max(xHi - xLo, 1)) * IW;
-  const yS_corr = (v) => PAD.top  + ((yHiCorr  - v) / yHiCorr)  * IH;
-  const yS_indep= (v) => PAD.top  + ((yHiIndep - v) / yHiIndep) * IH;
+  const xS = (m) => PAD.left + ((m - xLo) / Math.max(xHi - xLo, 1)) * IW;
+  const yS = (v) => PAD.top  + ((yHi - v) / yHi) * IH;
 
   const pathD = m_values
-    .map((m, i) => `${i === 0 ? 'M' : 'L'}${xS(m).toFixed(1)},${yS_corr(kg_values[i]).toFixed(1)}`)
+    .map((m, i) => `${i === 0 ? 'M' : 'L'}${xS(m).toFixed(1)},${yS(kg_values[i]).toFixed(1)}`)
     .join('');
-  const pathDIndep = kg_values_indep.length === m_values.length
-    ? m_values
-        .map((m, i) => `${i === 0 ? 'M' : 'L'}${xS(m).toFixed(1)},${yS_indep(kg_values_indep[i]).toFixed(1)}`)
-        .join('')
-    : '';
 
-  const yTicksCorr  = niceTicks(0, yHiCorr,  5);
-  const yTicksIndep = niceTicks(0, yHiIndep, 5);
+  const yTicks = niceTicks(0, yHi, 5);
   const xTickCandidates = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
   const xTicks = xTickCandidates.filter(t => t >= xLo && t <= xHi);
   if (xTicks[0] !== xLo) xTicks.unshift(xLo);
@@ -251,12 +235,11 @@ export default function KGvsMChart({
         )}
       </div>
 
-      {/* Diagnostic row: |Δ|, σ̃(m=1) and their ratio for both formulations.
-          The S is visible only when Δ/σ̃ ≳ 2 or so — that's the regime where
-          f(-z) is near-zero, forcing KG(m=1) small. Values in belief-frame
-          $ (posterior means at θ vs current best, and Bayesian mean-shift
-          std at a single observation). */}
-      {(delta_corr != null || delta_indep != null) && (
+      {/* Diagnostic row: |Δ|, σ̃(m=1) and Δ/σ̃ for the correlated KG. The
+          S is visible when Δ/σ̃ is moderate — too small ⇒ single-shot KG is
+          already near the plateau; very large ⇒ deep S beyond the visible
+          m range. Values are in belief-frame $. */}
+      {delta_corr != null && (
         <div style={{ display: 'grid',
                       gridTemplateColumns: '110px 1fr 1fr 1fr',
                       gap: '4px 12px',
@@ -276,53 +259,36 @@ export default function KGvsMChart({
             {zscore_corr?.toFixed(2)}
           </div>
 
-          <div style={{ color: '#2563eb', fontWeight: 600 }}>Independent</div>
-          <div>${delta_indep?.toFixed(1)}</div>
-          <div>${sigma_tilde_indep?.toFixed(1)}</div>
-          <div style={{ color: (zscore_indep != null && zscore_indep > 2) ? '#dc2626' : '#475569' }}>
-            {zscore_indep?.toFixed(2)}
-          </div>
-
-          {/* When Δ is essentially zero for both, prompt the user — most often
-              this means the session has no observations yet, so every cell is
-              at prior_mean. */}
-          {(delta_corr != null && delta_indep != null &&
-            delta_corr < 1e-3 && delta_indep < 1e-3) ? (
+          {delta_corr < 1e-3 ? (
             <div style={{ gridColumn: '1 / -1', color: '#b45309', fontStyle: 'italic', marginTop: 2 }}>
-              Δ = 0 for both — no observations distinguish θ from any other cell yet.
+              Δ = 0 — no observations distinguish θ from any other cell yet.
               Click <b>Run step</b> or <b>Auto-run 10 / 25</b> to accumulate observations;
               Δ will then depend on the θ you pick.
             </div>
           ) : (
             <div style={{ gridColumn: '1 / -1', color: '#94a3b8', fontStyle: 'italic', marginTop: 2 }}>
-              The classical S needs Δ/σ̃ ≳ 2 (red) — that's where f(−z) → 0 and KG(m=1) collapses.
-              Smaller ratios give the concave-plateau shape.
+              The classical S emerges around Δ/σ̃ ≈ 2–5. Below that, KG(m=1) is
+              already near the plateau (no visible transition); much above, the S
+              plateau sits beyond the visible m range.
             </div>
           )}
         </div>
       )}
 
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible' }}>
-      {/* Gridlines from the LEFT (correlated) axis. */}
-      {yTicksCorr.map((v, i) => (
+      {/* Gridlines */}
+      {yTicks.map((v, i) => (
         <line key={i} x1={PAD.left} x2={W - PAD.right}
-              y1={yS_corr(v)} y2={yS_corr(v)} stroke="#e2e8f0" strokeWidth={1} />
+              y1={yS(v)} y2={yS(v)} stroke="#e2e8f0" strokeWidth={1} />
       ))}
 
       {/* Correlated KG(m) curve — what the KG policy actually uses. */}
       <path d={pathD} fill="none" stroke="#16a34a" strokeWidth={2.5} />
 
-      {/* Independent-beliefs KG(m) curve — pedagogical S-curve view. */}
-      {pathDIndep && (
-        <path d={pathDIndep} fill="none" stroke="#2563eb" strokeWidth={2}
-              strokeDasharray="5,3" opacity={0.9} />
-      )}
-
-      {/* Marker at m=1. Sits on the CORRELATED (left) axis so its dot
-          reflects the green curve's value there. */}
+      {/* Marker at m=1: reference to what the main KG chart displays. */}
       <line x1={xS(1)} x2={xS(1)} y1={PAD.top} y2={H - PAD.bottom}
             stroke="#dc2626" strokeWidth={1.5} strokeDasharray="4,3" opacity={0.85} />
-      <circle cx={xS(1)} cy={yS_corr(base_kg)} r={5}
+      <circle cx={xS(1)} cy={yS(base_kg)} r={5}
               fill="#dc2626" stroke="white" strokeWidth={1.5} />
       <text x={xS(1) + 8} y={PAD.top + 12}
             fontSize={11} fontWeight={600} fill="#dc2626">
@@ -349,52 +315,22 @@ export default function KGvsMChart({
         }
       </text>
 
-      {/* LEFT y-axis — correlated KG. Colour-matched to the green curve. */}
+      {/* Y-axis */}
       <line x1={PAD.left} x2={PAD.left}
             y1={PAD.top} y2={H - PAD.bottom} stroke="#94a3b8" />
-      {yTicksCorr.map((v, i) => (
+      {yTicks.map((v, i) => (
         <g key={i}>
           <line x1={PAD.left - 5} x2={PAD.left}
-                y1={yS_corr(v)} y2={yS_corr(v)} stroke="#94a3b8" />
-          <text x={PAD.left - 8} y={yS_corr(v) + 4}
-                textAnchor="end" fontSize={10} fill="#16a34a">{fmt$(v)}</text>
+                y1={yS(v)} y2={yS(v)} stroke="#94a3b8" />
+          <text x={PAD.left - 8} y={yS(v) + 4}
+                textAnchor="end" fontSize={10} fill="#64748b">{fmt$(v)}</text>
         </g>
       ))}
       <text
         transform={`translate(${PAD.left - 52},${PAD.top + IH / 2}) rotate(-90)`}
-        textAnchor="middle" fontSize={12} fill="#16a34a">
-        Correlated KG(θ; m)
+        textAnchor="middle" fontSize={12} fill="#64748b">
+        KG(θ; m)
       </text>
-
-      {/* RIGHT y-axis — independent KG. Colour-matched to the blue curve. */}
-      <line x1={W - PAD.right} x2={W - PAD.right}
-            y1={PAD.top} y2={H - PAD.bottom} stroke="#94a3b8" />
-      {yTicksIndep.map((v, i) => (
-        <g key={i}>
-          <line x1={W - PAD.right} x2={W - PAD.right + 5}
-                y1={yS_indep(v)} y2={yS_indep(v)} stroke="#94a3b8" />
-          <text x={W - PAD.right + 8} y={yS_indep(v) + 4}
-                textAnchor="start" fontSize={10} fill="#2563eb">{fmt$(v)}</text>
-        </g>
-      ))}
-      <text
-        transform={`translate(${W - PAD.right + 54},${PAD.top + IH / 2}) rotate(-90)`}
-        textAnchor="middle" fontSize={12} fill="#2563eb">
-        Independent KG(θ; m)
-      </text>
-
-      {/* Legend — two lines: correlated (policy) vs independent (classical) */}
-      <g transform={`translate(${W - PAD.right - 210},${PAD.top + 4})`}>
-        <line x1={0} x2={20} y1={6} y2={6} stroke="#16a34a" strokeWidth={2.5} />
-        <text x={26} y={10} fontSize={10} fill="#374151">
-          Correlated KG (what the policy uses)
-        </text>
-        <line x1={0} x2={20} y1={22} y2={22} stroke="#2563eb" strokeWidth={2}
-              strokeDasharray="5,3" opacity={0.9} />
-        <text x={26} y={26} fontSize={10} fill="#374151">
-          Independent beliefs (no cross-updates)
-        </text>
-      </g>
 
       {/* Footer: β context */}
       <text x={W - PAD.right} y={H - 4} textAnchor="end"
