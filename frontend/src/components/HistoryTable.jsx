@@ -37,8 +37,14 @@ export default function HistoryTable({ history, enrichedRows }) {
             <th>#</th>
             <th>θ</th>
             <th>Total reward</th>
-            {useEnriched && <th title="Posterior mean at this θ under the belief state BEFORE this step's observation was folded in — what the policy saw when it decided">μ<sup>n</sup></th>}
-            {useEnriched && <th title="Offline analytic correlated KG at this θ under the same pre-step belief state; the info-value estimate that drove the policy's pick">KG</th>}
+            {useEnriched && <th style={{ textTransform: 'none' }}
+              title="Posterior mean at this θ under the belief state BEFORE this step's observation was folded in — what the policy saw when it decided">
+              μ<sup>n</sup>
+            </th>}
+            {useEnriched && <th style={{ textTransform: 'none' }}
+              title="Offline analytic correlated KG at this θ under the same pre-step belief state; the info-value estimate that drove the policy's pick">
+              KG
+            </th>}
           </tr>
         </thead>
         <tbody>

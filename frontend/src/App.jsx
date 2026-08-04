@@ -47,6 +47,55 @@ function LengthScaleInput({ value, onCommit }) {
   );
 }
 
+// 2-D variant: two independent inputs for per-dimension bandwidth (ARD).
+// Accepts session.length_scale as either a scalar (broadcast to both dims
+// when the session was created with the default) or a length-2 list.
+// Commits an array [ℓ₁, ℓ₂] to the backend.
+function LengthScaleInput2D({ value, onCommit }) {
+  const initial = Array.isArray(value) ? value : [value, value];
+  const [str1, setStr1] = useState(String(initial[0] ?? ''));
+  const [str2, setStr2] = useState(String(initial[1] ?? ''));
+  useEffect(() => {
+    const v = Array.isArray(value) ? value : [value, value];
+    setStr1(String(v[0] ?? ''));
+    setStr2(String(v[1] ?? ''));
+  }, [value]);
+  const commit = () => {
+    const v1 = Number(str1);
+    const v2 = Number(str2);
+    if (!Number.isFinite(v1) || v1 <= 0 || !Number.isFinite(v2) || v2 <= 0) {
+      const orig = Array.isArray(value) ? value : [value, value];
+      setStr1(String(orig[0]));
+      setStr2(String(orig[1]));
+      return;
+    }
+    const cur = Array.isArray(value) ? value : [value, value];
+    if (Math.abs(v1 - cur[0]) < 1e-9 && Math.abs(v2 - cur[1]) < 1e-9) return;
+    onCommit([v1, v2]);
+  };
+  const inputStyle = { width: 80, padding: '3px 6px', border: '1px solid #cbd5e1',
+                       borderRadius: 4, fontSize: 12 };
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8,
+                  fontSize: 12, color: '#475569', flexWrap: 'wrap' }}>
+      <label style={{ fontWeight: 600 }}>Kernel bandwidth:</label>
+      <label>ℓ₁:</label>
+      <input type="number" value={str1} step="any" min="0" style={inputStyle}
+             onChange={e => setStr1(e.target.value)}
+             onBlur={commit}
+             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }} />
+      <label>ℓ₂:</label>
+      <input type="number" value={str2} step="any" min="0" style={inputStyle}
+             onChange={e => setStr2(e.target.value)}
+             onBlur={commit}
+             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }} />
+      <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>
+        per-dim ARD — smaller ℓ = tighter local features on that axis
+      </span>
+    </div>
+  );
+}
+
 const POLICY_LABEL = {
   random:    'Random',
   ie:        'IE',
@@ -190,7 +239,7 @@ export default function App() {
     try {
       const resp = await setLengthScale(session.id, newLS);
       setSession(prev => prev ? { ...prev, length_scale: resp.length_scale } : prev);
-      // Refetch every view that depends on the posterior — 1-D right now.
+      // Refetch every view that depends on the posterior.
       if (session.dim === 1) {
         const [post, kg, kgm] = await Promise.all([
           getPosterior(session.id),
@@ -201,6 +250,16 @@ export default function App() {
         setKgComparison(kg);
         setKgVsM(kgm);
         setBestImpparam(post.best_impparam);
+      } else {
+        const [p2, kg2, kgm] = await Promise.all([
+          getPosterior2D(session.id, 30),
+          getKG2D(session.id, 20),
+          getKGvsM(session.id, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2),
+        ]);
+        setPosterior2D(p2);
+        setKg2D(kg2);
+        setKgVsM(kgm);
+        setBestImpparam(p2.best_impparam);
       }
       // μ and KG in the enriched history depend on the belief (which
       // just got refit) — always refresh regardless of dim.
@@ -653,6 +712,10 @@ export default function App() {
                 Red dots are past observations at their realized (noisy) reward.
                 Green circle on the base plane marks the current best θ.
               </p>
+              <LengthScaleInput2D
+                value={session.length_scale ?? 0.04}
+                onCommit={handleLengthScaleChange}
+              />
               <Belief3DChart data={posterior2D && { ...posterior2D, value: posterior2D.mean }}
                              valueLabel="Posterior mean reward"
                              colorScheme="viridis"
