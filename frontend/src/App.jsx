@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, getKGvsM, setMStar, setLengthScale, getObservationsEnriched, deleteSession, runBatch } from './api';
+import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, getKGvsM, setMStar, setLengthScale, getObservationsEnriched, deleteSession } from './api';
 import SessionForm from './components/SessionForm';
 import PosteriorChart from './components/PosteriorChart';
 import Belief3DChart from './components/Belief3DChart';
@@ -11,7 +11,10 @@ import HumanControls from './components/HumanControls';
 import CashChart from './components/CashChart';
 import JumpLog from './components/JumpLog';
 import RevealPanel from './components/RevealPanel';
-import BatchResults from './components/BatchResults';
+// BatchResults component intentionally not imported — the batch-mode
+// flow was removed as part of the single-policy-with-tunable-parameter
+// refactor (2026). Every policy now runs single-instance with its own
+// θ^KGm* or θ^IE parameter chosen at session-create.
 import './App.css';
 
 // Small controlled number input that fires onCommit only on blur/Enter —
@@ -154,8 +157,6 @@ export default function App() {
   const [autoCount,     setAutoCount]     = useState(0);
   const [error,         setError]         = useState(null);
   const [impparam,         setImpparam]         = useState(0.10);
-  const [batchResult,   setBatchResult]   = useState(null);
-  const [batchProgress, setBatchProgress] = useState(null);
   const [posterior2D,   setPosterior2D]   = useState(null);   // 2-D belief surface
   const [kg2D,          setKg2D]          = useState(null);   // 2-D KG surface
   const stopRef = useRef(false);
@@ -298,53 +299,21 @@ export default function App() {
 
   // ── Create session ────────────────────────────────────────────────────────
 
-  const handleCreate = useCallback(async ({ app_name, policy, session_seed, sim_config, belief_config, session_config, budget, family, sims_per_policy }) => {
+  const handleCreate = useCallback(async ({
+    app_name, policy, session_seed,
+    sim_config, belief_config, acq_config, session_config,
+    budget, m_star, report_level,
+  }) => {
     setError(null);
-
-    // Batch mode: stream the whole family, show progress, then BatchResults.
-    if (family) {
-      setBatchProgress({ started: true, completed: 0, total: null, current_policy: null, family });
-      try {
-        const result = await runBatch(
-          {
-            family,
-            sims_per_policy,
-            budget: budget ?? 10,
-            sim_config,
-            belief_config,
-            session_config,
-            session_seed,
-          },
-          (msg) => {
-            if (msg.type === 'started') {
-              setBatchProgress(p => ({ ...p, total: msg.total_runs, total_policies: msg.total_policies }));
-            } else if (msg.type === 'progress') {
-              setBatchProgress(p => ({
-                ...p,
-                completed: msg.completed,
-                total: msg.total,
-                current_policy: msg.current_policy,
-                sim_idx: msg.sim_idx,
-              }));
-            } else if (msg.type === 'ground_truth') {
-              setBatchProgress(p => ({ ...p, phase: 'ground_truth' }));
-            }
-          },
-        );
-        setBatchResult(result);
-      } catch (e) {
-        setError(String(e));
-        throw e;
-      } finally {
-        setBatchProgress(null);
-      }
-      return;
-    }
-
-    // Single-policy mode: existing flow.
+    // Single-policy mode is the only mode now; batch mode was removed.
     const created = await createSession({
       app_name: app_name ?? 'cash_balance',
-      policy, session_seed, sim_config, belief_config, session_config,
+      policy, session_seed,
+      sim_config, belief_config, session_config,
+      // Pass acq_config through when non-empty (IE sends z_alpha).
+      ...(acq_config && Object.keys(acq_config).length ? { acq_config } : {}),
+      // KG-family m* (θ^KGm*): applies to KG variants; harmless for others.
+      ...(m_star != null ? { m_star } : {}),
     });
     const session_id = created.session_id;
     const dim = created.dim ?? 1;
@@ -362,6 +331,8 @@ export default function App() {
       // Whatever length_scale the user set in Advanced Parameters at
       // create time — the belief_config payload carries it.
       length_scale: belief_config?.length_scale ?? 0.04,
+      // Frontend-only setting — controls which diagnostic panels render.
+      report_level: report_level ?? 'basic',
     });
     setHistory([]);
     setEnrichedRows([]);
@@ -516,53 +487,9 @@ export default function App() {
     setLastResult(null);
     setReveal(null);
     setError(null);
-    setBatchResult(null);
   }, [session]);
 
   // ── Render ────────────────────────────────────────────────────────────────
-
-  if (batchResult) {
-    return <BatchResults batch={batchResult} onReset={handleNew} />;
-  }
-
-  if (batchProgress) {
-    const { completed, total, current_policy, sim_idx, family, phase } = batchProgress;
-    const pct = total ? (100 * completed / total) : 0;
-    const label = phase === 'ground_truth'
-      ? 'Evaluating ground truth…'
-      : current_policy
-        ? `Sim ${sim_idx} · ${current_policy}`
-        : 'Starting…';
-    return (
-      <div className="app">
-        <div className="header">
-          <h1>Running {family} batch</h1>
-          <span className="badge">{completed} / {total ?? '?'}</span>
-        </div>
-        <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>{label}</span>
-            <span style={{ fontSize: 13, color: '#64748b', fontFamily: 'monospace' }}>
-              {pct.toFixed(0)}%
-            </span>
-          </div>
-          <div style={{ height: 10, background: '#e2e8f0', borderRadius: 9999, overflow: 'hidden' }}>
-            <div style={{
-              height: '100%',
-              width: `${pct}%`,
-              background: '#16a34a',
-              borderRadius: 9999,
-              transition: 'width 0.15s linear',
-            }} />
-          </div>
-          <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 10 }}>
-            Streaming progress as each policy-run completes. Keep this tab open;
-            closing it cancels the batch on the server after the current run finishes.
-          </p>
-        </div>
-      </div>
-    );
-  }
 
   if (!session) {
     return (
@@ -725,8 +652,10 @@ export default function App() {
           )}
 
           {/* KG(m) card is available in 2-D too. Same semantics as 1-D:
-              future-batch scenario at a caller-picked (θ₁, θ₂). */}
-          {session.dim >= 2 && (
+              future-batch scenario at a caller-picked (θ₁, θ₂). Only
+              rendered under Advanced reporting per Warren's request —
+              basic reporting stays focused on the core pedagogical panels. */}
+          {session.dim >= 2 && session.report_level === 'advanced' && (
             <div className="card">
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                 <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
@@ -793,8 +722,10 @@ export default function App() {
                 <PosteriorChart posterior={posterior} history={history} policy={policy} />
               </div>
 
-              {/* KG(θ*; m) — S-curve diagnostic. Explains when single-shot KG
-                  is small enough that the online policies default to μ_reward. */}
+              {/* KG(θ*; m) — S-curve diagnostic. Only rendered under
+                  Advanced reporting; basic keeps the layout focused on
+                  the core pedagogical panels. */}
+              {session.report_level === 'advanced' && (
               <div className="card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                   <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
@@ -826,6 +757,7 @@ export default function App() {
                   onMStarChange={handleMStarChange}
                 />
               </div>
+              )}
             </>
           )}
         </div>

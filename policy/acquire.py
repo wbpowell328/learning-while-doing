@@ -679,18 +679,22 @@ class KGIndependentPolicy:
 
 class OKGCorrelatedPolicy:
     """
-    Online KG (Ryzhov 2010) with correlated beliefs.
+    Online KG with correlated beliefs — Warren-2026 formulation.
 
-        OKG(x) = mu_n(x) - (N - n) * offline_correlated_KG(x)
+        OKG(x) = mu_n(x) - offline_correlated_KG(x; m*)          [cost frame]
+        argmax_x [mu^n(x) + KG(x; m*)]                            [reward frame]
 
-    where N is the total measurement budget and n is the number of steps
-    taken so far (read from model.n_observations). Picks argmin OKG.
-    `m_star` (default 1) — see KGPolicy for semantics.
+    Replaces the classical Ryzhov (N-n)·KG multiplier with a
+    user-tunable m* (units: days = expected batch size of a
+    hypothetical replicate). m* scales the effective precision of a
+    hypothetical measurement inside KG, so the info-value bonus grows
+    with m* without depending on (N,n).
     """
-    def __init__(self, config: AcquisitionConfig, budget: int,
-                 m_star: int = 1) -> None:
+    def __init__(self, config: AcquisitionConfig,
+                 m_star: int = 1, **_unused) -> None:
+        # `**_unused` swallows legacy kwargs (e.g. budget=...) from any
+        # caller that hasn't been migrated yet — safe no-op.
         self.config = config
-        self._budget = int(budget)
         self._m_star = max(1, int(m_star))
         cfg = self.config
         self._grid = _make_grid(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
@@ -699,24 +703,21 @@ class OKGCorrelatedPolicy:
         self._m_star = max(1, int(m_star))
 
     def propose(self, model: BeliefModel, rng: np.random.Generator):
-        n = model.n_observations
-        remaining = max(0, self._budget - n)
         mu, _ = model.posterior(self._grid)
         kg = kg_analytic_correlated_at(model, self._grid, self._grid, m_star=self._m_star)
-        okg = mu - remaining * kg
+        okg = mu - kg
         return _grid_pick(self._grid, int(np.argmin(okg)))
 
 
 class OKGIndependentPolicy:
     """
-    Online KG using independent-beliefs offline KG as the info-value term.
-    Same functional form as OKGCorrelatedPolicy but with the independent
-    KG plugged in. `m_star` (default 1) — see KGPolicy for semantics.
+    Online KG using independent-beliefs offline KG as the info-value
+    term. Same functional form as OKGCorrelatedPolicy — the (N-n)
+    multiplier is gone; m* controls exploration.
     """
-    def __init__(self, config: AcquisitionConfig, budget: int,
-                 m_star: int = 1) -> None:
+    def __init__(self, config: AcquisitionConfig,
+                 m_star: int = 1, **_unused) -> None:
         self.config = config
-        self._budget = int(budget)
         self._m_star = max(1, int(m_star))
         cfg = self.config
         self._grid = _make_grid(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
@@ -725,11 +726,9 @@ class OKGIndependentPolicy:
         self._m_star = max(1, int(m_star))
 
     def propose(self, model: BeliefModel, rng: np.random.Generator):
-        n = model.n_observations
-        remaining = max(0, self._budget - n)
         mu, _ = model.posterior(self._grid)
         kg = kg_independent_at(model, self._grid, self._grid, m_star=self._m_star)
-        okg = mu - remaining * kg
+        okg = mu - kg
         return _grid_pick(self._grid, int(np.argmin(okg)))
 
 

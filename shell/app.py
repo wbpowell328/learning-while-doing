@@ -104,6 +104,9 @@ def _make_step_response(result, session: Session) -> StepResponse:
 
 
 def _make_policy(name: str, acq_cfg: AcquisitionConfig, budget: int | None):
+    # `budget` retained in the signature for backward-compat with the
+    # batch endpoint; the online-KG variants no longer use it (m* took
+    # its place per the Warren-2026 formulation).
     if name == "ie":
         return IEPolicy(acq_cfg)
     if name == "kg":
@@ -111,9 +114,9 @@ def _make_policy(name: str, acq_cfg: AcquisitionConfig, budget: int | None):
     if name == "kg_indep":
         return KGIndependentPolicy(acq_cfg)     # offline independent
     if name == "okg":
-        return OKGCorrelatedPolicy(acq_cfg, budget=budget or 10)
+        return OKGCorrelatedPolicy(acq_cfg)     # online correlated (μ + KG(m*))
     if name == "okg_indep":
-        return OKGIndependentPolicy(acq_cfg, budget=budget or 10)
+        return OKGIndependentPolicy(acq_cfg)    # online independent
     return RandomPolicy(acq_cfg)  # "random" and "human" both use RandomPolicy
 
 

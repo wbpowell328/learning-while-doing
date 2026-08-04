@@ -125,9 +125,19 @@ export default function SessionForm({ onCreate, error }) {
   const [loading, setLoading]       = useState(false);
 
   const [budgetStr, setBudgetStr] = useState('10');
-  const [simsStr,   setSimsStr]   = useState('10');
   const budget = Math.max(1, Math.min(50, Number(budgetStr) || 10));
-  const simsPerPolicy = Math.max(1, Math.min(100, Number(simsStr) || 10));
+
+  // Policy parameter (single field, meaning depends on the policy):
+  //   KG variants → m* (days) — how many repeat experiments the policy
+  //     assumes when computing KG (batch-size trick).
+  //   IE → z_alpha (# std devs) — LCB coefficient.
+  //   Random / Human → unused.
+  const [mStarStr,  setMStarStr]  = useState('1');
+  const [zAlphaStr, setZAlphaStr] = useState('0');
+
+  // Reporting level — controls how much of the diagnostic UI is shown.
+  // Basic = core charts only; Advanced also shows the KG(x;m) card.
+  const [reportLevel, setReportLevel] = useState('basic');
 
   // Advanced parameters — kept as strings during typing.
   const [adv, setAdv] = useState(ADV_DEFAULTS);
@@ -140,17 +150,18 @@ export default function SessionForm({ onCreate, error }) {
   const is2D = appMeta.dim >= 2;
 
   // Auto-flip incompatible policy selections when app changes.
-  // Human mode and batch modes are 1-D-only for now.
   const policyAllowed = (p) => is2D
     ? ['random', 'ie', 'kg', 'kg_indep', 'okg', 'okg_indep'].includes(p)
     : true;
   const effectivePolicy = policyAllowed(policy) ? policy : 'kg';
 
   const isHuman = effectivePolicy === 'human';
-  const isBatch = effectivePolicy === 'kg-batch' || effectivePolicy === 'ie-batch';
-  // Online-KG variants need N to compute (N−n) in the Ryzhov formula.
-  const isOKG   = effectivePolicy === 'okg' || effectivePolicy === 'okg_indep';
-  const family  = effectivePolicy === 'kg-batch' ? 'KG' : effectivePolicy === 'ie-batch' ? 'IE' : null;
+  const isKGFamily = ['kg', 'kg_indep', 'okg', 'okg_indep'].includes(effectivePolicy);
+  const isIE = effectivePolicy === 'ie';
+
+  // Parsed numeric versions of the policy-parameter inputs.
+  const mStar  = Math.max(1, Math.round(Number(mStarStr) || 1));
+  const zAlpha = Math.max(0, Number(zAlphaStr) || 0);
 
   // θ search-box bounds — always sent as scalars for 1-D, as 2-tuples for 2-D.
   const impparamMin = is2D
@@ -213,16 +224,22 @@ export default function SessionForm({ onCreate, error }) {
     e.preventDefault();
     setLoading(true);
     try {
+      // acq_config carries the IE's z_alpha (θ^IE). Server-side default
+      // is 0 (greedy); we only send a nonzero value when IE is selected.
+      const acqConfigPayload = isIE ? { z_alpha: zAlpha } : {};
       await onCreate({
         app_name: appName,
         policy: effectivePolicy,
         session_seed: seed,
         sim_config: simConfigPayload,
         belief_config: beliefConfigPayload,
+        acq_config: acqConfigPayload,
         session_config: { horizon_weeks: horizon },
-        budget: (isHuman || isBatch || isOKG) ? budget : null,
-        family,
-        sims_per_policy: simsPerPolicy,
+        // budget still needed for the human/auto-run loop step budget.
+        budget: isHuman ? budget : null,
+        // KG-family m* (θ^KGm*, in days). Ignored by non-KG policies.
+        m_star: isKGFamily ? mStar : 1,
+        report_level: reportLevel,
       });
     } finally {
       setLoading(false);
@@ -262,8 +279,8 @@ export default function SessionForm({ onCreate, error }) {
             </select>
             {is2D && (
               <span style={{ fontSize: 12, color: '#64748b' }}>
-                2-parameter app — Human mode and batch benchmarks are 1-D only for now;
-                automated modes (KG, IE, Random) work here.
+                2-parameter app — Human mode is 1-D only; automated modes
+                (KG, IE, Random) work here.
               </span>
             )}
           </div>
@@ -271,56 +288,60 @@ export default function SessionForm({ onCreate, error }) {
           <div className="form-group">
             <label>Mode</label>
             <select value={effectivePolicy} onChange={e => setPolicy(e.target.value)}>
-              <optgroup label="Single run">
-                {!is2D && <option value="human">Human — I pick θ each round</option>}
-                <option value="kg">KG — offline correlated (analytic)</option>
-                <option value="kg_indep">KG — offline independent</option>
-                <option value="okg">KG — online correlated</option>
-                <option value="okg_indep">KG — online independent</option>
-                <option value="ie">IE — LCB with z_alpha=0 (greedy)</option>
-                <option value="random">Random — baseline</option>
-              </optgroup>
-              {!is2D && (
-                <optgroup label="Batch benchmark">
-                  <option value="kg-batch">KG batch — all 5 variants</option>
-                  <option value="ie-batch">IE batch — 21 z_alpha values</option>
-                </optgroup>
-              )}
+              {!is2D && <option value="human">Human — I pick θ each round</option>}
+              <option value="kg">KG — offline correlated (analytic)</option>
+              <option value="kg_indep">KG — offline independent</option>
+              <option value="okg">KG — online correlated</option>
+              <option value="okg_indep">KG — online independent</option>
+              <option value="ie">IE — LCB (upper-confidence exploration)</option>
+              <option value="random">Random — baseline</option>
             </select>
           </div>
 
-          {(isHuman || isBatch || isOKG) && (
+          {/* Policy parameter — single field, meaning depends on the
+              policy. KG family: m* (days). IE: z_alpha (# std devs).
+              Random / Human: no parameter. */}
+          {isKGFamily && (
             <div className="form-group">
-              <label>{isBatch ? 'Budget (steps per policy per sim)'
-                     : isOKG   ? 'Measurement budget N'
-                     :           'Adjustment budget'}</label>
+              <label>Policy parameter — m* (days)</label>
+              <input
+                type="number" value={mStarStr} min={1} step={1}
+                onChange={e => setMStarStr(e.target.value)}
+                onBlur={() => setMStarStr(String(mStar))}
+              />
+              <span style={{ fontSize: 12, color: '#64748b' }}>
+                KG evaluated as if we ran m* repeat experiments (precision ×m*).
+                m*=1 recovers the classical single-shot KG. Tunable mid-session
+                on the KG(x;m) card.
+              </span>
+            </div>
+          )}
+          {isIE && (
+            <div className="form-group">
+              <label>Policy parameter — z_alpha (# std devs)</label>
+              <input
+                type="number" value={zAlphaStr} min={0} step="any"
+                onChange={e => setZAlphaStr(e.target.value)}
+                onBlur={() => setZAlphaStr(String(zAlpha))}
+              />
+              <span style={{ fontSize: 12, color: '#64748b' }}>
+                IE score = μ_n(x) − z_alpha · σ_n(x). z_alpha = 0 is pure
+                exploitation (greedy); higher values pull toward under-observed
+                θ. Typical exploration range: 0 – 3.
+              </span>
+            </div>
+          )}
+
+          {isHuman && (
+            <div className="form-group">
+              <label>Adjustment budget</label>
               <input
                 type="number" value={budgetStr} min={1} max={50}
                 onChange={e => setBudgetStr(e.target.value)}
                 onBlur={() => setBudgetStr(String(budget))}
               />
               <span style={{ fontSize: 12, color: '#64748b' }}>
-                {isBatch
-                  ? 'How many observations each policy can take before we score it'
-                  : isOKG
-                  ? 'Online KG uses N to compute the info-value bonus (N−n)·KG(x)'
-                  : 'Number of times you can run the simulator'}
-              </span>
-            </div>
-          )}
-
-          {isBatch && (
-            <div className="form-group">
-              <label>Simulations per policy</label>
-              <input
-                type="number" value={simsStr} min={1} max={100}
-                onChange={e => setSimsStr(e.target.value)}
-                onBlur={() => setSimsStr(String(simsPerPolicy))}
-              />
-              <span style={{ fontSize: 12, color: '#64748b' }}>
-                {family === 'KG'
-                  ? `Total runs = 5 policies × ${simsPerPolicy} sims × ${budget} steps = ${5 * simsPerPolicy * budget} simulations`
-                  : `Total runs = 21 policies × ${simsPerPolicy} sims × ${budget} steps = ${21 * simsPerPolicy * budget} simulations`}
+                Number of times you can run the simulator.
               </span>
             </div>
           )}
@@ -357,6 +378,25 @@ export default function SessionForm({ onCreate, error }) {
                           borderRadius: 6, border: '1px solid #e2e8f0' }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b',
                             textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 }}>
+                Reporting
+              </div>
+              <div className="form-group">
+                <label style={{ fontSize: 12 }}>Report level</label>
+                <select value={reportLevel}
+                        onChange={e => setReportLevel(e.target.value)}
+                        style={{ maxWidth: 200 }}>
+                  <option value="basic">Basic — core charts only</option>
+                  <option value="advanced">Advanced — includes KG(x;m) S-curve diagnostic</option>
+                </select>
+                <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                  Basic shows the main KG, GP posterior, cash, and history cards.
+                  Advanced adds diagnostic panels like the KG-vs-batch-size chart.
+                </span>
+              </div>
+
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b',
+                            textTransform: 'uppercase', letterSpacing: 0.6,
+                            marginTop: 16, marginBottom: 8 }}>
                 Belief prior (GP hyperparameters — algorithm assumptions)
               </div>
               <div className="form-row">{BELIEF_FIELDS.slice(0, 2).map(advField)}</div>
@@ -432,7 +472,7 @@ export default function SessionForm({ onCreate, error }) {
 
           <button type="submit" className="btn btn-primary" disabled={loading}
             style={{ width: '100%', padding: '11px', fontSize: '0.95rem' }}>
-            {loading ? (isBatch ? 'Running batch…' : 'Creating…') : (isBatch ? 'Run batch →' : 'Start →')}
+            {loading ? 'Creating…' : 'Start →'}
           </button>
         </form>
       </div>
