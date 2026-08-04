@@ -89,6 +89,11 @@ class CreateSessionRequest(BaseModel):
     # Ryzhov formula). Ignored by the offline policies; the frontend still
     # tracks its own budget for the human/auto-run loop.
     budget: int | None = None
+    # Batch-size-trick multiplier for KG-family policies. m_star>1 evaluates
+    # KG as if we were going to run m_star repeat obs at the chosen θ
+    # (scales noise variance by 1/m_star), even though we only run one.
+    # Default 1 (classical single-shot KG). Ignored by non-KG policies.
+    m_star: int = 1
     session_seed: int = 42
 
 
@@ -104,6 +109,15 @@ class CreateSessionResponse(BaseModel):
     minimize: bool
     impparam_min: list[float] # always returned as a list (length dim)
     impparam_max: list[float]
+    m_star: int = 1           # batch-size-trick multiplier for KG-family policies
+
+
+class SetMStarRequest(BaseModel):
+    m_star: int
+
+
+class SetMStarResponse(BaseModel):
+    m_star: int
 
 
 class JumpEventOut(BaseModel):

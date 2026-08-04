@@ -27,6 +27,7 @@ from .models import (
     StateResponse, PosteriorResponse, Posterior2DResponse, KG2DResponse,
     RevealResponse, KGComparisonResponse,
     BatchRequest, BatchResponse, BatchPolicyResult,
+    SetMStarRequest, SetMStarResponse,
 )
 
 
@@ -184,6 +185,7 @@ def create_session(req: CreateSessionRequest) -> CreateSessionResponse:
         session_seed=req.session_seed,
         simulate_fn=app_mod.simulate,
         minimize=bool(app_mod.MINIMIZE),
+        m_star=max(1, int(req.m_star or 1)),
     )
     sid = str(uuid4())
     _sessions[sid] = session
@@ -196,7 +198,20 @@ def create_session(req: CreateSessionRequest) -> CreateSessionResponse:
         minimize=bool(app_mod.MINIMIZE),
         impparam_min=lo,
         impparam_max=hi,
+        m_star=session.m_star,
     )
+
+
+@app.post("/sessions/{sid}/m_star")
+def set_m_star(sid: str, body: SetMStarRequest) -> SetMStarResponse:
+    """
+    Update the KG batch-size-trick multiplier m* for an existing session.
+    Effective on the NEXT policy.propose() call; past steps are not
+    recomputed. No-op if the session's policy isn't a KG variant.
+    """
+    session = _get_or_404(sid)
+    session.set_m_star(int(body.m_star))
+    return SetMStarResponse(m_star=session.m_star)
 
 
 @app.post("/sessions/{sid}/step")

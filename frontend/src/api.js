@@ -103,4 +103,10 @@ export async function runBatch(body, onEvent) {
   }
   return finalResult;
 }
+export const setMStar = (sid, mStar) =>
+  call(`/sessions/${sid}/m_star`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ m_star: Math.max(1, Math.round(mStar)) }),
+  });
 export const deleteSession = (sid) => call(`/sessions/${sid}`, { method: 'DELETE' });

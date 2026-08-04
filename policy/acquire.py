@@ -227,17 +227,27 @@ class KGPolicy:
         KG(x) = min_j μ_n(grid_j) − E_z[ min_j (μ_n(grid_j) + w_j(x) · z) ]
 
     where z ~ N(0,1) and the influence vector is
-        w_j(x) = Cov_n(x, grid_j) / √(Var_n(x) + σ²_noise).
+        w_j(x) = Cov_n(x, grid_j) / √(Var_n(x) + σ²_noise/m*).
 
-    The expectation is computed **analytically** using the upper-envelope
-    algorithm of Frazier, Powell & Dayanik (2009), so KG is exact and
-    completely deterministic given the observations (no rng dependence).
+    The `m_star` parameter (default 1) scales the effective precision of a
+    hypothetical measurement: setting m*>1 evaluates KG as if we were
+    going to run m* repeat experiments and average, even though we only
+    actually run one. This is the classical "batch-size trick" to
+    overcome the S-curve effect — single-shot KG is often near-zero, but
+    KG at m* > 1 can be substantial. See kg_vs_m chart for how to pick
+    m* per the argmax_m KG(x;m)/m rule.
     """
 
-    def __init__(self, config: AcquisitionConfig | None = None) -> None:
+    def __init__(self, config: AcquisitionConfig | None = None,
+                 m_star: int = 1) -> None:
         self.config = config or AcquisitionConfig()
+        self._m_star = max(1, int(m_star))
         cfg = self.config
         self._grid = _make_grid(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
+
+    def set_m_star(self, m_star: int) -> None:
+        """Change the effective-batch-size scaling used for KG evaluation."""
+        self._m_star = max(1, int(m_star))
 
     def propose(self, model: BeliefModel, rng: np.random.Generator):
         # rng accepted for protocol compatibility; unused.
@@ -257,7 +267,8 @@ class KGPolicy:
 
         post_cov = model.posterior_cov_matrix(grid)            # (m, m)
         post_var = np.maximum(np.diag(post_cov), 0.0)          # (m,)
-        noise_var = model.config.noise_std ** 2
+        # Noise scaled by 1/m*: treat the observation as m* averaged reps.
+        noise_var = (model.config.noise_std ** 2) / float(self._m_star)
         sigma_total = np.sqrt(post_var + noise_var)            # (m,)
 
         kg = np.zeros(m)
@@ -288,9 +299,15 @@ class KGPolicy:
 #   independent           (pretends observing at x only shifts belief at x)
 # ---------------------------------------------------------------------------
 
-def _kg_pre_compute(model: BeliefModel, grid: np.ndarray, candidates: np.ndarray):
+def _kg_pre_compute(model: BeliefModel, grid: np.ndarray, candidates: np.ndarray,
+                    m_star: int = 1):
     """
-    Common pre-computation for the three KG-at-candidates helpers.
+    Common pre-computation for the KG-at-candidates helpers.
+
+    `m_star` (default 1) scales the effective precision of a hypothetical
+    measurement — the noise variance term is divided by m_star. m_star>1
+    corresponds to the classical "batch-size trick" (evaluate KG as if we
+    were going to average m_star repeat observations at the candidate).
 
     Returns
     -------
@@ -298,7 +315,7 @@ def _kg_pre_compute(model: BeliefModel, grid: np.ndarray, candidates: np.ndarray
     cand_mean     : (n_c,) posterior mean at candidates
     cand_var      : (n_c,) posterior variance at candidates
     cross_cov     : (n_c, m) posterior covariance Cov_n(candidate_i, grid_j)
-    sigma_tilde   : (n_c,) sqrt(cand_var + noise_var)
+    sigma_tilde   : (n_c,) sqrt(cand_var + noise_var/m_star)
     delta_at_cand : (n_c,) cand_var / sigma_tilde
                       (= Cov_n(x_i, x_i) / sigma_tilde_i — Bayesian mean-shift std at x_i itself)
     """
@@ -322,7 +339,7 @@ def _kg_pre_compute(model: BeliefModel, grid: np.ndarray, candidates: np.ndarray
     cross_cov = full_cov[:n_c, n_c:]
 
     cand_var = np.maximum(np.diag(cand_cov), 0.0)
-    noise_var = model.config.noise_std ** 2
+    noise_var = (model.config.noise_std ** 2) / max(1, int(m_star))
     sigma_tilde = np.sqrt(cand_var + noise_var)
     safe_sigma = np.where(sigma_tilde > 1e-12, sigma_tilde, 1.0)
     delta_at_cand = cand_var / safe_sigma  # zero where sigma_tilde ≈ 0
@@ -558,15 +575,17 @@ def kg_vs_batch_size(model: BeliefModel, grid: np.ndarray,
 
 
 def kg_analytic_correlated_at(model: BeliefModel, grid: np.ndarray,
-                               candidates: np.ndarray) -> np.ndarray:
+                               candidates: np.ndarray,
+                               m_star: int = 1) -> np.ndarray:
     """
     Analytic correlated-beliefs KG at each candidate x_i.
 
     Search set is {grid ∪ x_i}: the candidate itself is one more alternative
-    that could become the argmin after observation.
+    that could become the argmin after observation. `m_star` (default 1)
+    scales the effective precision of the hypothetical observation.
     """
     mu_grid, cand_mean, cand_var, cross_cov, sigma_tilde, delta = _kg_pre_compute(
-        model, grid, candidates
+        model, grid, candidates, m_star=m_star,
     )
     n_c = cand_mean.shape[0]
     kg = np.zeros(n_c)
@@ -584,16 +603,18 @@ def kg_analytic_correlated_at(model: BeliefModel, grid: np.ndarray,
 
 def kg_mc_correlated_at(model: BeliefModel, grid: np.ndarray,
                          candidates: np.ndarray, n_mc: int,
-                         rng: np.random.Generator) -> np.ndarray:
+                         rng: np.random.Generator,
+                         m_star: int = 1) -> np.ndarray:
     """
     Monte-Carlo correlated-beliefs KG at each candidate — for diagnostic
     comparison against the analytic value.
 
     n_mc draws of Z ~ N(0,1) are shared across candidates for maximum
-    variance reduction (each candidate sees the same Z).
+    variance reduction (each candidate sees the same Z). `m_star` scales
+    the effective precision (see _kg_pre_compute).
     """
     mu_grid, cand_mean, cand_var, cross_cov, sigma_tilde, delta = _kg_pre_compute(
-        model, grid, candidates
+        model, grid, candidates, m_star=m_star,
     )
     n_c = candidates.size
     z = rng.standard_normal(n_mc)  # (n_mc,)
@@ -614,18 +635,23 @@ class KGMCPolicy:
     """
     Same estimand as KGPolicy but computed with Monte-Carlo. Useful as a
     baseline to see how MC noise degrades KG-driven decisions relative to
-    the analytic gold standard.
-
-    Uses `rng` for reproducible MC draws.
+    the analytic gold standard. Uses `rng` for reproducible MC draws.
+    `m_star` (default 1) — see KGPolicy for semantics.
     """
-    def __init__(self, config: AcquisitionConfig | None = None, n_mc: int = 500) -> None:
+    def __init__(self, config: AcquisitionConfig | None = None, n_mc: int = 500,
+                 m_star: int = 1) -> None:
         self.config = config or AcquisitionConfig()
         self._n_mc = int(n_mc)
+        self._m_star = max(1, int(m_star))
         cfg = self.config
         self._grid = _make_grid(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
 
+    def set_m_star(self, m_star: int) -> None:
+        self._m_star = max(1, int(m_star))
+
     def propose(self, model: BeliefModel, rng: np.random.Generator):
-        kg = kg_mc_correlated_at(model, self._grid, self._grid, self._n_mc, rng)
+        kg = kg_mc_correlated_at(model, self._grid, self._grid, self._n_mc, rng,
+                                 m_star=self._m_star)
         return _grid_pick(self._grid, int(np.argmax(kg)))
 
 
@@ -634,14 +660,20 @@ class KGIndependentPolicy:
     Offline KG under the independent-beliefs assumption: observing at x
     only shifts belief at x itself (no cascade to correlated neighbors).
     argmax of the resulting closed-form KG picks the next measurement.
+    `m_star` (default 1) — see KGPolicy for semantics.
     """
-    def __init__(self, config: AcquisitionConfig | None = None) -> None:
+    def __init__(self, config: AcquisitionConfig | None = None,
+                 m_star: int = 1) -> None:
         self.config = config or AcquisitionConfig()
+        self._m_star = max(1, int(m_star))
         cfg = self.config
         self._grid = _make_grid(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
 
+    def set_m_star(self, m_star: int) -> None:
+        self._m_star = max(1, int(m_star))
+
     def propose(self, model: BeliefModel, rng: np.random.Generator):
-        kg = kg_independent_at(model, self._grid, self._grid)
+        kg = kg_independent_at(model, self._grid, self._grid, m_star=self._m_star)
         return _grid_pick(self._grid, int(np.argmax(kg)))
 
 
@@ -653,18 +685,24 @@ class OKGCorrelatedPolicy:
 
     where N is the total measurement budget and n is the number of steps
     taken so far (read from model.n_observations). Picks argmin OKG.
+    `m_star` (default 1) — see KGPolicy for semantics.
     """
-    def __init__(self, config: AcquisitionConfig, budget: int) -> None:
+    def __init__(self, config: AcquisitionConfig, budget: int,
+                 m_star: int = 1) -> None:
         self.config = config
         self._budget = int(budget)
+        self._m_star = max(1, int(m_star))
         cfg = self.config
         self._grid = _make_grid(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
+
+    def set_m_star(self, m_star: int) -> None:
+        self._m_star = max(1, int(m_star))
 
     def propose(self, model: BeliefModel, rng: np.random.Generator):
         n = model.n_observations
         remaining = max(0, self._budget - n)
         mu, _ = model.posterior(self._grid)
-        kg = kg_analytic_correlated_at(model, self._grid, self._grid)
+        kg = kg_analytic_correlated_at(model, self._grid, self._grid, m_star=self._m_star)
         okg = mu - remaining * kg
         return _grid_pick(self._grid, int(np.argmin(okg)))
 
@@ -673,25 +711,31 @@ class OKGIndependentPolicy:
     """
     Online KG using independent-beliefs offline KG as the info-value term.
     Same functional form as OKGCorrelatedPolicy but with the independent
-    KG plugged in.
+    KG plugged in. `m_star` (default 1) — see KGPolicy for semantics.
     """
-    def __init__(self, config: AcquisitionConfig, budget: int) -> None:
+    def __init__(self, config: AcquisitionConfig, budget: int,
+                 m_star: int = 1) -> None:
         self.config = config
         self._budget = int(budget)
+        self._m_star = max(1, int(m_star))
         cfg = self.config
         self._grid = _make_grid(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
+
+    def set_m_star(self, m_star: int) -> None:
+        self._m_star = max(1, int(m_star))
 
     def propose(self, model: BeliefModel, rng: np.random.Generator):
         n = model.n_observations
         remaining = max(0, self._budget - n)
         mu, _ = model.posterior(self._grid)
-        kg = kg_independent_at(model, self._grid, self._grid)
+        kg = kg_independent_at(model, self._grid, self._grid, m_star=self._m_star)
         okg = mu - remaining * kg
         return _grid_pick(self._grid, int(np.argmin(okg)))
 
 
 def kg_independent_at(model: BeliefModel, grid: np.ndarray,
-                       candidates: np.ndarray) -> np.ndarray:
+                       candidates: np.ndarray,
+                       m_star: int = 1) -> np.ndarray:
     """
     Independent-beliefs KG at each candidate — closed form.
 
@@ -701,9 +745,12 @@ def kg_independent_at(model: BeliefModel, grid: np.ndarray,
     a_i = M − μ_n(x_i), t_i = a_i/δ_i:
 
         KG_indep(x_i) = min(M, μ_n(x_i)) − (M − a_i·Φ(t_i) − δ_i·φ(t_i))
+
+    `m_star` (default 1) scales the effective precision — the noise
+    variance term in σ̃ is divided by m_star.
     """
     mu_grid, cand_mean, cand_var, cross_cov, sigma_tilde, delta = _kg_pre_compute(
-        model, grid, candidates
+        model, grid, candidates, m_star=m_star,
     )
     M = float(np.min(mu_grid))
     n_c = cand_mean.shape[0]

@@ -67,6 +67,7 @@ class Session:
         session_seed: int,
         simulate_fn: Callable | None = None,
         minimize: bool = True,
+        m_star: int = 1,
     ) -> None:
         self._sim_config = sim_config
         self._acq_config = acq_config
@@ -75,6 +76,10 @@ class Session:
         self._session_seed = session_seed
         self._simulate = simulate_fn if simulate_fn is not None else cash_balance_simulate
         self._minimize = bool(minimize)
+        self._m_star = max(1, int(m_star))
+        # Push m_star into the policy if it supports it (all KG variants do).
+        if hasattr(policy, "set_m_star"):
+            policy.set_m_star(self._m_star)
 
         self._dim = _dim_of(acq_config)
 
@@ -206,6 +211,21 @@ class Session:
     @property
     def minimize(self) -> bool:
         return self._minimize
+
+    @property
+    def m_star(self) -> int:
+        """Batch-size trick multiplier used by KG-family policies."""
+        return self._m_star
+
+    def set_m_star(self, m_star: int) -> None:
+        """
+        Change m* for the current session's policy. Effective on the NEXT
+        policy.propose() call; past steps are not recomputed. No-op if the
+        policy doesn't support it (Random / IE / Human).
+        """
+        self._m_star = max(1, int(m_star))
+        if hasattr(self._policy, "set_m_star"):
+            self._policy.set_m_star(self._m_star)
 
     @property
     def dim(self) -> int:

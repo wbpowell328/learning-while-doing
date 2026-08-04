@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, getKGvsM, deleteSession, runBatch } from './api';
+import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, getKGvsM, setMStar, deleteSession, runBatch } from './api';
 import SessionForm from './components/SessionForm';
 import PosteriorChart from './components/PosteriorChart';
 import Belief3DChart from './components/Belief3DChart';
@@ -119,6 +119,18 @@ export default function App() {
     }
   }, [session, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2]);
 
+  // Policy m* (batch-size trick): POST to /sessions/{sid}/m_star and mirror
+  // the new value on session.m_star so the chart input reflects it.
+  const handleMStarChange = useCallback(async (newMStar) => {
+    if (!session) return;
+    try {
+      const resp = await setMStar(session.id, newMStar);
+      setSession(prev => prev ? { ...prev, m_star: resp.m_star } : prev);
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [session]);
+
   const handleKGvsMTheta = useCallback(async (newTheta, newTheta2 = null) => {
     if (!session) return;
     setKgVsMTheta(newTheta);      // null → backend picks argmax(offline KG)
@@ -208,6 +220,7 @@ export default function App() {
       policy,
       seed: session_seed,
       budget: budget ?? null,
+      m_star: created.m_star ?? 1,
     });
     setHistory([]);
     setNSteps(0);
@@ -587,6 +600,8 @@ export default function App() {
                 onMMaxChange={handleKGvsMMMax}
                 onThetaChange={handleKGvsMTheta}
                 dim={2}
+                sessionMStar={session.m_star ?? 1}
+                onMStarChange={handleMStarChange}
               />
             </div>
           )}
@@ -653,6 +668,8 @@ export default function App() {
                   onMMaxChange={handleKGvsMMMax}
                   onThetaChange={handleKGvsMTheta}
                   dim={1}
+                  sessionMStar={session.m_star ?? 1}
+                  onMStarChange={handleMStarChange}
                 />
               </div>
             </>

@@ -28,12 +28,16 @@ export default function KGvsMChart({
   mMax = 50, onMMaxChange,
   onThetaChange,        // signature: (theta1) for 1-D, (theta1, theta2) for 2-D; null for reset
   dim = 1,              // 1 or 2 — controls whether the θ₂ input renders
+  sessionMStar = 1,     // policy's current m* — display value for the input box
+  onMStarChange,        // (mStar:int) => Promise — POSTs to /sessions/{sid}/m_star
 }) {
   // Local text state so mid-typing doesn't fire a request per keystroke.
   const [sigmaStr,  setSigmaStr]  = useState('');
   const [mMaxStr,   setMMaxStr]   = useState(String(mMax));
   const [thetaStr,  setThetaStr]  = useState('');   // θ₁ (or the single θ for 1-D)
   const [theta2Str, setTheta2Str] = useState('');   // θ₂ (2-D only)
+  const [mStarStr,  setMStarStr]  = useState(String(sessionMStar));
+  useEffect(() => { setMStarStr(String(sessionMStar)); }, [sessionMStar]);
   useEffect(() => {
     if (data?.noise_std != null) setSigmaStr(String(Math.round(data.noise_std)));
   }, [data?.noise_std]);
@@ -123,6 +127,13 @@ export default function KGvsMChart({
     setTheta2Str('');
     onThetaChange(null, null);   // extra null is harmless for 1-D signature
   };
+  const commitMStar = () => {
+    if (!onMStarChange) return;
+    const v = Math.round(Number(mStarStr));
+    if (!Number.isFinite(v) || v < 1) { setMStarStr(String(sessionMStar)); return; }
+    if (v === sessionMStar) return;
+    onMStarChange(v);
+  };
 
   const xLo = m_values[0];
   const xHi = m_values[m_values.length - 1];
@@ -137,6 +148,18 @@ export default function KGvsMChart({
   const pathD = m_values
     .map((m, i) => `${i === 0 ? 'M' : 'L'}${xS(m).toFixed(1)},${yS(kg_values[i]).toFixed(1)}`)
     .join('');
+
+  // Auto m* = argmax over m of KG(x;m)/m (info per measurement). Skip the
+  // m=0 anchor at index 0; m starts at 1. Warren's "batch-size trick":
+  // this m* is the suggested precision multiplier for the KG policy.
+  let mStarOpt = 1;
+  if (m_values.length > 1 && kg_values.length === m_values.length) {
+    let bestRatio = -Infinity;
+    for (let i = 1; i < m_values.length; i++) {
+      const r = kg_values[i] / Math.max(m_values[i], 1);
+      if (Number.isFinite(r) && r > bestRatio) { bestRatio = r; mStarOpt = m_values[i]; }
+    }
+  }
 
   const yTicks = niceTicks(0, yHi, 5);
   const xTickCandidates = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
@@ -235,6 +258,31 @@ export default function KGvsMChart({
         )}
       </div>
 
+      {/* Policy m* control — separate row so it's visually distinct from
+          the visualisation inputs above (σ_ε, m_max, θ are all "what to
+          show me"; this m* changes what the RUNNING policy will do). */}
+      {onMStarChange && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10,
+                      fontSize: 12, color: '#475569', marginBottom: 8, flexWrap: 'wrap' }}>
+          <label style={{ fontWeight: 600 }}>Policy m* (batch-size trick):</label>
+          <input
+            type="number"
+            value={mStarStr}
+            min={1}
+            step={1}
+            onChange={e => setMStarStr(e.target.value)}
+            onBlur={commitMStar}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commitMStar(); } }}
+            style={{ width: 70, padding: '3px 6px', border: '1px solid #cbd5e1',
+                     borderRadius: 4, fontSize: 12 }}
+          />
+          <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>
+            KG evaluated with noise precision ×{sessionMStar}
+            {sessionMStar !== mStarOpt ? ` — suggested m* = ${mStarOpt}` : ''}
+          </span>
+        </div>
+      )}
+
       {/* Diagnostic row: |Δ|, σ̃(m=1) and Δ/σ̃ for the correlated KG. The
           S is visible when Δ/σ̃ is moderate — too small ⇒ single-shot KG is
           already near the plateau; very large ⇒ deep S beyond the visible
@@ -285,15 +333,27 @@ export default function KGvsMChart({
       {/* Correlated KG(m) curve — what the KG policy actually uses. */}
       <path d={pathD} fill="none" stroke="#16a34a" strokeWidth={2.5} />
 
-      {/* Marker at m=1: reference to what the main KG chart displays. */}
-      <line x1={xS(1)} x2={xS(1)} y1={PAD.top} y2={H - PAD.bottom}
-            stroke="#dc2626" strokeWidth={1.5} strokeDasharray="4,3" opacity={0.85} />
-      <circle cx={xS(1)} cy={yS(base_kg)} r={5}
-              fill="#dc2626" stroke="white" strokeWidth={1.5} />
-      <text x={xS(1) + 8} y={PAD.top + 12}
-            fontSize={11} fontWeight={600} fill="#dc2626">
-        {isOverridden ? 'm=1 (single experiment)' : 'm=1 (main chart)'}
-      </text>
+      {/* Marker at m* = argmax_m KG(x;m)/m — the "info per measurement"
+          suggestion for the batch-size trick. The KG policy actually uses
+          the m* entered in the Policy m* box (below); the dashed line is
+          purely a visual suggestion. */}
+      {(() => {
+        const mstarX = xS(mStarOpt);
+        const idx = m_values.indexOf(mStarOpt);
+        const kgAtMStar = idx >= 0 ? kg_values[idx] : base_kg;
+        return (
+          <>
+            <line x1={mstarX} x2={mstarX} y1={PAD.top} y2={H - PAD.bottom}
+                  stroke="#dc2626" strokeWidth={1.5} strokeDasharray="4,3" opacity={0.85} />
+            <circle cx={mstarX} cy={yS(kgAtMStar)} r={5}
+                    fill="#dc2626" stroke="white" strokeWidth={1.5} />
+            <text x={mstarX + 8} y={PAD.top + 12}
+                  fontSize={11} fontWeight={600} fill="#dc2626">
+              m* = {mStarOpt} (argmax KG/m)
+            </text>
+          </>
+        );
+      })()}
 
       {/* X axis */}
       <line x1={PAD.left} x2={W - PAD.right}
