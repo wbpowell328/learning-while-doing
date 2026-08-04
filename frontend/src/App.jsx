@@ -605,11 +605,12 @@ export default function App() {
                   <b style={{color:'#2563eb'}}> independent beliefs</b> treats
                   each grid cell as a separate alternative with its own
                   conjugate Normal-Normal belief, updated only by observations
-                  in its own bin — no cross-θ spillover. This is the setting
-                  that gives the pedagogically-classical S-curve when the θ
-                  you pick has a meaningful gap to the current best μ. σ_ε
-                  and θ inputs recompute both curves in place; the current
-                  session's belief is untouched.
+                  in its own bin — no cross-θ spillover. The σ_ε input is a
+                  <b> future-batch scenario</b>: "what if the hypothetical m
+                  runs had noise σ_ε?" — the session's belief (posterior μ
+                  and V) is <em>not</em> refit, so Δ stays substantial while
+                  σ̃(m=1) collapses at high σ_ε — that's when the classical
+                  S emerges.
                 </p>
                 <KGvsMChart
                   data={kgVsM}

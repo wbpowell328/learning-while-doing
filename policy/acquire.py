@@ -344,7 +344,8 @@ def _std_normal_cdf(z):
 
 def kg_indep_beliefs_vs_batch_size(model: BeliefModel, grid: np.ndarray,
                                     theta, m_values,
-                                    history: list) -> np.ndarray:
+                                    history: list,
+                                    future_noise_std: float | None = None) -> np.ndarray:
     """
     Classical INDEPENDENT-BELIEFS KG(m) at a candidate θ. Correlations
     across θ are dropped entirely: each grid point is a separate
@@ -404,8 +405,16 @@ def kg_indep_beliefs_vs_batch_size(model: BeliefModel, grid: np.ndarray,
     mu_best = float(np.min(mu_j[mask]))
     delta_abs = abs(mu_x - mu_best)
 
+    # `future_noise_std` semantics: this is the noise Warren asks us to
+    # assume for HYPOTHETICAL batch experiments at the candidate. The
+    # historical posterior above stays fit under model.config.noise_std
+    # (the belief's actual noise assumption) — this is what makes the
+    # classical S visible: Δ stays substantial (from real data) while
+    # σ̃(m=1) collapses as future_noise_std grows.
+    future_noise_var = (float(future_noise_std) ** 2
+                        if future_noise_std is not None else noise_var)
     m_arr = np.asarray(list(m_values), dtype=float)
-    denom = V_x + noise_var / np.maximum(m_arr, 1e-12)
+    denom = V_x + future_noise_var / np.maximum(m_arr, 1e-12)
     var_shift = (V_x ** 2) / np.maximum(denom, 1e-30)
     st = np.sqrt(np.maximum(var_shift, 0.0))
     safe_st = np.where(st > 1e-12, st, 1.0)
