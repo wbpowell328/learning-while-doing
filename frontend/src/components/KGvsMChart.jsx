@@ -232,10 +232,22 @@ export default function KGvsMChart({
             {zscore_indep?.toFixed(2)}
           </div>
 
-          <div style={{ gridColumn: '1 / -1', color: '#94a3b8', fontStyle: 'italic', marginTop: 2 }}>
-            The classical S needs Δ/σ̃ ≳ 2 (red) — that's where f(−z) → 0 and KG(m=1) collapses.
-            Smaller ratios give the concave-plateau shape.
-          </div>
+          {/* When Δ is essentially zero for both, prompt the user — most often
+              this means the session has no observations yet, so every cell is
+              at prior_mean. */}
+          {(delta_corr != null && delta_indep != null &&
+            delta_corr < 1e-3 && delta_indep < 1e-3) ? (
+            <div style={{ gridColumn: '1 / -1', color: '#b45309', fontStyle: 'italic', marginTop: 2 }}>
+              Δ = 0 for both — no observations distinguish θ from any other cell yet.
+              Click <b>Run step</b> or <b>Auto-run 10 / 25</b> to accumulate observations;
+              Δ will then depend on the θ you pick.
+            </div>
+          ) : (
+            <div style={{ gridColumn: '1 / -1', color: '#94a3b8', fontStyle: 'italic', marginTop: 2 }}>
+              The classical S needs Δ/σ̃ ≳ 2 (red) — that's where f(−z) → 0 and KG(m=1) collapses.
+              Smaller ratios give the concave-plateau shape.
+            </div>
+          )}
         </div>
       )}
 
