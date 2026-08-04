@@ -8,7 +8,8 @@
 import { useState, useEffect } from 'react';
 
 const W = 640, H = 260;
-const PAD = { top: 20, right: 24, bottom: 48, left: 68 };
+// Extra room on the right for the second (independent) y-axis.
+const PAD = { top: 20, right: 72, bottom: 48, left: 68 };
 const IW = W - PAD.left - PAD.right;
 const IH = H - PAD.top - PAD.bottom;
 
@@ -103,24 +104,34 @@ export default function KGvsMChart({
 
   const xLo = m_values[0];
   const xHi = m_values[m_values.length - 1];
-  const yMax = Math.max(...kg_values, ...kg_values_indep, base_kg, 1);
-  const yLo = 0;
-  const yHi = yMax * 1.10 || 1;
 
-  const xS = (m) => PAD.left + ((m - xLo) / Math.max(xHi - xLo, 1)) * IW;
-  const yS = (v) => PAD.top  + ((yHi - v) / (yHi - yLo)) * IH;
+  // Dual y-axis: correlated (LEFT axis, green) and independent (RIGHT
+  // axis, blue) each auto-scale to their own maximum so both curves are
+  // visible at their natural scale — matching the pattern of the main
+  // KG comparison chart.
+  const yMaxCorr  = Math.max(...kg_values, base_kg, 1);
+  const yMaxIndep = kg_values_indep.length
+    ? Math.max(...kg_values_indep, 1)
+    : yMaxCorr;
+  const yHiCorr  = yMaxCorr  * 1.10 || 1;
+  const yHiIndep = yMaxIndep * 1.10 || 1;
+
+  const xS      = (m) => PAD.left + ((m - xLo) / Math.max(xHi - xLo, 1)) * IW;
+  const yS_corr = (v) => PAD.top  + ((yHiCorr  - v) / yHiCorr)  * IH;
+  const yS_indep= (v) => PAD.top  + ((yHiIndep - v) / yHiIndep) * IH;
 
   const pathD = m_values
-    .map((m, i) => `${i === 0 ? 'M' : 'L'}${xS(m).toFixed(1)},${yS(kg_values[i]).toFixed(1)}`)
+    .map((m, i) => `${i === 0 ? 'M' : 'L'}${xS(m).toFixed(1)},${yS_corr(kg_values[i]).toFixed(1)}`)
     .join('');
   const pathDIndep = kg_values_indep.length === m_values.length
     ? m_values
-        .map((m, i) => `${i === 0 ? 'M' : 'L'}${xS(m).toFixed(1)},${yS(kg_values_indep[i]).toFixed(1)}`)
+        .map((m, i) => `${i === 0 ? 'M' : 'L'}${xS(m).toFixed(1)},${yS_indep(kg_values_indep[i]).toFixed(1)}`)
         .join('')
     : '';
 
-  const yTicks = niceTicks(yLo, yHi, 5);
-  const xTickCandidates = [1, 2, 5, 10, 20, 50, 100, 200];
+  const yTicksCorr  = niceTicks(0, yHiCorr,  5);
+  const yTicksIndep = niceTicks(0, yHiIndep, 5);
+  const xTickCandidates = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
   const xTicks = xTickCandidates.filter(t => t >= xLo && t <= xHi);
   if (xTicks[0] !== xLo) xTicks.unshift(xLo);
 
@@ -252,28 +263,26 @@ export default function KGvsMChart({
       )}
 
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible' }}>
-      {/* Gridlines */}
-      {yTicks.map((v, i) => (
+      {/* Gridlines from the LEFT (correlated) axis. */}
+      {yTicksCorr.map((v, i) => (
         <line key={i} x1={PAD.left} x2={W - PAD.right}
-              y1={yS(v)} y2={yS(v)} stroke="#e2e8f0" strokeWidth={1} />
+              y1={yS_corr(v)} y2={yS_corr(v)} stroke="#e2e8f0" strokeWidth={1} />
       ))}
 
       {/* Correlated KG(m) curve — what the KG policy actually uses. */}
       <path d={pathD} fill="none" stroke="#16a34a" strokeWidth={2.5} />
 
-      {/* Independent-scalar KG(m) — pedagogically-classical S-curve view. */}
+      {/* Independent-beliefs KG(m) curve — pedagogical S-curve view. */}
       {pathDIndep && (
         <path d={pathDIndep} fill="none" stroke="#2563eb" strokeWidth={2}
               strokeDasharray="5,3" opacity={0.9} />
       )}
 
-      {/* Marker at m=1. When the belief is not overridden, this value is
-          exactly what the main KG chart shows at θ*. When the σ_ε override
-          is active it's the m=1 value under the what-if refit, so the
-          label drops the "main chart" reference to avoid confusion. */}
+      {/* Marker at m=1. Sits on the CORRELATED (left) axis so its dot
+          reflects the green curve's value there. */}
       <line x1={xS(1)} x2={xS(1)} y1={PAD.top} y2={H - PAD.bottom}
             stroke="#dc2626" strokeWidth={1.5} strokeDasharray="4,3" opacity={0.85} />
-      <circle cx={xS(1)} cy={yS(base_kg)} r={5}
+      <circle cx={xS(1)} cy={yS_corr(base_kg)} r={5}
               fill="#dc2626" stroke="white" strokeWidth={1.5} />
       <text x={xS(1) + 8} y={PAD.top + 12}
             fontSize={11} fontWeight={600} fill="#dc2626">
@@ -296,21 +305,38 @@ export default function KGvsMChart({
         m — number of repeat experiments at θ = {theta.toFixed(3)}
       </text>
 
-      {/* Y axis */}
+      {/* LEFT y-axis — correlated KG. Colour-matched to the green curve. */}
       <line x1={PAD.left} x2={PAD.left}
             y1={PAD.top} y2={H - PAD.bottom} stroke="#94a3b8" />
-      {yTicks.map((v, i) => (
+      {yTicksCorr.map((v, i) => (
         <g key={i}>
           <line x1={PAD.left - 5} x2={PAD.left}
-                y1={yS(v)} y2={yS(v)} stroke="#94a3b8" />
-          <text x={PAD.left - 8} y={yS(v) + 4}
-                textAnchor="end" fontSize={10} fill="#64748b">{fmt$(v)}</text>
+                y1={yS_corr(v)} y2={yS_corr(v)} stroke="#94a3b8" />
+          <text x={PAD.left - 8} y={yS_corr(v) + 4}
+                textAnchor="end" fontSize={10} fill="#16a34a">{fmt$(v)}</text>
         </g>
       ))}
       <text
         transform={`translate(${PAD.left - 52},${PAD.top + IH / 2}) rotate(-90)`}
-        textAnchor="middle" fontSize={12} fill="#64748b">
-        KG(θ; m)
+        textAnchor="middle" fontSize={12} fill="#16a34a">
+        Correlated KG(θ; m)
+      </text>
+
+      {/* RIGHT y-axis — independent KG. Colour-matched to the blue curve. */}
+      <line x1={W - PAD.right} x2={W - PAD.right}
+            y1={PAD.top} y2={H - PAD.bottom} stroke="#94a3b8" />
+      {yTicksIndep.map((v, i) => (
+        <g key={i}>
+          <line x1={W - PAD.right} x2={W - PAD.right + 5}
+                y1={yS_indep(v)} y2={yS_indep(v)} stroke="#94a3b8" />
+          <text x={W - PAD.right + 8} y={yS_indep(v) + 4}
+                textAnchor="start" fontSize={10} fill="#2563eb">{fmt$(v)}</text>
+        </g>
+      ))}
+      <text
+        transform={`translate(${W - PAD.right + 54},${PAD.top + IH / 2}) rotate(-90)`}
+        textAnchor="middle" fontSize={12} fill="#2563eb">
+        Independent KG(θ; m)
       </text>
 
       {/* Legend — two lines: correlated (policy) vs independent (classical) */}
