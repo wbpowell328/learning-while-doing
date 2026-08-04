@@ -120,6 +120,15 @@ class SetMStarResponse(BaseModel):
     m_star: int
 
 
+class SetLengthScaleRequest(BaseModel):
+    # Scalar for 1-D or list-of-dim for 2-D (ARD).
+    length_scale: Union[float, list[float]]
+
+
+class SetLengthScaleResponse(BaseModel):
+    length_scale: Union[float, list[float]]
+
+
 class JumpEventOut(BaseModel):
     day: int
     size_fraction: float   # |jump| / AUM at jump time

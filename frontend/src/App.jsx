@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef } from 'react';
-import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, getKGvsM, setMStar, deleteSession, runBatch } from './api';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, getKGvsM, setMStar, setLengthScale, deleteSession, runBatch } from './api';
 import SessionForm from './components/SessionForm';
 import PosteriorChart from './components/PosteriorChart';
 import Belief3DChart from './components/Belief3DChart';
@@ -13,6 +13,39 @@ import JumpLog from './components/JumpLog';
 import RevealPanel from './components/RevealPanel';
 import BatchResults from './components/BatchResults';
 import './App.css';
+
+// Small controlled number input that fires onCommit only on blur/Enter —
+// prevents a request per keystroke while typing a new length_scale.
+function LengthScaleInput({ value, onCommit }) {
+  const [str, setStr] = useState(String(value));
+  useEffect(() => { setStr(String(value)); }, [value]);
+  const commit = () => {
+    const v = Number(str);
+    if (!Number.isFinite(v) || v <= 0) { setStr(String(value)); return; }
+    if (Math.abs(v - value) < 1e-9) return;
+    onCommit(v);
+  };
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8,
+                  fontSize: 12, color: '#475569' }}>
+      <label style={{ fontWeight: 600 }}>Kernel bandwidth ℓ:</label>
+      <input
+        type="number"
+        value={str}
+        step="any"
+        min="0"
+        onChange={e => setStr(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }}
+        style={{ width: 80, padding: '3px 6px', border: '1px solid #cbd5e1',
+                 borderRadius: 4, fontSize: 12 }}
+      />
+      <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>
+        smaller ℓ = tighter local features · larger ℓ = smoother
+      </span>
+    </div>
+  );
+}
 
 const POLICY_LABEL = {
   random:    'Random',
@@ -131,6 +164,32 @@ export default function App() {
     }
   }, [session]);
 
+  // GP length_scale (bandwidth) editor: POST refits the belief with the
+  // new value replaying the session's history through it, then refetch
+  // everything that depends on the posterior. Kept 1-D-only for now per
+  // Warren's request (2-D adds a second-dim input for later).
+  const handleLengthScaleChange = useCallback(async (newLS) => {
+    if (!session) return;
+    try {
+      const resp = await setLengthScale(session.id, newLS);
+      setSession(prev => prev ? { ...prev, length_scale: resp.length_scale } : prev);
+      // Refetch every view that depends on the posterior — 1-D right now.
+      if (session.dim === 1) {
+        const [post, kg, kgm] = await Promise.all([
+          getPosterior(session.id),
+          getKGComparison(session.id, 0.01, 50, session.budget ?? 10),
+          getKGvsM(session.id, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2),
+        ]);
+        setPosterior(post);
+        setKgComparison(kg);
+        setKgVsM(kgm);
+        setBestImpparam(post.best_impparam);
+      }
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [session, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2]);
+
   const handleKGvsMTheta = useCallback(async (newTheta, newTheta2 = null) => {
     if (!session) return;
     setKgVsMTheta(newTheta);      // null → backend picks argmax(offline KG)
@@ -221,6 +280,9 @@ export default function App() {
       seed: session_seed,
       budget: budget ?? null,
       m_star: created.m_star ?? 1,
+      // Whatever length_scale the user set in Advanced Parameters at
+      // create time — the belief_config payload carries it.
+      length_scale: belief_config?.length_scale ?? 0.04,
     });
     setHistory([]);
     setNSteps(0);
@@ -636,6 +698,10 @@ export default function App() {
                     {nSteps} observation{nSteps !== 1 ? 's' : ''}
                   </span>
                 </div>
+                <LengthScaleInput
+                  value={session.length_scale ?? 0.04}
+                  onCommit={handleLengthScaleChange}
+                />
                 <PosteriorChart posterior={posterior} history={history} policy={policy} />
               </div>
 

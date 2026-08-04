@@ -109,4 +109,10 @@ export const setMStar = (sid, mStar) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ m_star: Math.max(1, Math.round(mStar)) }),
   });
+export const setLengthScale = (sid, lengthScale) =>
+  call(`/sessions/${sid}/length_scale`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ length_scale: lengthScale }),
+  });
 export const deleteSession = (sid) => call(`/sessions/${sid}`, { method: 'DELETE' });

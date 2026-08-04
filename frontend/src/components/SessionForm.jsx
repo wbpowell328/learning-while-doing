@@ -275,7 +275,7 @@ export default function SessionForm({ onCreate, error }) {
                 {!is2D && <option value="human">Human — I pick θ each round</option>}
                 <option value="kg">KG — offline correlated (analytic)</option>
                 <option value="kg_indep">KG — offline independent</option>
-                <option value="okg">KG — online correlated (Ryzhov)</option>
+                <option value="okg">KG — online correlated</option>
                 <option value="okg_indep">KG — online independent</option>
                 <option value="ie">IE — LCB with z_alpha=0 (greedy)</option>
                 <option value="random">Random — baseline</option>

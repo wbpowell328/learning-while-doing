@@ -28,6 +28,7 @@ from .models import (
     RevealResponse, KGComparisonResponse,
     BatchRequest, BatchResponse, BatchPolicyResult,
     SetMStarRequest, SetMStarResponse,
+    SetLengthScaleRequest, SetLengthScaleResponse,
 )
 
 
@@ -212,6 +213,39 @@ def set_m_star(sid: str, body: SetMStarRequest) -> SetMStarResponse:
     session = _get_or_404(sid)
     session.set_m_star(int(body.m_star))
     return SetMStarResponse(m_star=session.m_star)
+
+
+@app.post("/sessions/{sid}/length_scale")
+def set_length_scale(sid: str, body: SetLengthScaleRequest) -> SetLengthScaleResponse:
+    """
+    Rebuild the belief with a new GP kernel length_scale, replaying the
+    session's history through the fresh posterior. Same observations,
+    different smoothness assumption — the GP posterior line/surface will
+    look tighter (small length_scale) or smoother (large).
+
+    For 1-D sessions, `length_scale` must be a scalar. For 2-D sessions,
+    either a scalar (isotropic — broadcast to both dims) or a length-2
+    list (ARD — per-dim scales).
+    """
+    session = _get_or_404(sid)
+    ls = body.length_scale
+    # For multi-D apps, allow a scalar and broadcast to length dim.
+    if session.dim > 1 and not isinstance(ls, list):
+        ls = [float(ls)] * session.dim
+    if isinstance(ls, list) and len(ls) != session.dim:
+        raise HTTPException(status_code=400,
+            detail=f"length_scale must be scalar or length-{session.dim} list; got length {len(ls)}")
+    if isinstance(ls, list):
+        for v in ls:
+            if not (v > 0 and v < 1e6):
+                raise HTTPException(status_code=400,
+                    detail=f"length_scale entries must be positive and finite; got {ls}")
+    else:
+        if not (ls > 0 and ls < 1e6):
+            raise HTTPException(status_code=400,
+                detail=f"length_scale must be positive and finite; got {ls}")
+    session.set_length_scale(ls)
+    return SetLengthScaleResponse(length_scale=session.belief.config.length_scale)
 
 
 @app.post("/sessions/{sid}/step")

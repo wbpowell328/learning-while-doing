@@ -227,6 +227,25 @@ class Session:
         if hasattr(self._policy, "set_m_star"):
             self._policy.set_m_star(self._m_star)
 
+    def set_length_scale(self, length_scale) -> None:
+        """
+        Rebuild the belief with a new kernel length_scale, replaying the
+        session's history through the fresh posterior. Same observations,
+        different smoothness assumption — the GP posterior line/surface
+        will look tighter (small length_scale) or smoother (large).
+
+        Accepts a scalar (isotropic) or a length-`dim` sequence (ARD).
+        """
+        # Preserve everything on the config except length_scale.
+        new_config = replace(self._belief.config, length_scale=length_scale)
+        new_belief = BeliefModel(new_config, dim=self._dim)
+        # session.history is in display frame; negate for maximise apps
+        # so the belief sees the "value to minimise".
+        for impparam, disp_val in self._history:
+            internal = float(disp_val) if self._minimize else -float(disp_val)
+            new_belief.update(impparam, internal)
+        self._belief = new_belief
+
     @property
     def dim(self) -> int:
         return self._dim
