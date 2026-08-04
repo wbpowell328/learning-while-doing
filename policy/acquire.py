@@ -410,7 +410,12 @@ def kg_indep_beliefs_vs_batch_size(model: BeliefModel, grid: np.ndarray,
     st = np.sqrt(np.maximum(var_shift, 0.0))
     safe_st = np.where(st > 1e-12, st, 1.0)
     z = -delta_abs / safe_st
-    f = _std_normal_pdf(z) - z * _std_normal_cdf(z)
+    # Classical single-alternative KG formula (Frazier & Powell OSPL):
+    #     f(z) = φ(z) + z·Φ(z)
+    # At z = 0 (candidate ties current best): f = φ(0) ≈ 0.399.
+    # At z → −∞ (candidate hopelessly worse): f → 0 — this is the vanishing
+    # regime that produces the classical S when Δ/σ̃ is large.
+    f = _std_normal_pdf(z) + z * _std_normal_cdf(z)
     return st * f
 
 
@@ -429,7 +434,7 @@ def kg_indep_scalar_vs_batch_size(model: BeliefModel, grid: np.ndarray,
         σ̃(m) = √( V² / (V + σ²/m) ),   V = posterior variance at θ
         Δ     = μ(θ) − μ(best)          (best = argmin_{j≠candidate} μ_j)
         KG(m) = σ̃(m) · f( −|Δ| / σ̃(m) ),
-        f(z) = φ(z) − z · Φ(z).
+        f(z) = φ(z) + z · Φ(z).
 
     Correlated KG (the version the KG policy uses) is smoother in m: the
     upper-envelope over many nearby grid points averages out the tight
@@ -459,7 +464,12 @@ def kg_indep_scalar_vs_batch_size(model: BeliefModel, grid: np.ndarray,
     safe_st = np.where(st > 1e-12, st, 1.0)
     z = -delta_abs / safe_st
     # f(z) = phi(z) - z * Phi(z); nonneg for all z; large for z near 0.
-    f = _std_normal_pdf(z) - z * _std_normal_cdf(z)
+    # Classical single-alternative KG formula (Frazier & Powell OSPL):
+    #     f(z) = φ(z) + z·Φ(z)
+    # At z = 0 (candidate ties current best): f = φ(0) ≈ 0.399.
+    # At z → −∞ (candidate hopelessly worse): f → 0 — this is the vanishing
+    # regime that produces the classical S when Δ/σ̃ is large.
+    f = _std_normal_pdf(z) + z * _std_normal_cdf(z)
     return st * f
 
 
