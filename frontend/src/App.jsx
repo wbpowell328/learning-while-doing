@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, getKGvsM, setMStar, setLengthScale, deleteSession, runBatch } from './api';
+import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, getKGvsM, setMStar, setLengthScale, getObservationsEnriched, deleteSession, runBatch } from './api';
 import SessionForm from './components/SessionForm';
 import PosteriorChart from './components/PosteriorChart';
 import Belief3DChart from './components/Belief3DChart';
@@ -95,6 +95,7 @@ export default function App() {
   const [kgVsMTheta2,   setKgVsMTheta2]   = useState(null);    // user override θ₂ (2-D only)
   const [kgVsMPending,  setKgVsMPending]  = useState(false);
   const [history,       setHistory]       = useState([]);
+  const [enrichedRows,  setEnrichedRows]  = useState([]);
   const [nSteps,        setNSteps]        = useState(0);
   const [bestImpparam,     setBestImpparam]     = useState(null);
   const [lastResult,    setLastResult]    = useState(null);
@@ -120,6 +121,20 @@ export default function App() {
     setNSteps(result.n_steps);
     setHistory(prev => [...prev, [result.impparam, result.total_reward]]);
     setLastResult(result);
+  }, []);
+
+  // Fetch the enriched history (per-observation μ^n and KG at the
+  // belief state BEFORE that step). Called after any event that adds an
+  // observation OR changes the belief (length_scale refit) OR the m*
+  // used in the KG calculation.
+  const refreshEnriched = useCallback(async (sid) => {
+    try {
+      const resp = await getObservationsEnriched(sid);
+      setEnrichedRows(resp.rows ?? []);
+    } catch (e) {
+      // Non-fatal — just leave the enriched columns off if the fetch fails.
+      console.warn('observations_enriched fetch failed', e);
+    }
   }, []);
 
   // User edits σ_ε or m_max on the KG(m) card — recompute the curve in
@@ -159,10 +174,12 @@ export default function App() {
     try {
       const resp = await setMStar(session.id, newMStar);
       setSession(prev => prev ? { ...prev, m_star: resp.m_star } : prev);
+      // KG values in the enriched history depend on m*; refresh.
+      refreshEnriched(session.id);
     } catch (e) {
       setError(String(e));
     }
-  }, [session]);
+  }, [session, refreshEnriched]);
 
   // GP length_scale (bandwidth) editor: POST refits the belief with the
   // new value replaying the session's history through it, then refetch
@@ -185,10 +202,13 @@ export default function App() {
         setKgVsM(kgm);
         setBestImpparam(post.best_impparam);
       }
+      // μ and KG in the enriched history depend on the belief (which
+      // just got refit) — always refresh regardless of dim.
+      refreshEnriched(session.id);
     } catch (e) {
       setError(String(e));
     }
-  }, [session, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2]);
+  }, [session, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2, refreshEnriched]);
 
   const handleKGvsMTheta = useCallback(async (newTheta, newTheta2 = null) => {
     if (!session) return;
@@ -285,6 +305,7 @@ export default function App() {
       length_scale: belief_config?.length_scale ?? 0.04,
     });
     setHistory([]);
+    setEnrichedRows([]);
     setNSteps(0);
     setLastResult(null);
     setReveal(null);
@@ -336,6 +357,7 @@ export default function App() {
         getKGvsM(session.id, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta),
       ]);
       applyResult(result, post, kg, kgm);
+      refreshEnriched(session.id);
       if (session.budget && result.n_steps >= session.budget) {
         await fetchReveal(session.id);
       }
@@ -344,7 +366,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [session, loading, applyResult, fetchReveal, kgVsMSigmaEps, kgVsMMMax, kgVsMTheta, kgVsMTheta2]);
+  }, [session, loading, applyResult, fetchReveal, refreshEnriched, kgVsMSigmaEps, kgVsMMMax, kgVsMTheta, kgVsMTheta2]);
 
   // ── Automated: single step ────────────────────────────────────────────────
 
@@ -371,7 +393,9 @@ export default function App() {
       setHistory(prev => [...prev, [result.impparam, result.total_reward]]);
       setLastResult(result);
     }
-  }, [applyResult, kgVsMSigmaEps, kgVsMMMax, kgVsMTheta, kgVsMTheta2]);
+    // Always refresh enriched history — both dims benefit from μ/KG per row.
+    refreshEnriched(sid);
+  }, [applyResult, refreshEnriched, kgVsMSigmaEps, kgVsMMMax, kgVsMTheta, kgVsMTheta2]);
 
   const handleStep = useCallback(async () => {
     if (!session || loading) return;
@@ -427,6 +451,7 @@ export default function App() {
     setKgVsMTheta(null);
     setKgVsMTheta2(null);
     setHistory([]);
+    setEnrichedRows([]);
     setNSteps(0);
     setBestImpparam(null);
     setLastResult(null);
@@ -773,7 +798,7 @@ export default function App() {
             <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 12 }}>
               Observation history
             </div>
-            <HistoryTable history={history} />
+            <HistoryTable history={history} enrichedRows={enrichedRows} />
           </div>
         </div>
       </div>

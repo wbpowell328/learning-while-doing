@@ -115,4 +115,6 @@ export const setLengthScale = (sid, lengthScale) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ length_scale: lengthScale }),
   });
+export const getObservationsEnriched = (sid) =>
+  call(`/sessions/${sid}/observations_enriched`);
 export const deleteSession = (sid) => call(`/sessions/${sid}`, { method: 'DELETE' });

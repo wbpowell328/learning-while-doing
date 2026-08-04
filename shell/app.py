@@ -248,6 +248,71 @@ def set_length_scale(sid: str, body: SetLengthScaleRequest) -> SetLengthScaleRes
     return SetLengthScaleResponse(length_scale=session.belief.config.length_scale)
 
 
+@app.get("/sessions/{sid}/observations_enriched")
+def observations_enriched(sid: str) -> dict:
+    """
+    Per-observation rows with three extra values per row: the observed
+    θ and reward the user already sees, plus μ^n and offline analytic
+    correlated KG evaluated AT the belief state that existed BEFORE
+    that observation was made — i.e. what the policy saw when it
+    decided to pick that θ. Row 0 (first observation) sees the pure
+    prior everywhere.
+
+    KG is computed under the session's current m* (batch-size trick
+    multiplier) so it reflects what the policy actually used.
+
+    Values are in the app's DISPLAY frame (rewards for maximise apps,
+    costs for minimise apps).
+    """
+    from policy.belief import BeliefModel as _BeliefModel
+    session = _get_or_404(sid)
+    if not session.history:
+        return {"rows": []}
+
+    cfg = session._acq_config
+    # Search grid for the KG evaluation — match /kg endpoint conventions.
+    if session.dim == 1:
+        search_grid = np.linspace(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
+    else:
+        lo = _as_list(cfg.impparam_min)
+        hi = _as_list(cfg.impparam_max)
+        grid_size_2d = min(int(cfg.grid_size), 25)
+        axis1 = np.linspace(lo[0], hi[0], grid_size_2d)
+        axis2 = np.linspace(lo[1], hi[1], grid_size_2d)
+        G1, G2 = np.meshgrid(axis1, axis2, indexing="ij")
+        search_grid = np.stack([G1.ravel(), G2.ravel()], axis=-1)
+
+    # Rebuild the belief incrementally. For each row, record μ and KG at
+    # its θ BEFORE that row's observation is folded in.
+    fresh = _BeliefModel(session.belief.config, dim=session.dim)
+    m_star = session.m_star
+
+    rows: list[dict] = []
+    for i, (impparam, disp_val) in enumerate(session.history):
+        # Normalise θ to (1, dim) for posterior/KG queries.
+        theta_flat = np.atleast_1d(np.asarray(impparam, dtype=float)).reshape(-1)
+        theta_query = theta_flat.reshape(1, -1)
+
+        mu_arr, _ = fresh.posterior(theta_query)
+        mu_display = float(_to_display(session, mu_arr)[0])
+        kg_val = float(
+            kg_analytic_correlated_at(fresh, search_grid, theta_query, m_star=m_star)[0]
+        )
+
+        rows.append({
+            "step": i,
+            "theta": _theta_out(impparam, session.dim),
+            "value": float(disp_val),
+            "mu": mu_display,
+            "kg": kg_val,
+        })
+        # Now fold this observation in for the next row's "prior" state.
+        internal = float(disp_val) if session.minimize else -float(disp_val)
+        fresh.update(impparam, internal)
+
+    return {"rows": rows}
+
+
 @app.post("/sessions/{sid}/step")
 def step(sid: str) -> StepResponse:
     session = _get_or_404(sid)
