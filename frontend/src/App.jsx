@@ -58,7 +58,8 @@ export default function App() {
   const [kgVsM,         setKgVsM]         = useState(null);
   const [kgVsMSigmaEps, setKgVsMSigmaEps] = useState(null);   // user override for KG(m) σ_ε
   const [kgVsMMMax,     setKgVsMMMax]     = useState(50);      // user override for KG(m) x-axis extent
-  const [kgVsMTheta,    setKgVsMTheta]    = useState(null);    // user override for the θ we evaluate KG(m) at
+  const [kgVsMTheta,    setKgVsMTheta]    = useState(null);    // user override θ (or θ₁ for 2-D) — null = argmax(offline KG)
+  const [kgVsMTheta2,   setKgVsMTheta2]   = useState(null);    // user override θ₂ (2-D only)
   const [kgVsMPending,  setKgVsMPending]  = useState(false);
   const [history,       setHistory]       = useState([]);
   const [nSteps,        setNSteps]        = useState(0);
@@ -95,35 +96,36 @@ export default function App() {
     setKgVsMSigmaEps(sigmaEps);
     setKgVsMPending(true);
     try {
-      const kgm = await getKGvsM(session.id, kgVsMMMax, sigmaEps, kgVsMTheta);
+      const kgm = await getKGvsM(session.id, kgVsMMMax, sigmaEps, kgVsMTheta, kgVsMTheta2);
       setKgVsM(kgm);
     } catch (e) {
       setError(String(e));
     } finally {
       setKgVsMPending(false);
     }
-  }, [session, kgVsMMMax, kgVsMTheta]);
+  }, [session, kgVsMMMax, kgVsMTheta, kgVsMTheta2]);
 
   const handleKGvsMMMax = useCallback(async (newMMax) => {
     if (!session) return;
     setKgVsMMMax(newMMax);
     setKgVsMPending(true);
     try {
-      const kgm = await getKGvsM(session.id, newMMax, kgVsMSigmaEps, kgVsMTheta);
+      const kgm = await getKGvsM(session.id, newMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2);
       setKgVsM(kgm);
     } catch (e) {
       setError(String(e));
     } finally {
       setKgVsMPending(false);
     }
-  }, [session, kgVsMSigmaEps, kgVsMTheta]);
+  }, [session, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2]);
 
-  const handleKGvsMTheta = useCallback(async (newTheta) => {
+  const handleKGvsMTheta = useCallback(async (newTheta, newTheta2 = null) => {
     if (!session) return;
-    setKgVsMTheta(newTheta);   // null → backend picks argmax(offline KG)
+    setKgVsMTheta(newTheta);      // null → backend picks argmax(offline KG)
+    setKgVsMTheta2(newTheta2);    // ignored by 1-D endpoint; needed for 2-D
     setKgVsMPending(true);
     try {
-      const kgm = await getKGvsM(session.id, kgVsMMMax, kgVsMSigmaEps, newTheta);
+      const kgm = await getKGvsM(session.id, kgVsMMMax, kgVsMSigmaEps, newTheta, newTheta2);
       setKgVsM(kgm);
     } catch (e) {
       setError(String(e));
@@ -217,6 +219,7 @@ export default function App() {
     setKgVsMSigmaEps(null);
     setKgVsMMMax(50);
     setKgVsMTheta(null);
+    setKgVsMTheta2(null);
     setPosterior2D(null);
     setKg2D(null);
 
@@ -231,13 +234,15 @@ export default function App() {
       setKgVsM(kgm);
       setBestImpparam(post.best_impparam);
     } else {
-      // 2-D: fetch belief surface AND KG surface in parallel.
-      const [p2, kg2] = await Promise.all([
+      // 2-D: fetch belief surface + KG surface + KG(m) card in parallel.
+      const [p2, kg2, kgm] = await Promise.all([
         getPosterior2D(session_id, 30),
         getKG2D(session_id, 20),
+        getKGvsM(session_id, 50, null, null, null),
       ]);
       setPosterior2D(p2);
       setKg2D(kg2);
+      setKgVsM(kgm);
       setBestImpparam(p2.best_impparam);
     }
   }, []);
@@ -264,7 +269,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [session, loading, applyResult, fetchReveal, kgVsMSigmaEps, kgVsMMMax, kgVsMTheta]);
+  }, [session, loading, applyResult, fetchReveal, kgVsMSigmaEps, kgVsMMMax, kgVsMTheta, kgVsMTheta2]);
 
   // ── Automated: single step ────────────────────────────────────────────────
 
@@ -278,18 +283,20 @@ export default function App() {
       ]);
       applyResult(result, post, kg, kgm);
     } else {
-      const [p2, kg2] = await Promise.all([
+      const [p2, kg2, kgm] = await Promise.all([
         getPosterior2D(sid, 30),
         getKG2D(sid, 20),
+        getKGvsM(sid, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2),
       ]);
       setPosterior2D(p2);
       setKg2D(kg2);
+      setKgVsM(kgm);
       setBestImpparam(result.best_impparam ?? p2.best_impparam);
       setNSteps(result.n_steps);
       setHistory(prev => [...prev, [result.impparam, result.total_reward]]);
       setLastResult(result);
     }
-  }, [applyResult, kgVsMSigmaEps, kgVsMMMax, kgVsMTheta]);
+  }, [applyResult, kgVsMSigmaEps, kgVsMMMax, kgVsMTheta, kgVsMTheta2]);
 
   const handleStep = useCallback(async () => {
     if (!session || loading) return;
@@ -343,6 +350,7 @@ export default function App() {
     setKgVsMSigmaEps(null);
     setKgVsMMMax(50);
     setKgVsMTheta(null);
+    setKgVsMTheta2(null);
     setHistory([]);
     setNSteps(0);
     setBestImpparam(null);
@@ -553,6 +561,39 @@ export default function App() {
             </div>
           )}
 
+          {/* KG(m) card is available in 2-D too. Same semantics as 1-D:
+              future-batch scenario at a caller-picked (θ₁, θ₂). */}
+          {session.dim >= 2 && (
+            <div className="card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                  KG vs batch size m
+                </span>
+                <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                  at (θ₁, θ₂)* = argmax offline KG
+                </span>
+              </div>
+              <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 8px 0' }}>
+                Info value at the (θ₁, θ₂) point if we averaged m independent
+                runs there (noise → σ/√m, precision → m·β). Same two curves as
+                the 1-D card: <b style={{color:'#16a34a'}}>correlated</b> (the
+                GP that the KG policy actually uses) and
+                <b style={{color:'#2563eb'}}> independent beliefs</b> (each
+                grid cell a separate alternative). σ_ε is a future-batch
+                scenario; the session's belief is not refit.
+              </p>
+              <KGvsMChart
+                data={kgVsM}
+                onSigmaEpsChange={handleKGvsMSigmaEps}
+                sigmaEpsPending={kgVsMPending}
+                mMax={kgVsMMMax}
+                onMMaxChange={handleKGvsMMMax}
+                onThetaChange={handleKGvsMTheta}
+                dim={2}
+              />
+            </div>
+          )}
+
           {session.dim === 1 && (
             <>
               <div className="card">
@@ -619,6 +660,7 @@ export default function App() {
                   mMax={kgVsMMMax}
                   onMMaxChange={handleKGvsMMMax}
                   onThetaChange={handleKGvsMTheta}
+                  dim={1}
                 />
               </div>
             </>

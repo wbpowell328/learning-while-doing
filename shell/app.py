@@ -602,10 +602,14 @@ def kg_comparison(
 
 
 @app.get("/sessions/{sid}/kg_vs_m")
-def kg_vs_m(sid: str, theta: float | None = None, m_max: int = 50,
-            sigma_eps: float | None = None) -> dict:
+def kg_vs_m(sid: str, theta: float | None = None, theta2: float | None = None,
+            m_max: int = 50, sigma_eps: float | None = None) -> dict:
     """
     KG(θ) at a single θ as a function of the effective batch size m.
+
+    Supports 1-D and 2-D apps. For 2-D, pass both `theta` (θ₁) and
+    `theta2` (θ₂); if either is omitted the endpoint uses argmax of
+    the offline-correlated KG surface as the default candidate.
 
     Motivates the "S-curve" effect: a single experiment (m=1) at a θ with
     low signal-to-noise can produce a tiny KG, which is what makes the
@@ -613,26 +617,42 @@ def kg_vs_m(sid: str, theta: float | None = None, m_max: int = 50,
     repeat observations there (noise → σ/√m) can unlock a much larger
     information gain.
 
-    If `theta` is omitted the endpoint uses argmax of the single-shot
-    analytic-correlated KG surface — i.e. the θ the offline KG policy
-    would sample next.
-
-    Returns { theta, m_values, kg_values, noise_std, base_kg }.
+    Returns { theta (scalar for 1-D or list for 2-D), m_values, kg_values,
+             kg_values_correlated, kg_values_independent, noise_std,
+             noise_std_belief, base_kg, base_kg_indep, delta_corr,
+             sigma_tilde_corr, delta_indep, sigma_tilde_indep }.
     """
     session = _get_or_404(sid)
-    if session.dim != 1:
+    if session.dim not in (1, 2):
         raise HTTPException(status_code=400,
-            detail=f"kg_vs_m requires a 1-D session; this one has dim={session.dim}")
+            detail=f"kg_vs_m supports 1-D and 2-D sessions; this one has dim={session.dim}")
 
     cfg = session._acq_config
-    search_grid = np.linspace(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
 
-    # Default: the θ the KG policy would pick next.
-    if theta is None:
-        kg_curve = kg_analytic_correlated_at(session.belief, search_grid, search_grid)
-        theta_used = float(search_grid[int(np.argmax(kg_curve))])
-    else:
-        theta_used = float(np.clip(theta, cfg.impparam_min, cfg.impparam_max))
+    if session.dim == 1:
+        search_grid = np.linspace(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
+        if theta is None:
+            kg_curve = kg_analytic_correlated_at(session.belief, search_grid, search_grid)
+            theta_used = float(search_grid[int(np.argmax(kg_curve))])
+        else:
+            theta_used = float(np.clip(theta, cfg.impparam_min, cfg.impparam_max))
+    else:  # dim == 2
+        lo = _as_list(cfg.impparam_min)
+        hi = _as_list(cfg.impparam_max)
+        # Same 2-D grid convention as the /kg_2d endpoint (capped for speed).
+        grid_size_2d = min(int(cfg.grid_size), 25)
+        axis1 = np.linspace(lo[0], hi[0], grid_size_2d)
+        axis2 = np.linspace(lo[1], hi[1], grid_size_2d)
+        G1, G2 = np.meshgrid(axis1, axis2, indexing="ij")
+        search_grid = np.stack([G1.ravel(), G2.ravel()], axis=-1)  # (n, 2)
+        if theta is None or theta2 is None:
+            kg_curve = kg_analytic_correlated_at(session.belief, search_grid, search_grid)
+            theta_used = search_grid[int(np.argmax(kg_curve))].copy()
+        else:
+            theta_used = np.array([
+                float(np.clip(theta,  lo[0], hi[0])),
+                float(np.clip(theta2, lo[1], hi[1])),
+            ])
 
     # σ_ε override is FUTURE-NOISE ONLY (the classical Frazier & Powell
     # setup that produces the S-curve): posterior stays fit under the
@@ -671,11 +691,16 @@ def kg_vs_m(sid: str, theta: float | None = None, m_max: int = 50,
     # sharp transition when |Δ| is comparable to σ̃; when |Δ| ≪ σ̃ the KG
     # is near its max already at m=1 (no S), and when |Δ| ≫ σ̃ the KG
     # stays near 0 for many m (S visible late or off-plot).
-    theta_arr = np.array([[float(theta_used)]])
+    # theta_used may be a scalar (1-D) or 2-vector (2-D); normalise for
+    # posterior queries and nearest-cell lookups.
+    theta_vec = np.atleast_1d(np.asarray(theta_used, dtype=float)).reshape(-1)
+    theta_arr = theta_vec.reshape(1, -1)  # (1, dim)
+    grid_arr = search_grid.reshape(-1, theta_vec.size) if search_grid.ndim == 1 else search_grid
+
     mu_theta_arr, std_theta_arr = belief_for_kg.posterior(theta_arr)
     mu_theta_corr = float(mu_theta_arr[0])
     var_theta_corr = float(std_theta_arr[0]) ** 2
-    mu_grid_corr, _ = belief_for_kg.posterior(search_grid)
+    mu_grid_corr, _ = belief_for_kg.posterior(grid_arr)
     mu_best_corr = float(np.min(mu_grid_corr))
     delta_corr = abs(mu_theta_corr - mu_best_corr)
     # σ_ε for future observations: user override if set, else belief default.
@@ -688,21 +713,28 @@ def kg_vs_m(sid: str, theta: float | None = None, m_max: int = 50,
     # not the override — that's the whole point of the future-noise-only
     # semantics: the posterior stays "as the session learned it" while the
     # KG formula asks "what if a future batch had noise σ_ε_future?".
+    # Nearest-cell bins use Euclidean distance so this works in any dim.
     prior_var = float(belief_for_kg.config.signal_std) ** 2
     prior_mean = float(belief_for_kg.config.prior_mean)
-    n_obs = np.zeros(search_grid.shape[0], dtype=float)
-    sum_obs = np.zeros(search_grid.shape[0], dtype=float)
+    n_grid_cells = grid_arr.shape[0]
+    n_obs = np.zeros(n_grid_cells, dtype=float)
+    sum_obs = np.zeros(n_grid_cells, dtype=float)
     for t_hist, v_hist in history_internal:
-        j = int(np.argmin(np.abs(search_grid - float(t_hist))))
+        t_vec = np.atleast_1d(np.asarray(t_hist, dtype=float)).reshape(-1)
+        if t_vec.size != theta_vec.size:
+            continue
+        dists = np.linalg.norm(grid_arr - t_vec, axis=1)
+        j = int(np.argmin(dists))
         n_obs[j] += 1.0
         sum_obs[j] += float(v_hist)
     prec_j = 1.0 / prior_var + n_obs / (session_noise ** 2)
     V_j_indep = 1.0 / prec_j
     mu_j_indep = V_j_indep * (prior_mean / prior_var + sum_obs / (session_noise ** 2))
-    j_star = int(np.argmin(np.abs(search_grid - float(theta_used))))
+    dists_theta = np.linalg.norm(grid_arr - theta_vec, axis=1)
+    j_star = int(np.argmin(dists_theta))
     mu_theta_indep = float(mu_j_indep[j_star])
     V_theta_indep = float(V_j_indep[j_star])
-    mask = np.ones(search_grid.shape[0], dtype=bool); mask[j_star] = False
+    mask = np.ones(n_grid_cells, dtype=bool); mask[j_star] = False
     mu_best_indep = float(np.min(mu_j_indep[mask])) if mask.any() else mu_theta_indep
     delta_indep = abs(mu_theta_indep - mu_best_indep)
     # σ̃(m=1) uses the FUTURE noise (the batch measurement noise assumption).
@@ -713,8 +745,11 @@ def kg_vs_m(sid: str, theta: float | None = None, m_max: int = 50,
     m_values = [0] + m_positive
     kg_values = [0.0] + [float(v) for v in kg_positive_corr.tolist()]
     kg_values_indep = [0.0] + [float(v) for v in kg_positive_indep.tolist()]
+    # theta_used comes back as scalar for 1-D or ndarray for 2-D; normalise
+    # to a JSON-friendly type (float or list of floats).
+    theta_out = float(theta_used) if session.dim == 1 else [float(v) for v in np.atleast_1d(theta_used).reshape(-1)]
     return {
-        "theta": theta_used,
+        "theta": theta_out,
         "m_values": m_values,
         # Legacy field name = correlated curve (what the policy uses).
         "kg_values": kg_values,

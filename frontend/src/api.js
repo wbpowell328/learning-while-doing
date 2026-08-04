@@ -32,10 +32,12 @@ export const getKG2D = (sid, gridSize = 20) =>
 export const getReveal     = (sid) => call(`/sessions/${sid}/reveal`);
 export const getKGComparison = (sid, spacing = 0.05, mcSamples = 500, budget = 10) =>
   call(`/sessions/${sid}/kg?spacing=${spacing}&mc_samples=${mcSamples}&budget=${budget}`);
-export const getKGvsM = (sid, mMax = 50, sigmaEps = null, theta = null) => {
+export const getKGvsM = (sid, mMax = 50, sigmaEps = null, theta = null, theta2 = null) => {
   const sEps  = sigmaEps == null ? '' : `&sigma_eps=${sigmaEps}`;
   const sThet = theta    == null ? '' : `&theta=${theta}`;
-  return call(`/sessions/${sid}/kg_vs_m?m_max=${mMax}${sEps}${sThet}`);
+  // theta2 only meaningful for 2-D sessions; harmless for 1-D (backend ignores).
+  const sThet2 = theta2  == null ? '' : `&theta2=${theta2}`;
+  return call(`/sessions/${sid}/kg_vs_m?m_max=${mMax}${sEps}${sThet}${sThet2}`);
 };
 
 // Streams the batch endpoint as NDJSON. Invokes onEvent(msg) for each

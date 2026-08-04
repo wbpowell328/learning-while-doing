@@ -27,18 +27,28 @@ function niceTicks(lo, hi, n = 5) {
 export default function KGvsMChart({
   data, onSigmaEpsChange, sigmaEpsPending = false,
   mMax = 50, onMMaxChange,
-  onThetaChange,
+  onThetaChange,        // signature: (theta1) for 1-D, (theta1, theta2) for 2-D; null for reset
+  dim = 1,              // 1 or 2 — controls whether the θ₂ input renders
 }) {
   // Local text state so mid-typing doesn't fire a request per keystroke.
-  const [sigmaStr, setSigmaStr] = useState('');
-  const [mMaxStr,  setMMaxStr]  = useState(String(mMax));
-  const [thetaStr, setThetaStr] = useState('');
+  const [sigmaStr,  setSigmaStr]  = useState('');
+  const [mMaxStr,   setMMaxStr]   = useState(String(mMax));
+  const [thetaStr,  setThetaStr]  = useState('');   // θ₁ (or the single θ for 1-D)
+  const [theta2Str, setTheta2Str] = useState('');   // θ₂ (2-D only)
   useEffect(() => {
     if (data?.noise_std != null) setSigmaStr(String(Math.round(data.noise_std)));
   }, [data?.noise_std]);
   useEffect(() => { setMMaxStr(String(mMax)); }, [mMax]);
   useEffect(() => {
-    if (data?.theta != null) setThetaStr(data.theta.toFixed(3));
+    // Backend returns theta as scalar for 1-D or [θ₁, θ₂] for 2-D — handle both.
+    if (data?.theta != null) {
+      if (Array.isArray(data.theta)) {
+        setThetaStr(data.theta[0]?.toFixed(3) ?? '');
+        setTheta2Str(data.theta[1]?.toFixed(3) ?? '');
+      } else {
+        setThetaStr(Number(data.theta).toFixed(3));
+      }
+    }
   }, [data?.theta]);
 
   if (!data || !data.m_values || data.m_values.length === 0) {
@@ -89,17 +99,31 @@ export default function KGvsMChart({
     if (clamped === mMax) return;
     onMMaxChange(clamped);
   };
+  // Reflect scalar-vs-array data.theta uniformly. `theta1_val`/`theta2_val`
+  // are the numeric current values (for the "no change" short-circuit and
+  // for the reset-fallback string on invalid input).
+  const theta1_val = Array.isArray(theta) ? Number(theta[0]) : Number(theta);
+  const theta2_val = Array.isArray(theta) ? Number(theta[1]) : null;
+
   const commitTheta = () => {
     if (!onThetaChange) return;
-    const v = Number(thetaStr);
-    if (!Number.isFinite(v) || v <= 0) { setThetaStr(theta.toFixed(3)); return; }
-    if (Math.abs(v - theta) < 1e-6) return;
-    onThetaChange(v);
+    const v1 = Number(thetaStr);
+    if (!Number.isFinite(v1) || v1 <= 0) { setThetaStr(theta1_val.toFixed(3)); return; }
+    if (dim === 2) {
+      const v2 = Number(theta2Str);
+      if (!Number.isFinite(v2) || v2 <= 0) { setTheta2Str((theta2_val ?? 0).toFixed(3)); return; }
+      if (Math.abs(v1 - theta1_val) < 1e-6 && Math.abs(v2 - theta2_val) < 1e-6) return;
+      onThetaChange(v1, v2);
+    } else {
+      if (Math.abs(v1 - theta1_val) < 1e-6) return;
+      onThetaChange(v1);
+    }
   };
   const resetThetaToArgmaxKG = () => {
     if (!onThetaChange) return;
     setThetaStr('');   // sending null makes the backend pick argmax(offline_KG)
-    onThetaChange(null);
+    setTheta2Str('');
+    onThetaChange(null, null);   // extra null is harmless for 1-D signature
   };
 
   const xLo = m_values[0];
@@ -171,7 +195,7 @@ export default function KGvsMChart({
           style={{ width: 70, padding: '3px 6px', border: '1px solid #cbd5e1',
                    borderRadius: 4, fontSize: 12 }}
         />
-        <label style={{ fontWeight: 600, marginLeft: 8 }}>θ:</label>
+        <label style={{ fontWeight: 600, marginLeft: 8 }}>{dim === 2 ? 'θ₁:' : 'θ:'}</label>
         <input
           type="number"
           value={thetaStr}
@@ -183,6 +207,22 @@ export default function KGvsMChart({
           style={{ width: 80, padding: '3px 6px', border: '1px solid #cbd5e1',
                    borderRadius: 4, fontSize: 12 }}
         />
+        {dim === 2 && (
+          <>
+            <label style={{ fontWeight: 600, marginLeft: 4 }}>θ₂:</label>
+            <input
+              type="number"
+              value={theta2Str}
+              step="any"
+              onChange={e => setTheta2Str(e.target.value)}
+              onBlur={commitTheta}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commitTheta(); } }}
+              disabled={sigmaEpsPending}
+              style={{ width: 80, padding: '3px 6px', border: '1px solid #cbd5e1',
+                       borderRadius: 4, fontSize: 12 }}
+            />
+          </>
+        )}
         <button
           type="button"
           onClick={resetThetaToArgmaxKG}
@@ -302,7 +342,11 @@ export default function KGvsMChart({
       ))}
       <text x={PAD.left + IW / 2} y={H - 4}
             textAnchor="middle" fontSize={12} fill="#64748b">
-        m — number of repeat experiments at θ = {theta.toFixed(3)}
+        m — number of repeat experiments at θ = {
+          Array.isArray(theta)
+            ? `(${theta.map(v => Number(v).toFixed(3)).join(', ')})`
+            : Number(theta).toFixed(3)
+        }
       </text>
 
       {/* LEFT y-axis — correlated KG. Colour-matched to the green curve. */}

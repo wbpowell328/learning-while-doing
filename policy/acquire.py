@@ -372,15 +372,21 @@ def kg_indep_beliefs_vs_batch_size(model: BeliefModel, grid: np.ndarray,
     if prior_var <= 0 or noise_var <= 0:
         return np.zeros(len(list(m_values)))
 
-    grid_1d = np.asarray(grid, dtype=float).reshape(-1)
-    n_grid = grid_1d.shape[0]
+    # Grid to (n_grid, dim). Works for both 1-D (n_grid, 1) and 2-D+ cases.
+    grid_arr = np.asarray(grid, dtype=float)
+    if grid_arr.ndim == 1:
+        grid_arr = grid_arr.reshape(-1, 1)
+    n_grid, dim = grid_arr.shape
 
-    # Bin every observation into the nearest grid cell.
+    # Bin every observation into its nearest grid cell (Euclidean distance).
     n_obs   = np.zeros(n_grid, dtype=float)
     sum_obs = np.zeros(n_grid, dtype=float)
     for theta_hist, val_hist in history:
-        theta_scalar = float(np.atleast_1d(np.asarray(theta_hist, dtype=float))[0])
-        j = int(np.argmin(np.abs(grid_1d - theta_scalar)))
+        t_vec = np.atleast_1d(np.asarray(theta_hist, dtype=float)).reshape(-1)
+        if t_vec.size != dim:
+            continue    # skip malformed history rows rather than crash
+        dists = np.linalg.norm(grid_arr - t_vec, axis=1)
+        j = int(np.argmin(dists))
         n_obs[j]   += 1.0
         sum_obs[j] += float(val_hist)
 
@@ -393,8 +399,11 @@ def kg_indep_beliefs_vs_batch_size(model: BeliefModel, grid: np.ndarray,
     mu_j   = V_j * (prior_mean / prior_var + sum_obs / noise_var)
 
     # Snap the candidate θ to the nearest grid cell.
-    theta_scalar = float(np.atleast_1d(np.asarray(theta, dtype=float))[0])
-    j_star = int(np.argmin(np.abs(grid_1d - theta_scalar)))
+    theta_vec = np.atleast_1d(np.asarray(theta, dtype=float)).reshape(-1)
+    if theta_vec.size != dim:
+        return np.zeros(len(list(m_values)))
+    dists_cand = np.linalg.norm(grid_arr - theta_vec, axis=1)
+    j_star = int(np.argmin(dists_cand))
     V_x  = float(V_j[j_star])
     mu_x = float(mu_j[j_star])
 

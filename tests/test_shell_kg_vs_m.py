@@ -68,13 +68,41 @@ def test_kg_vs_m_sigma_eps_override_returns_refit_delta():
     assert r1.json()["noise_std_belief"] == r2.json()["noise_std_belief"]
 
 
-def test_kg_vs_m_1d_only():
-    """kg_vs_m is 1-D only; 2-D sessions should 400."""
+def test_kg_vs_m_2d_supported():
+    """kg_vs_m supports 2-D sessions; theta is returned as a length-2 list."""
     r = client.post("/sessions", json={"app_name": "cash_balance_2d", "policy": "kg", "session_seed": 42})
     assert r.status_code == 201
     sid = r.json()["session_id"]
-    r = client.get(f"/sessions/{sid}/kg_vs_m")
-    assert r.status_code == 400
+
+    # Empty session — endpoint should still return 200 with a length-2 theta.
+    r = client.get(f"/sessions/{sid}/kg_vs_m?m_max=10")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert isinstance(body["theta"], list) and len(body["theta"]) == 2
+    assert set(body.keys()) >= EXPECTED_KEYS
+
+    # Explicit (theta1, theta2) round-trip.
+    r = client.get(f"/sessions/{sid}/kg_vs_m?m_max=10&theta=0.05&theta2=0.15")
+    assert r.status_code == 200, r.text
+    theta_out = r.json()["theta"]
+    assert theta_out[0] == pytest.approx(0.05)
+    assert theta_out[1] == pytest.approx(0.15)
+
+
+def test_kg_vs_m_2d_step_then_override():
+    """After a 2-D step, sigma_eps override recomputes and reports both values."""
+    r = client.post("/sessions", json={"app_name": "cash_balance_2d", "policy": "kg", "session_seed": 42})
+    sid = r.json()["session_id"]
+    client.post(f"/sessions/{sid}/step")
+    r = client.get(f"/sessions/{sid}/kg_vs_m?m_max=20&theta=0.05&theta2=0.15&sigma_eps=30000")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["noise_std"] == pytest.approx(30000.0)
+    # Δ_indep should be substantial once we have any observation moving a cell
+    # away from prior (a single sample at high σ_ε barely moves it — but at
+    # least the endpoint shouldn't crash).
+    assert body["delta_indep"] >= 0
+    assert body["sigma_tilde_indep"] > 0
 
 
 def test_kg_indep_scalar_math():
