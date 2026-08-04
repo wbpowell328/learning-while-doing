@@ -55,6 +55,13 @@ export default function KGvsMChart({
   // comparison and exhibits the classical S when the noise regime lines
   // up. Both are on the same y-scale.
   const kg_values_indep = data.kg_values_independent ?? [];
+  // Diagnostic readouts — control whether the S is visible or not.
+  const delta_corr        = data.delta_corr;
+  const sigma_tilde_corr  = data.sigma_tilde_corr;
+  const delta_indep       = data.delta_indep;
+  const sigma_tilde_indep = data.sigma_tilde_indep;
+  const zscore_corr  = (delta_corr  != null && sigma_tilde_corr  > 1e-12) ? delta_corr  / sigma_tilde_corr  : null;
+  const zscore_indep = (delta_indep != null && sigma_tilde_indep > 1e-12) ? delta_indep / sigma_tilde_indep : null;
   const isOverridden = noise_std_belief != null &&
                        Math.abs(noise_std - noise_std_belief) > 1e-6;
 
@@ -192,6 +199,46 @@ export default function KGvsMChart({
           </>
         )}
       </div>
+
+      {/* Diagnostic row: |Δ|, σ̃(m=1) and their ratio for both formulations.
+          The S is visible only when Δ/σ̃ ≳ 2 or so — that's the regime where
+          f(-z) is near-zero, forcing KG(m=1) small. Values in belief-frame
+          $ (posterior means at θ vs current best, and Bayesian mean-shift
+          std at a single observation). */}
+      {(delta_corr != null || delta_indep != null) && (
+        <div style={{ display: 'grid',
+                      gridTemplateColumns: '110px 1fr 1fr 1fr',
+                      gap: '4px 12px',
+                      fontSize: 11, color: '#475569',
+                      background: '#f8fafc',
+                      padding: '6px 10px', borderRadius: 4,
+                      marginBottom: 8 }}>
+          <div style={{ fontWeight: 600 }}></div>
+          <div style={{ fontWeight: 600 }}>|Δ|</div>
+          <div style={{ fontWeight: 600 }}>σ̃(m=1)</div>
+          <div style={{ fontWeight: 600 }}>Δ/σ̃</div>
+
+          <div style={{ color: '#16a34a', fontWeight: 600 }}>Correlated</div>
+          <div>${delta_corr?.toFixed(1)}</div>
+          <div>${sigma_tilde_corr?.toFixed(1)}</div>
+          <div style={{ color: (zscore_corr != null && zscore_corr > 2) ? '#dc2626' : '#475569' }}>
+            {zscore_corr?.toFixed(2)}
+          </div>
+
+          <div style={{ color: '#2563eb', fontWeight: 600 }}>Independent</div>
+          <div>${delta_indep?.toFixed(1)}</div>
+          <div>${sigma_tilde_indep?.toFixed(1)}</div>
+          <div style={{ color: (zscore_indep != null && zscore_indep > 2) ? '#dc2626' : '#475569' }}>
+            {zscore_indep?.toFixed(2)}
+          </div>
+
+          <div style={{ gridColumn: '1 / -1', color: '#94a3b8', fontStyle: 'italic', marginTop: 2 }}>
+            The classical S needs Δ/σ̃ ≳ 2 (red) — that's where f(−z) → 0 and KG(m=1) collapses.
+            Smaller ratios give the concave-plateau shape.
+          </div>
+        </div>
+      )}
+
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible' }}>
       {/* Gridlines */}
       {yTicks.map((v, i) => (

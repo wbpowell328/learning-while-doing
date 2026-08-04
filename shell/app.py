@@ -665,6 +665,43 @@ def kg_vs_m(sid: str, theta: float | None = None, m_max: int = 50,
     kg_positive_corr = kg_vs_batch_size(
         belief_for_kg, search_grid, theta_used, m_positive,
     )
+
+    # ── Diagnostic: |Δ| and σ̃(m=1) for both formulations ──────────────
+    # These are what determine whether the S-curve is visible: KG has a
+    # sharp transition when |Δ| is comparable to σ̃; when |Δ| ≪ σ̃ the KG
+    # is near its max already at m=1 (no S), and when |Δ| ≫ σ̃ the KG
+    # stays near 0 for many m (S visible late or off-plot).
+    theta_arr = np.array([[float(theta_used)]])
+    mu_theta_arr, std_theta_arr = belief_for_kg.posterior(theta_arr)
+    mu_theta_corr = float(mu_theta_arr[0])
+    var_theta_corr = float(std_theta_arr[0]) ** 2
+    mu_grid_corr, _ = belief_for_kg.posterior(search_grid)
+    mu_best_corr = float(np.min(mu_grid_corr))
+    delta_corr = abs(mu_theta_corr - mu_best_corr)
+    sigma_eps_val = float(belief_for_kg.config.noise_std)
+    sigma_tilde_corr_1 = float(np.sqrt(var_theta_corr + sigma_eps_val ** 2))
+
+    # Same quantities under the truly-independent-beliefs formulation.
+    prior_var = float(belief_for_kg.config.signal_std) ** 2
+    prior_mean = float(belief_for_kg.config.prior_mean)
+    n_obs = np.zeros(search_grid.shape[0], dtype=float)
+    sum_obs = np.zeros(search_grid.shape[0], dtype=float)
+    for t_hist, v_hist in history_internal:
+        j = int(np.argmin(np.abs(search_grid - float(t_hist))))
+        n_obs[j] += 1.0
+        sum_obs[j] += float(v_hist)
+    prec_j = 1.0 / prior_var + n_obs / (sigma_eps_val ** 2)
+    V_j_indep = 1.0 / prec_j
+    mu_j_indep = V_j_indep * (prior_mean / prior_var + sum_obs / (sigma_eps_val ** 2))
+    j_star = int(np.argmin(np.abs(search_grid - float(theta_used))))
+    mu_theta_indep = float(mu_j_indep[j_star])
+    V_theta_indep = float(V_j_indep[j_star])
+    mask = np.ones(search_grid.shape[0], dtype=bool); mask[j_star] = False
+    mu_best_indep = float(np.min(mu_j_indep[mask])) if mask.any() else mu_theta_indep
+    delta_indep = abs(mu_theta_indep - mu_best_indep)
+    # For independent-beliefs, σ̃(m=1) is the Bayesian mean-shift std, not
+    # the predictive std — that's what enters the KG formula.
+    sigma_tilde_indep_1 = float(np.sqrt(V_theta_indep ** 2 / (V_theta_indep + sigma_eps_val ** 2)))
     # Truly-independent-beliefs KG at θ: each grid point is treated as a
     # separate alternative with its own conjugate Normal-Normal belief,
     # updated only by observations that fell in its own bin. This
@@ -699,6 +736,12 @@ def kg_vs_m(sid: str, theta: float | None = None, m_max: int = 50,
         "noise_std_belief": float(session.belief.config.noise_std),
         "base_kg": float(kg_positive_corr[0]) if len(kg_positive_corr) else 0.0,
         "base_kg_indep": float(kg_positive_indep[0]) if len(kg_positive_indep) else 0.0,
+        # Diagnostic readouts of |Δ| and σ̃(m=1) for both formulations —
+        # what governs whether the S-curve is visible or not.
+        "delta_corr":        delta_corr,
+        "sigma_tilde_corr":  sigma_tilde_corr_1,
+        "delta_indep":       delta_indep,
+        "sigma_tilde_indep": sigma_tilde_indep_1,
     }
 
 
