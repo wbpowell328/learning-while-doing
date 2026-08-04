@@ -263,7 +263,7 @@ export default function KGvsMChart({
         <line x1={0} x2={20} y1={22} y2={22} stroke="#2563eb" strokeWidth={2}
               strokeDasharray="5,3" opacity={0.9} />
         <text x={26} y={26} fontSize={10} fill="#374151">
-          Independent scalar KG (classical S)
+          Independent beliefs (no cross-updates)
         </text>
       </g>
 

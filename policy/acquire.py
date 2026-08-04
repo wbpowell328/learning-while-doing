@@ -342,6 +342,78 @@ def _std_normal_cdf(z):
     return 0.5 * (1.0 + _np_erf(z / np.sqrt(2.0)))
 
 
+def kg_indep_beliefs_vs_batch_size(model: BeliefModel, grid: np.ndarray,
+                                    theta, m_values,
+                                    history: list) -> np.ndarray:
+    """
+    Classical INDEPENDENT-BELIEFS KG(m) at a candidate θ. Correlations
+    across θ are dropped entirely: each grid point is a separate
+    alternative with its own conjugate Normal-Normal belief, updated
+    only by observations that fell in its own bin (nearest-grid-point
+    assignment). Then apply the classical single-alternative KG formula.
+
+    Uses model.config for signal_std (prior amplitude), noise_std (σ_ε)
+    and prior_mean. `history` is the session's observation list in the
+    belief's *internal* (cost) frame — the caller (shell/app.py) is
+    responsible for the sign flip.
+
+    This is the setting from Frazier & Powell (OSPL, independent-normal-
+    beliefs chapter) that produces the pedagogically-classical S-curve
+    when |Δ| is comparable to σ̃(m). Contrast with the CORRELATED KG
+    that the policy actually uses (smoother upper envelope) or with the
+    hybrid kg_indep_scalar_vs_batch_size (independent-KG formula, but
+    on the GP-smoothed posterior).
+    """
+    cfg = model.config
+    prior_var  = float(cfg.signal_std) ** 2
+    noise_var  = float(cfg.noise_std) ** 2
+    prior_mean = float(cfg.prior_mean)
+    if prior_var <= 0 or noise_var <= 0:
+        return np.zeros(len(list(m_values)))
+
+    grid_1d = np.asarray(grid, dtype=float).reshape(-1)
+    n_grid = grid_1d.shape[0]
+
+    # Bin every observation into the nearest grid cell.
+    n_obs   = np.zeros(n_grid, dtype=float)
+    sum_obs = np.zeros(n_grid, dtype=float)
+    for theta_hist, val_hist in history:
+        theta_scalar = float(np.atleast_1d(np.asarray(theta_hist, dtype=float))[0])
+        j = int(np.argmin(np.abs(grid_1d - theta_scalar)))
+        n_obs[j]   += 1.0
+        sum_obs[j] += float(val_hist)
+
+    # Independent conjugate Normal-Normal update at each grid cell:
+    #   precision_j = 1/prior_var + n_j/noise_var
+    #   V_j         = 1/precision_j
+    #   μ_j         = V_j · (prior_mean/prior_var + Σ y_i / noise_var)
+    prec_j = 1.0 / prior_var + n_obs / noise_var
+    V_j    = 1.0 / prec_j
+    mu_j   = V_j * (prior_mean / prior_var + sum_obs / noise_var)
+
+    # Snap the candidate θ to the nearest grid cell.
+    theta_scalar = float(np.atleast_1d(np.asarray(theta, dtype=float))[0])
+    j_star = int(np.argmin(np.abs(grid_1d - theta_scalar)))
+    V_x  = float(V_j[j_star])
+    mu_x = float(mu_j[j_star])
+
+    # Current best = min μ over the OTHER grid alternatives.
+    mask = np.ones(n_grid, dtype=bool); mask[j_star] = False
+    if not mask.any():
+        return np.zeros(len(list(m_values)))
+    mu_best = float(np.min(mu_j[mask]))
+    delta_abs = abs(mu_x - mu_best)
+
+    m_arr = np.asarray(list(m_values), dtype=float)
+    denom = V_x + noise_var / np.maximum(m_arr, 1e-12)
+    var_shift = (V_x ** 2) / np.maximum(denom, 1e-30)
+    st = np.sqrt(np.maximum(var_shift, 0.0))
+    safe_st = np.where(st > 1e-12, st, 1.0)
+    z = -delta_abs / safe_st
+    f = _std_normal_pdf(z) - z * _std_normal_cdf(z)
+    return st * f
+
+
 def kg_indep_scalar_vs_batch_size(model: BeliefModel, grid: np.ndarray,
                                    theta, m_values) -> np.ndarray:
     """

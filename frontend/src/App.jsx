@@ -598,18 +598,18 @@ export default function App() {
                   </span>
                 </div>
                 <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 8px 0' }}>
-                  Info value at the θ the KG policy would sample next if we
-                  averaged m independent runs there (noise → σ/√m, precision
-                  → m·β). Two curves: <b style={{color:'#16a34a'}}>correlated</b> is
-                  what the KG policy actually uses (upper envelope over the
-                  whole grid — smooth); <b style={{color:'#2563eb'}}>independent
-                  scalar</b> pits θ against the current best as one alternative
-                  (classical KG-vs-precision S-curve when applicable). The two
-                  differ intrinsically: correlations across nearby θ smooth
-                  out the threshold that produces the S. Editing σ_ε refits
-                  the posterior under that noise assumption (a "what if σ_ε
-                  had been X the whole time" scenario); the current session's
-                  belief is untouched.
+                  Info value at θ if we averaged m independent runs there
+                  (noise → σ/√m, precision → m·β). Two curves:
+                  <b style={{color:'#16a34a'}}> correlated</b> is what the KG
+                  policy actually uses (GP with the belief's length_scale);
+                  <b style={{color:'#2563eb'}}> independent beliefs</b> treats
+                  each grid cell as a separate alternative with its own
+                  conjugate Normal-Normal belief, updated only by observations
+                  in its own bin — no cross-θ spillover. This is the setting
+                  that gives the pedagogically-classical S-curve when the θ
+                  you pick has a meaningful gap to the current best μ. σ_ε
+                  and θ inputs recompute both curves in place; the current
+                  session's belief is untouched.
                 </p>
                 <KGvsMChart
                   data={kgVsM}

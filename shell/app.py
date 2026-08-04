@@ -16,7 +16,7 @@ from policy import (
     RandomPolicy, IEPolicy, KGPolicy, Session,
     KGMCPolicy, KGIndependentPolicy, OKGCorrelatedPolicy, OKGIndependentPolicy,
     kg_analytic_correlated_at, kg_mc_correlated_at, kg_independent_at,
-    kg_vs_batch_size, kg_indep_scalar_vs_batch_size,
+    kg_vs_batch_size, kg_indep_scalar_vs_batch_size, kg_indep_beliefs_vs_batch_size,
 )
 from policy.acquire import _make_grid
 from .models import (
@@ -665,13 +665,20 @@ def kg_vs_m(sid: str, theta: float | None = None, m_max: int = 50,
     kg_positive_corr = kg_vs_batch_size(
         belief_for_kg, search_grid, theta_used, m_positive,
     )
-    # Independent-scalar KG at θ: classical single-alternative formula;
-    # exhibits the pedagogically-classical S-curve as a function of m.
-    # Correlated KG (what the policy actually uses) is smoother because
-    # it aggregates over many nearby grid points — so the two curves
-    # differ intrinsically, not just by parameter tuning.
-    kg_positive_indep = kg_indep_scalar_vs_batch_size(
+    # Truly-independent-beliefs KG at θ: each grid point is treated as a
+    # separate alternative with its own conjugate Normal-Normal belief,
+    # updated only by observations that fell in its own bin. This
+    # removes correlations across θ entirely — the classical Frazier-
+    # Powell setting — and exhibits the pedagogically-classical S-curve
+    # when |Δ| between μ(θ) and min_{j≠θ} μ_j is comparable to σ̃(m).
+    # Session history is in display frame; negate for maximise apps so
+    # the belief sees "value to minimise".
+    history_internal = [
+        (t, (v if session.minimize else -v)) for t, v in session.history
+    ]
+    kg_positive_indep = kg_indep_beliefs_vs_batch_size(
         belief_for_kg, search_grid, theta_used, m_positive,
+        history=history_internal,
     )
     # Prepend m=0 anchor: with zero observations no information is gained,
     # so KG(x; 0) = 0 by definition. Including it makes the "first
