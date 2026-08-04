@@ -666,6 +666,22 @@ def kg_vs_m(sid: str, theta: float | None = None, m_max: int = 50,
         belief_for_kg, search_grid, theta_used, m_positive,
     )
 
+    # Truly-independent-beliefs KG at θ: each grid point is treated as a
+    # separate alternative with its own conjugate Normal-Normal belief,
+    # updated only by observations that fell in its own bin. This
+    # removes correlations across θ entirely — the classical Frazier-
+    # Powell setting — and exhibits the pedagogically-classical S-curve
+    # when |Δ| between μ(θ) and min_{j≠θ} μ_j is comparable to σ̃(m).
+    # Session history is in display frame; negate for maximise apps so
+    # the belief sees "value to minimise".
+    history_internal = [
+        (t, (v if session.minimize else -v)) for t, v in session.history
+    ]
+    kg_positive_indep = kg_indep_beliefs_vs_batch_size(
+        belief_for_kg, search_grid, theta_used, m_positive,
+        history=history_internal,
+    )
+
     # ── Diagnostic: |Δ| and σ̃(m=1) for both formulations ──────────────
     # These are what determine whether the S-curve is visible: KG has a
     # sharp transition when |Δ| is comparable to σ̃; when |Δ| ≪ σ̃ the KG
@@ -702,21 +718,6 @@ def kg_vs_m(sid: str, theta: float | None = None, m_max: int = 50,
     # For independent-beliefs, σ̃(m=1) is the Bayesian mean-shift std, not
     # the predictive std — that's what enters the KG formula.
     sigma_tilde_indep_1 = float(np.sqrt(V_theta_indep ** 2 / (V_theta_indep + sigma_eps_val ** 2)))
-    # Truly-independent-beliefs KG at θ: each grid point is treated as a
-    # separate alternative with its own conjugate Normal-Normal belief,
-    # updated only by observations that fell in its own bin. This
-    # removes correlations across θ entirely — the classical Frazier-
-    # Powell setting — and exhibits the pedagogically-classical S-curve
-    # when |Δ| between μ(θ) and min_{j≠θ} μ_j is comparable to σ̃(m).
-    # Session history is in display frame; negate for maximise apps so
-    # the belief sees "value to minimise".
-    history_internal = [
-        (t, (v if session.minimize else -v)) for t, v in session.history
-    ]
-    kg_positive_indep = kg_indep_beliefs_vs_batch_size(
-        belief_for_kg, search_grid, theta_used, m_positive,
-        history=history_internal,
-    )
     # Prepend m=0 anchor: with zero observations no information is gained,
     # so KG(x; 0) = 0 by definition. Including it makes the "first
     # observation" jump visible, matching the classical KG(x; N) plots.
