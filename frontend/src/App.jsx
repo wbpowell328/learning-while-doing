@@ -182,6 +182,9 @@ export default function App() {
   // `cumulativeScore` = running total since the last Restart.
   const [latestScore,     setLatestScore]     = useState(null);
   const [cumulativeScore, setCumulativeScore] = useState(null);
+  // Simulated days behind the cumulative score. Reset on Restart /
+  // New session; incremented by n_days per iteration in One more.
+  const [totalDays,       setTotalDays]       = useState(0);
   const [nSteps,        setNSteps]        = useState(0);
   const [bestImpparam,     setBestImpparam]     = useState(null);
   const [lastResult,    setLastResult]    = useState(null);
@@ -310,9 +313,12 @@ export default function App() {
       await applyExperimentResponse(resp, spec);
       // Restart wipes prior state, so latest = cumulative = sum of the
       // freshly-generated batch's rewards.
-      const batchTotal = (resp.history ?? []).reduce((s, row) => s + Number(row[1] ?? 0), 0);
+      const rows = resp.history ?? [];
+      const batchTotal = rows.reduce((s, row) => s + Number(row[1] ?? 0), 0);
       setLatestScore(batchTotal);
       setCumulativeScore(batchTotal);
+      // Total simulated days = iterations × n_days. Restart resets.
+      setTotalDays(rows.length * Number(spec.n_days ?? 0));
     } catch (e) {
       setError(String(e));
     } finally {
@@ -333,6 +339,7 @@ export default function App() {
       const batchTotal = newRows.reduce((s, row) => s + Number(row[1] ?? 0), 0);
       setLatestScore(batchTotal);
       setCumulativeScore(prev => (prev ?? 0) + batchTotal);
+      setTotalDays(prev => prev + newRows.length * Number(spec.n_days ?? 0));
     } catch (e) {
       setError(String(e));
     } finally {
@@ -450,6 +457,7 @@ export default function App() {
     setReveal(null);
     setLatestScore(null);
     setCumulativeScore(null);
+    setTotalDays(0);
     setPosterior(null);
     setKgComparison(null);
     setKgVsM(null);
@@ -598,6 +606,7 @@ export default function App() {
     setLastResult(null);
     setLatestScore(null);
     setCumulativeScore(null);
+    setTotalDays(0);
     setReveal(null);
     setError(null);
     // After the user hits "New session" they get the setup panel —
@@ -698,6 +707,7 @@ export default function App() {
         canOneMore={nSteps > 0}
         latestScore={latestScore}
         cumulativeScore={cumulativeScore}
+        totalDays={totalDays}
       />
 
       {/* Budget bar (human only) — informational, tracks n_steps vs the

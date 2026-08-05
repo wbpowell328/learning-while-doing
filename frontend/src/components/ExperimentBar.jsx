@@ -69,6 +69,7 @@ export default function ExperimentBar({
   canOneMore = false, // enable "One more" only after at least one Run
   latestScore = null,     // total reward from the last batch (Restart or One more)
   cumulativeScore = null, // running total since the last Restart
+  totalDays = 0,          // simulated days behind cumulativeScore; resets on Restart
 }) {
   const [theta1, setTheta1] = useState('');
   const [theta2, setTheta2] = useState('');
@@ -237,6 +238,8 @@ export default function ExperimentBar({
         running total since the last Restart. Restart pins both to the
         same value; each One more adds to Cumulative only. */}
     <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
+      <ScoreBox label="Total days"       value={totalDays} format="days"
+                hint="Simulated days behind the cumulative score. Resets on Restart." />
       <ScoreBox label="Latest score"     value={latestScore}
                 hint="Total reward from the last Restart or One more" />
       <ScoreBox label="Cumulative score" value={cumulativeScore}
@@ -246,7 +249,13 @@ export default function ExperimentBar({
   );
 }
 
-function ScoreBox({ label, value, hint }) {
+function formatDays(v) {
+  if (v == null || !Number.isFinite(v)) return '—';
+  return Math.round(v).toLocaleString();
+}
+
+function ScoreBox({ label, value, hint, format = 'dollars' }) {
+  const shown = format === 'days' ? formatDays(value) : formatDollars(value);
   return (
     <div title={hint} style={{
       flex: '0 0 auto', minWidth: 160,
@@ -259,7 +268,7 @@ function ScoreBox({ label, value, hint }) {
       </div>
       <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a',
                     fontVariantNumeric: 'tabular-nums' }}>
-        {formatDollars(value)}
+        {shown}
       </div>
     </div>
   );
