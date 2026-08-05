@@ -366,6 +366,26 @@ def one_more(sid: str, body: OneMoreRequest) -> ExperimentResponse:
     )
 
 
+@app.post("/sessions/{sid}/reset")
+def reset_session(sid: str) -> ExperimentResponse:
+    """
+    Reset the session to initial conditions — clears history, refits
+    the belief from the prior, re-seeds the RNG — but does NOT run
+    any iterations. Restart in the UI wires to this: the user then
+    hits "Run" (the same button that starts the very first experiment)
+    to actually execute.
+    """
+    session = _get_or_404(sid)
+    session.reset()
+    dim = session.dim
+    best = session.best_impparam()
+    return ExperimentResponse(
+        n_steps=int(session.n_steps),
+        best_impparam=_theta_out(best, dim),
+        history=[],
+    )
+
+
 @app.get("/sessions/{sid}/observations_enriched")
 def observations_enriched(sid: str) -> dict:
     """

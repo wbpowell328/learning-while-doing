@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, getKGvsM, setMStar, setLengthScale, getObservationsEnriched, runExperiment, runOneMore, deleteSession } from './api';
+import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, getKGvsM, setMStar, setLengthScale, getObservationsEnriched, runExperiment, runOneMore, resetSession, deleteSession } from './api';
 import SessionForm from './components/SessionForm';
 import PosteriorChart from './components/PosteriorChart';
 import Belief3DChart from './components/Belief3DChart';
@@ -325,6 +325,54 @@ export default function App() {
       setLoading(false);
     }
   }, [session, applyExperimentResponse]);
+
+  // Restart: reset the backend session to initial conditions (empty
+  // belief, empty history, re-seeded RNG) and zero all UI counters —
+  // do NOT run any iteration. The dual-mode button flips back to
+  // "Run" so the user can hit it to actually start a new experiment.
+  const handleRestart = useCallback(async () => {
+    if (!session) return;
+    setLoading(true); setError(null);
+    try {
+      await resetSession(session.id);
+      // Wipe UI state that describes an in-progress experiment.
+      setHistory([]);
+      setEnrichedRows([]);
+      setNSteps(0);
+      setLastResult(null);
+      setLatestScore(null);
+      setCumulativeScore(null);
+      setTotalDays(0);
+      setReveal(null);
+      // Refresh the belief-derived views so they show the (unchanged)
+      // prior instead of the last experiment's posterior.
+      if (session.dim === 1) {
+        const [post, kg, kgm] = await Promise.all([
+          getPosterior(session.id),
+          getKGComparison(session.id, 0.01, 50, 10),
+          getKGvsM(session.id, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2),
+        ]);
+        setPosterior(post);
+        setKgComparison(kg);
+        setKgVsM(kgm);
+        setBestImpparam(post.best_impparam);
+      } else {
+        const [p2, kg2, kgm] = await Promise.all([
+          getPosterior2D(session.id, 30),
+          getKG2D(session.id, 20),
+          getKGvsM(session.id, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2),
+        ]);
+        setPosterior2D(p2);
+        setKg2D(kg2);
+        setKgVsM(kgm);
+        setBestImpparam(p2.best_impparam);
+      }
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [session, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2]);
 
   const handleOneMore = useCallback(async (spec) => {
     if (!session) return;
@@ -704,6 +752,7 @@ export default function App() {
         running={loading}
         onRun={handleRunExperiment}
         onOneMore={handleOneMore}
+        onRestart={handleRestart}
         canOneMore={nSteps > 0}
         latestScore={latestScore}
         cumulativeScore={cumulativeScore}

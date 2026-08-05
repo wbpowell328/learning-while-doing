@@ -156,6 +156,26 @@ def test_one_more_can_switch_policy_mid_stream():
     assert sess.n_steps == 3
 
 
+def test_reset_clears_history_and_does_not_run():
+    """
+    /reset wipes prior state to initial conditions without executing
+    any iteration. The Restart button in the UI wires to this.
+    """
+    sid = make_session()
+    client.post(f"/sessions/{sid}/experiment",
+                json={"theta_init": 0.05, "n_days": 20, "policy": "kg", "K": 2})
+    assert _sessions[sid].n_steps == 3
+
+    r = client.post(f"/sessions/{sid}/reset")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["n_steps"] == 0
+    assert body["history"] == []
+    # Backend state is truly empty — no observations recorded.
+    assert _sessions[sid].n_steps == 0
+    assert list(_sessions[sid].history) == []
+
+
 def test_one_more_rejects_bad_n_days():
     sid = make_session()
     client.post(f"/sessions/{sid}/experiment",

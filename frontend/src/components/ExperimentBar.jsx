@@ -58,6 +58,7 @@ export default function ExperimentBar({
   running = false,
   onRun,             // async (spec) => void — reset+K+1 iterations
   onOneMore,         // async (spec) => void — one more iteration, no reset
+  onRestart,         // async () => void — reset to initial conditions, do NOT run
   canOneMore = false, // enable "One more" only after at least one Run
   latestScore = null,     // total reward from the last batch (Restart or One more)
   cumulativeScore = null, // running total since the last Restart
@@ -191,14 +192,10 @@ export default function ExperimentBar({
         {running ? 'running…' : (canOneMore ? 'One more' : 'Run')}
       </button>
       <button type="button"
-              onClick={commit}
-              disabled={running || !canRun}
+              onClick={() => { if (!running && onRestart) onRestart(); }}
+              disabled={running || !onRestart}
               className="btn btn-primary"
-              title={
-                !thetaValid  ? 'Enter a starting θ' :
-                !nDaysValid  ? 'Enter a positive N (days per iteration)' :
-                'Reset the session and run Repeat + 1 iterations from a clean slate'
-              }
+              title="Reset to initial conditions (no simulation). The Run button will start a fresh experiment."
               style={{ padding: '6px 20px', fontSize: 13 }}>
         {running ? 'running…' : 'Restart'}
       </button>

@@ -129,4 +129,6 @@ export const runOneMore = (sid, spec) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(spec),
   });
+export const resetSession = (sid) =>
+  call(`/sessions/${sid}/reset`, { method: 'POST' });
 export const deleteSession = (sid) => call(`/sessions/${sid}`, { method: 'DELETE' });
