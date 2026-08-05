@@ -2,8 +2,7 @@
 //
 //   Starting point [θ]   (or [θ₁] [θ₂] for 2-D)
 //   Run [N] days.
-//   Then update using policy [policy▼]
-//   with parameter [ρ].
+//   Then update using policy [policy▼].
 //   Repeat [K] times.
 //   {Run}
 //
@@ -12,8 +11,12 @@
 // iterations picked by the chosen policy. Human policy uses K=0 (the
 // UI forces it). Every Run resets the session state, so successive
 // clicks give clean, independent comparisons.
+//
+// The policy parameter (m* for KG, z_alpha for IE) is set once in the
+// Advanced Parameters panel at session-create time; it lives on the
+// session state and is *not* re-sent per Restart from this bar.
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 const POLICY_OPTIONS_1D = [
   { value: 'kg',        label: 'KG offline correlated (analytic)' },
@@ -26,15 +29,6 @@ const POLICY_OPTIONS_1D = [
 ];
 // Human is 1-D only for now.
 const POLICY_OPTIONS_2D = POLICY_OPTIONS_1D.filter(o => o.value !== 'human');
-
-// What kind of ρ parameter this policy takes (or null for none).
-function paramForPolicy(policy) {
-  if (policy === 'ie') return { key: 'z_alpha', label: 'z_alpha (# std devs)', default: 0, step: 'any', min: 0 };
-  if (['kg', 'kg_indep', 'okg', 'okg_indep'].includes(policy)) {
-    return { key: 'm_star', label: 'm* (days)', default: 1, step: 1, min: 1 };
-  }
-  return null;   // random, human — no parameter
-}
 
 // Tight width defaults for the numeric fields — Warren's ask was to
 // shrink Starting point, Run, Parameter, and Repeat to roughly a fifth
@@ -61,8 +55,6 @@ function formatDollars(v) {
 export default function ExperimentBar({
   dim,               // 1 or 2
   defaultPolicy,     // seeds the dropdown from the SessionForm's Mode choice
-  defaultMStar = 1,
-  defaultZAlpha = 0,
   running = false,
   onRun,             // async (spec) => void — reset+K+1 iterations
   onOneMore,         // async (spec) => void — one more iteration, no reset
@@ -75,23 +67,11 @@ export default function ExperimentBar({
   const [theta2, setTheta2] = useState('');
   const [nDays,  setNDays]  = useState('50');
   const [policy, setPolicy] = useState(defaultPolicy || 'kg');
-  const [rho,    setRho]    = useState(String(paramForPolicy(defaultPolicy)?.default ?? ''));
   const [K,      setK]      = useState('0');
 
-  // When the policy changes, seed ρ with that policy's default. Human
-  // forces K=0.
-  useEffect(() => {
-    const meta = paramForPolicy(policy);
-    if (meta) {
-      if (policy === 'ie')      setRho(String(defaultZAlpha ?? meta.default));
-      else                      setRho(String(defaultMStar  ?? meta.default));
-    } else {
-      setRho('');
-    }
-    if (policy === 'human') setK('0');
-  }, [policy, defaultMStar, defaultZAlpha]);
-
-  const paramMeta = paramForPolicy(policy);
+  // Human forces K=0 (one iteration at a time). Handled at the source:
+  // the policy dropdown's onChange snaps K to '0' when switching to
+  // Human, and the Repeat input is disabled while Human is selected.
   const isHuman = policy === 'human';
   const policyOptions = dim === 2 ? POLICY_OPTIONS_2D : POLICY_OPTIONS_1D;
 
@@ -116,30 +96,20 @@ export default function ExperimentBar({
       K: isHuman ? 0 : Math.max(0, Math.round(Number(K) || 0)),
       theta_init: dim === 2 ? [t1Num, t2Num] : t1Num,
     };
-    if (paramMeta) {
-      const v = Number(rho);
-      if (Number.isFinite(v)) {
-        spec[paramMeta.key] = paramMeta.key === 'm_star' ? Math.max(1, Math.round(v)) : v;
-      }
-    }
+    // m_star / z_alpha are session-level (set in Advanced parameters);
+    // Restart intentionally does NOT override them per-request.
     onRun(spec);
   }
 
   // "One more" — step from the current session state using the bar's
-  // current policy + ρ + N. No θ / K needed (θ picked by policy;
-  // exactly one iteration executes). Only requires N to be valid.
+  // current policy + N. No θ / K needed (θ picked by policy; exactly
+  // one iteration executes). Only requires N to be valid.
   function commitOneMore() {
     if (running || !onOneMore || !nDaysValid) return;
     const spec = {
       n_days: Math.max(1, Math.round(nNum)),
       policy,   // let backend swap if it differs from current session policy
     };
-    if (paramMeta) {
-      const v = Number(rho);
-      if (Number.isFinite(v)) {
-        spec[paramMeta.key] = paramMeta.key === 'm_star' ? Math.max(1, Math.round(v)) : v;
-      }
-    }
     onOneMore(spec);
   }
 
@@ -173,25 +143,15 @@ export default function ExperimentBar({
       <span style={labelStyle}>days. Then update using policy</span>
 
       <select value={policy} style={selectStyle}
-              onChange={e => setPolicy(e.target.value)}>
+              onChange={e => {
+                const p = e.target.value;
+                setPolicy(p);
+                if (p === 'human') setK('0');
+              }}>
         {policyOptions.map(o => (
           <option key={o.value} value={o.value}>{o.label}</option>
         ))}
       </select>
-
-      {paramMeta ? (
-        <>
-          <span style={labelStyle}>with parameter</span>
-          <input type="number" step={paramMeta.step} min={paramMeta.min}
-                 value={rho} placeholder="ρ" style={numStyleShort}
-                 onChange={e => setRho(e.target.value)}
-                 title={paramMeta.label} />
-        </>
-      ) : (
-        <span style={{ ...labelStyle, fontStyle: 'italic', color: '#94a3b8' }}>
-          (no parameter)
-        </span>
-      )}
 
       <span style={labelStyle}>. Repeat</span>
       <input type="number" min={0} step={1} value={K}
