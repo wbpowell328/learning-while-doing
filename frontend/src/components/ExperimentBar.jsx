@@ -161,18 +161,6 @@ export default function ExperimentBar({
              onChange={e => setK(e.target.value)} />
       <span style={labelStyle}>times.</span>
 
-      <button type="button"
-              onClick={commit}
-              disabled={running || !canRun}
-              className="btn btn-primary"
-              title={
-                !thetaValid  ? 'Enter a starting θ' :
-                !nDaysValid  ? 'Enter a positive N (days per iteration)' :
-                'Reset the session and run Repeat + 1 iterations from a clean slate'
-              }
-              style={{ padding: '6px 20px', fontSize: 13 }}>
-        {running ? 'running…' : 'Restart'}
-      </button>
       {/* Always rendered — disabled state communicates when it's usable.
           Conditional wrapping was hiding this button on some deploys. */}
       <button type="button"
@@ -190,6 +178,18 @@ export default function ExperimentBar({
               }
               style={{ padding: '6px 16px', fontSize: 13 }}>
         One more
+      </button>
+      <button type="button"
+              onClick={commit}
+              disabled={running || !canRun}
+              className="btn btn-primary"
+              title={
+                !thetaValid  ? 'Enter a starting θ' :
+                !nDaysValid  ? 'Enter a positive N (days per iteration)' :
+                'Reset the session and run Repeat + 1 iterations from a clean slate'
+              }
+              style={{ padding: '6px 20px', fontSize: 13 }}>
+        {running ? 'running…' : 'Restart'}
       </button>
     </div>
 
