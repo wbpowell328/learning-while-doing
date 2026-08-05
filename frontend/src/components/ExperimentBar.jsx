@@ -156,7 +156,8 @@ export default function ExperimentBar({
 
       <span style={labelStyle}>Run</span>
       <input type="number" min={1} step={1} value={nDays}
-             placeholder="N" style={numStyleShort}
+             placeholder="N"
+             style={{ ...numStyleShort, width: 65 }}
              onChange={e => setNDays(e.target.value)} />
       <span style={labelStyle}>days. Then update using policy</span>
 
