@@ -14,6 +14,7 @@ def simulate(
     horizon_weeks: int,
     session_seed: int,
     experiment_index: int,
+    n_days: int | None = None,
 ) -> SimResult:
     """
     Pure, seedable simulation of one fund path.
@@ -21,6 +22,9 @@ def simulate(
     Same (config, impparam, horizon_weeks, session_seed, experiment_index)
     always returns a byte-identical SimResult.  Different experiment_index
     values draw independent paths, so observed costs differ even at fixed θ.
+
+    `n_days` (optional) overrides horizon_weeks×5 — used by the
+    /experiment endpoint where the user specifies days directly.
 
     impparam: 2-vector (theta_ind, theta_inst) — the individual/institutional
     buffer fractions.  Both components must lie in the box specified by
@@ -36,7 +40,9 @@ def simulate(
             f"impparam={theta.tolist()} outside box [{lo.tolist()}, {hi.tolist()}]"
         )
 
-    n_days = horizon_weeks * 5  # 5 trading days per week
+    if n_days is None:
+        n_days = horizon_weeks * 5  # 5 trading days per week
+    n_days = int(n_days)
 
     (cash_series, invested_series,
      aum_ind_series, aum_inst_series,

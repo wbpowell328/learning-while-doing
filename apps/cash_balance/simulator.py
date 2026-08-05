@@ -12,6 +12,7 @@ def simulate(
     horizon_weeks: int,
     session_seed: int,
     experiment_index: int,
+    n_days: int | None = None,
 ) -> SimResult:
     """
     Pure, seedable simulation of one fund path.
@@ -19,13 +20,18 @@ def simulate(
     Same (config, impparam, horizon_weeks, session_seed, experiment_index)
     always returns a byte-identical SimResult.  Different experiment_index
     values draw independent paths, so observed costs differ even at fixed θ.
+
+    `n_days` (optional) overrides the horizon_weeks×5 calculation — used by
+    the /experiment endpoint where the user specifies days directly.
     """
     if not (config.impparam_min <= impparam <= config.impparam_max):
         raise ValueError(
             f"impparam={impparam} outside [{config.impparam_min}, {config.impparam_max}]"
         )
 
-    n_days = horizon_weeks * 5  # 5 trading days per week
+    if n_days is None:
+        n_days = horizon_weeks * 5  # 5 trading days per week
+    n_days = int(n_days)
 
     cash_series, invested_series, flow_series, shortfall_series, event_log = run_path(
         config=config,

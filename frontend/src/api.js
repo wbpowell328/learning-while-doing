@@ -117,4 +117,10 @@ export const setLengthScale = (sid, lengthScale) =>
   });
 export const getObservationsEnriched = (sid) =>
   call(`/sessions/${sid}/observations_enriched`);
+export const runExperiment = (sid, spec) =>
+  call(`/sessions/${sid}/experiment`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(spec),
+  });
 export const deleteSession = (sid) => call(`/sessions/${sid}`, { method: 'DELETE' });

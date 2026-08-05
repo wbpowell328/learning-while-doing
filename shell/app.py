@@ -29,6 +29,7 @@ from .models import (
     BatchRequest, BatchResponse, BatchPolicyResult,
     SetMStarRequest, SetMStarResponse,
     SetLengthScaleRequest, SetLengthScaleResponse,
+    ExperimentRequest, ExperimentResponse,
 )
 
 
@@ -249,6 +250,68 @@ def set_length_scale(sid: str, body: SetLengthScaleRequest) -> SetLengthScaleRes
                 detail=f"length_scale must be positive and finite; got {ls}")
     session.set_length_scale(ls)
     return SetLengthScaleResponse(length_scale=session.belief.config.length_scale)
+
+
+@app.post("/sessions/{sid}/experiment")
+def experiment(sid: str, body: ExperimentRequest) -> ExperimentResponse:
+    """
+    "Batch" experiment run driven from the top-of-page control bar.
+
+    1. Reset the session (empty belief, empty history, re-seeded RNG).
+    2. Apply the requested policy + parameter (m* for KG family,
+       z_alpha for IE, nothing for random / human).
+    3. Iteration 1 = sample at `theta_init` (user-picked) for `n_days`.
+    4. If K > 0: iterations 2..K+1 use the policy to pick θ, each for
+       `n_days`. (For Human policy the caller should always send K=0;
+       enforcing here would silently swallow input, so we let the
+       caller send whatever and just execute.)
+
+    Returns a summary; the frontend re-fetches posterior, KG chart,
+    KG(m) (if advanced), and enriched history separately.
+    """
+    session = _get_or_404(sid)
+    # --- 1. Reset ------------------------------------------------------
+    session.reset()
+
+    # --- 2. Apply policy + parameter -----------------------------------
+    # Optionally adjust m* on the session before constructing the policy
+    # so the new policy inherits it via set_policy.
+    if body.m_star is not None:
+        session.set_m_star(int(body.m_star))
+    new_policy = _make_policy(body.policy, session._acq_config, budget=None)
+    session.set_policy(new_policy)
+    # z_alpha lives on the AcquisitionConfig. For IE, mutate it in place
+    # so the IE policy picks it up on its next propose(). AcquisitionConfig
+    # is a plain dataclass (not frozen).
+    if body.z_alpha is not None and body.policy == "ie":
+        from dataclasses import replace as _replace
+        session._acq_config = _replace(session._acq_config, z_alpha=float(body.z_alpha))
+        # Rebuild the policy so it captures the new config.
+        session.set_policy(_make_policy(body.policy, session._acq_config, budget=None))
+
+    n_days = int(body.n_days)
+    if n_days < 1:
+        raise HTTPException(status_code=400, detail=f"n_days must be >= 1; got {n_days}")
+
+    # --- 3. Iteration 1 — user-picked θ --------------------------------
+    session.evaluate(body.theta_init, n_days=n_days)
+
+    # --- 4. Iterations 2..K+1 — policy-picked θ ------------------------
+    K = max(0, int(body.K))
+    for _ in range(K):
+        session.step(n_days=n_days)
+
+    # --- Response ------------------------------------------------------
+    dim = session.dim
+    best = session.best_impparam()
+    hist_out = [
+        (_theta_out(t, dim), float(v)) for t, v in session.history
+    ]
+    return ExperimentResponse(
+        n_steps=int(session.n_steps),
+        best_impparam=_theta_out(best, dim),
+        history=hist_out,
+    )
 
 
 @app.get("/sessions/{sid}/observations_enriched")

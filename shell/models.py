@@ -129,6 +129,29 @@ class SetLengthScaleResponse(BaseModel):
     length_scale: Union[float, list[float]]
 
 
+class ExperimentRequest(BaseModel):
+    """
+    One "experiment" — a full policy run controlled from the top-of-page
+    bar. Semantics: reset the session (empty belief, empty history), then
+    execute K+1 iterations. Iteration 1 samples at the user-picked
+    theta_init; iterations 2..K+1 have the chosen policy pick θ.
+    """
+    theta_init: ThetaLike        # scalar for 1-D, list[float] for 2-D
+    n_days: int                  # days per iteration
+    policy: str                  # 'kg' | 'kg_indep' | 'okg' | 'okg_indep' | 'ie' | 'random' | 'human'
+    K: int = 0                   # number of policy-driven iterations after iter 1
+    # Policy parameters — only the one that applies to `policy` is used.
+    m_star: int | None = None    # KG-family batch-size trick multiplier
+    z_alpha: float | None = None # IE upper-confidence-bound coefficient
+
+
+class ExperimentResponse(BaseModel):
+    n_steps: int
+    best_impparam: ThetaLike
+    # history rows: [theta, display-frame value]
+    history: list[tuple[ThetaLike, float]]
+
+
 class JumpEventOut(BaseModel):
     day: int
     size_fraction: float   # |jump| / AUM at jump time

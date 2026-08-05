@@ -1,10 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, getKGvsM, setMStar, setLengthScale, getObservationsEnriched, deleteSession } from './api';
+import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, getKGvsM, setMStar, setLengthScale, getObservationsEnriched, runExperiment, deleteSession } from './api';
 import SessionForm from './components/SessionForm';
 import PosteriorChart from './components/PosteriorChart';
 import Belief3DChart from './components/Belief3DChart';
 import KGChart from './components/KGChart';
 import KGvsMChart from './components/KGvsMChart';
+import ExperimentBar from './components/ExperimentBar';
 import ImpparamSlider from './components/ImpparamSlider';
 import HistoryTable from './components/HistoryTable';
 import HumanControls from './components/HumanControls';
@@ -230,6 +231,50 @@ export default function App() {
       setError(String(e));
     }
   }, [session, refreshEnriched]);
+
+  // /experiment endpoint — one click, reset + K+1 iterations. Full
+  // refresh of everything on the page afterwards. Belief config
+  // (length_scale, m*) that the user set via mid-session controls is
+  // preserved by the backend's reset (it rebuilds from the current
+  // config, not the original one). Mirrors the policy the user chose
+  // in the bar back onto session state so subsequent chart labels /
+  // KG(m) card reflect it.
+  const handleRunExperiment = useCallback(async (spec) => {
+    if (!session) return;
+    setLoading(true); setError(null);
+    try {
+      const resp = await runExperiment(session.id, spec);
+      // Mirror the new policy + parameter on the session record.
+      setSession(prev => prev ? {
+        ...prev,
+        policy: spec.policy,
+        m_star: spec.m_star != null ? spec.m_star : prev.m_star,
+      } : prev);
+      // Rebuild all history state from the response.
+      setHistory(resp.history);
+      setNSteps(resp.n_steps);
+      setBestImpparam(resp.best_impparam);
+      setLastResult(null);
+      setReveal(null);
+      // Refetch everything the response doesn't include.
+      const refetches = [];
+      if (session.dim === 1) {
+        refetches.push(getPosterior(session.id).then(setPosterior));
+        refetches.push(getKGComparison(session.id, 0.01, 50, session.budget ?? 10).then(setKgComparison));
+        refetches.push(getKGvsM(session.id, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2).then(setKgVsM));
+      } else {
+        refetches.push(getPosterior2D(session.id, 30).then(setPosterior2D));
+        refetches.push(getKG2D(session.id, 20).then(setKg2D));
+        refetches.push(getKGvsM(session.id, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2).then(setKgVsM));
+      }
+      refetches.push(refreshEnriched(session.id));
+      await Promise.all(refetches);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [session, refreshEnriched, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2]);
 
   // GP length_scale (bandwidth) editor: POST refits the belief with the
   // new value replaying the session's history through it, then refetch
@@ -536,38 +581,18 @@ export default function App() {
             </div>
           </div>
 
-          {/* Automated controls */}
-          {!isHuman && (
+          {/* Reveal truth stays here — it's a session-scoped diagnostic,
+              not an experiment control. Auto-run / Run-step buttons
+              were replaced by the ExperimentBar below the Stats card. */}
+          {session.dim === 1 && (
             <div className="controls" style={{ marginLeft: 'auto' }}>
-              {loading && autoCount > 0 && (
-                <span style={{ fontSize: 13, color: '#64748b' }}>
-                  {autoCount} step{autoCount !== 1 ? 's' : ''} left…
-                </span>
-              )}
-              {loading && autoCount > 0 && (
-                <button className="btn btn-outline" onClick={() => { stopRef.current = true; }}>
-                  Stop
-                </button>
-              )}
-              <button className="btn btn-outline" onClick={handleStep} disabled={loading}>
-                Run step
+              <button className="btn btn-outline" onClick={handleReveal}
+                disabled={loading || revealLoading || reveal != null}
+                title={reveal != null
+                  ? 'Ground-truth reward curve already shown below'
+                  : 'Plot the true underlying reward curve F(θ) to compare with your beliefs'}>
+                {revealLoading ? 'Computing…' : reveal != null ? 'Truth revealed' : 'Reveal truth'}
               </button>
-              <button className="btn btn-primary" onClick={() => handleAutoRun(10)} disabled={loading}>
-                Auto-run 10
-              </button>
-              <button className="btn btn-primary" onClick={() => handleAutoRun(25)} disabled={loading}
-                style={{ opacity: 0.85 }}>
-                Auto-run 25
-              </button>
-              {session.dim === 1 && (
-                <button className="btn btn-outline" onClick={handleReveal}
-                  disabled={loading || revealLoading || reveal != null}
-                  title={reveal != null
-                    ? 'Ground-truth reward curve already shown below'
-                    : 'Plot the true underlying reward curve F(θ) to compare with your beliefs'}>
-                  {revealLoading ? 'Computing…' : reveal != null ? 'Truth revealed' : 'Reveal truth'}
-                </button>
-              )}
             </div>
           )}
         </div>
@@ -577,7 +602,21 @@ export default function App() {
         )}
       </div>
 
-      {/* Budget bar (human only) */}
+      {/* Experiment control bar — the ONE way to run policies now.
+          Each Run resets the session belief + history and executes
+          K+1 iterations. See ExperimentBar for layout. */}
+      <ExperimentBar
+        dim={session.dim}
+        defaultPolicy={session.policy}
+        defaultMStar={session.m_star}
+        defaultZAlpha={0}
+        running={loading}
+        onRun={handleRunExperiment}
+      />
+
+      {/* Budget bar (human only) — informational, tracks n_steps vs the
+          user-picked budget. Kept as a courtesy since Human policy uses
+          K=0 and the user cycles through Runs manually. */}
       {isHuman && (
         <div className="card">
           <HumanControls budget={budget ?? 10} used={nSteps} />

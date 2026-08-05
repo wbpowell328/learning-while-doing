@@ -123,8 +123,14 @@ class Session:
             return float(result.total_cost)
         return float(result.total_reward)
 
-    def step(self):
-        """Propose the next θ, run the simulation, update the belief."""
+    def step(self, n_days: int | None = None):
+        """
+        Propose the next θ, run the simulation, update the belief.
+
+        `n_days` (optional) overrides the session's default horizon for
+        this one iteration only — the /experiment endpoint uses this
+        so the user's chosen "N days" applies to every iteration.
+        """
         impparam = self._policy.propose(self._belief, self._rng)
         result = self._simulate(
             config=self._sim_config,
@@ -132,13 +138,14 @@ class Session:
             horizon_weeks=self._sc.horizon_weeks,
             session_seed=self._session_seed,
             experiment_index=self._step_count,
+            n_days=n_days,
         )
         self._belief.update(impparam, self._observed_value(result))
         self._history.append((impparam, self._display_value(result)))
         self._step_count += 1
         return result
 
-    def evaluate(self, impparam):
+    def evaluate(self, impparam, n_days: int | None = None):
         """Run the simulator at a caller-specified θ (scalar or vector)."""
         result = self._simulate(
             config=self._sim_config,
@@ -146,6 +153,7 @@ class Session:
             horizon_weeks=self._sc.horizon_weeks,
             session_seed=self._session_seed,
             experiment_index=self._step_count,
+            n_days=n_days,
         )
         self._belief.update(impparam, self._observed_value(result))
         self._history.append((impparam, self._display_value(result)))
@@ -226,6 +234,31 @@ class Session:
         self._m_star = max(1, int(m_star))
         if hasattr(self._policy, "set_m_star"):
             self._policy.set_m_star(self._m_star)
+
+    def reset(self) -> None:
+        """
+        Clear observations and refit the belief from scratch using the
+        current belief config (same length_scale, signal_std, noise_std,
+        prior_mean). Also re-seed the acquisition RNG so the same
+        experiment configuration reproduces byte-for-byte.
+
+        The /experiment endpoint calls this before every Run so each
+        experiment starts from the same prior state.
+        """
+        self._belief = BeliefModel(self._belief.config, dim=self._dim)
+        self._history = []
+        self._step_count = 0
+        self._rng = np.random.default_rng(self._session_seed)
+
+    def set_policy(self, policy) -> None:
+        """
+        Swap the acquisition policy on a running session. The new policy
+        inherits the session's current m*. Used by the /experiment
+        endpoint when the user changes policy in the control bar.
+        """
+        self._policy = policy
+        if hasattr(policy, "set_m_star"):
+            policy.set_m_star(self._m_star)
 
     def set_length_scale(self, length_scale) -> None:
         """
