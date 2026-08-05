@@ -116,6 +116,29 @@ const APPS = [
   { value: 'cash_balance_2d', label: 'Cash balance (2-parameter, θ_ind, θ_inst)', dim: 2 },
 ];
 
+// Advanced-parameters are persisted in localStorage keyed by this string
+// so the "Save and exit" flow is meaningful — the user's edits survive
+// leaving the page and re-launching the game from the landing page.
+// Bump the suffix if the shape of the saved blob ever changes.
+const ADVANCED_STORAGE_KEY = 'lwd_advanced_v1';
+// Where "Save and exit" sends the user back to. Landing page on the
+// CASTLE site — the game is embedded there behind the Play button.
+const LANDING_URL = 'https://warrenpowell.org/learning-while-doing/';
+
+function readSavedAdvanced() {
+  try {
+    const raw = window.localStorage.getItem(ADVANCED_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return (parsed && typeof parsed === 'object') ? parsed : {};
+  } catch { return {}; }
+}
+function writeSavedAdvanced(blob) {
+  try {
+    window.localStorage.setItem(ADVANCED_STORAGE_KEY, JSON.stringify(blob));
+  } catch { /* private mode / quota — silently accept the loss */ }
+}
+
 export default function SessionForm({
   onCreate, error,
   initialAppName = 'cash_balance',
@@ -130,13 +153,19 @@ export default function SessionForm({
   const [policy]   = useState(initialPolicy);
   const [loading, setLoading] = useState(false);
 
+  // Load any previously-saved advanced values so this panel is a
+  // proper edit-and-exit surface: users get back exactly what they
+  // last set. Anything not present in the blob falls through to the
+  // built-in defaults below.
+  const savedAdv = readSavedAdvanced();
+
   // Random seed + stationary regime — moved into the Advanced Parameters
   // panel per Warren. Weeks per run is dropped entirely (ExperimentBar's
   // "Run N days" input now sets the horizon on every iteration); we
   // still send a default horizon_weeks on session-create so the backend
   // SessionConfig has a value, but the user never sees it.
-  const [seed, setSeed]             = useState(42);
-  const [stationary, setStationary] = useState(true);
+  const [seed, setSeed]             = useState(savedAdv.seed ?? 42);
+  const [stationary, setStationary] = useState(savedAdv.stationary ?? true);
   const horizon = 26;   // backend default; overridden per-iteration by ExperimentBar
 
   // Policy parameter (single field, meaning depends on the policy):
@@ -144,15 +173,15 @@ export default function SessionForm({
   //     assumes when computing KG (batch-size trick).
   //   IE → z_alpha (# std devs) — LCB coefficient.
   //   Random / Human → unused.
-  const [mStarStr,  setMStarStr]  = useState('1');
-  const [zAlphaStr, setZAlphaStr] = useState('0');
+  const [mStarStr,  setMStarStr]  = useState(savedAdv.mStar  != null ? String(savedAdv.mStar)  : '1');
+  const [zAlphaStr, setZAlphaStr] = useState(savedAdv.zAlpha != null ? String(savedAdv.zAlpha) : '0');
 
   // Reporting level — controls how much of the diagnostic UI is shown.
   // Basic = core charts only; Advanced also shows the KG(x;m) card.
-  const [reportLevel, setReportLevel] = useState('basic');
+  const [reportLevel, setReportLevel] = useState(savedAdv.reportLevel ?? 'basic');
 
   // Advanced parameters — kept as strings during typing.
-  const [adv, setAdv] = useState(ADV_DEFAULTS);
+  const [adv, setAdv] = useState({ ...ADV_DEFAULTS, ...(savedAdv.adv ?? {}) });
   const setField     = (k, v) => setAdv(prev => ({ ...prev, [k]: v }));
   const canonicalize = (k) => setField(k, String(Number(adv[k]) || Number(ADV_DEFAULTS[k])));
   const numeric = (k) => Number(adv[k]) || Number(ADV_DEFAULTS[k]);
@@ -232,10 +261,21 @@ export default function SessionForm({
         prior_mean:   numeric('prior_mean'),
       };
 
-  async function handleSubmit(e) {
-    e.preventDefault();
+  // Serialise the current form state into the localStorage blob so
+  // "Save and exit" (and every session-create) round-trips edits.
+  function persistAdvanced() {
+    writeSavedAdvanced({
+      seed, stationary, mStar, zAlpha, reportLevel, adv,
+    });
+  }
+
+  // Auto-launch path: called by the useEffect when the URL has
+  // ?auto=1 (the landing page's Play button). Persists first so the
+  // in-game session and the on-disk record stay in sync.
+  async function handleAutoLaunch() {
     setLoading(true);
     try {
+      persistAdvanced();
       // acq_config carries the IE's z_alpha (θ^IE). Server-side default
       // is 0 (greedy); we only send a nonzero value when IE is selected.
       const acqConfigPayload = isIE ? { z_alpha: zAlpha } : {};
@@ -261,6 +301,15 @@ export default function SessionForm({
     }
   }
 
+  // Button-click path: this panel is an edit-and-exit report, not a
+  // gateway into the game. Save the form values so a subsequent
+  // Play-the-game click uses them, then return to the landing page.
+  function handleSaveAndExit(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    persistAdvanced();
+    window.location.href = LANDING_URL;
+  }
+
   // Auto-submit on mount when the landing page's Play button was hit
   // (URL had ?auto=1). Only fires once — subsequent renders of this
   // form (e.g. after a New session click) will not re-fire because
@@ -270,7 +319,7 @@ export default function SessionForm({
   useEffect(() => {
     if (!autoSubmit || autoFiredRef.current) return;
     autoFiredRef.current = true;
-    handleSubmit({ preventDefault: () => {} });
+    handleAutoLaunch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoSubmit]);
 
@@ -330,20 +379,18 @@ export default function SessionForm({
       <div className="card setup-card">
         <h1 className="form-title">Advanced parameters</h1>
         <p className="form-subtitle">
-          Tune the belief prior, simulation truth, seed, and reporting
-          level. The cash-management app and the parameter-adjustment
-          policy were chosen on the landing page.
+          Tune the belief prior, simulation truth, seed, policy
+          parameters, and reporting level. Save and exit to return to
+          the landing page — the parameter-adjustment policy is chosen
+          inside the game on the control bar.
         </p>
 
-        <form onSubmit={handleSubmit}>
-          {/* Summary of the two landing-page choices — read-only. */}
+        <form onSubmit={handleSaveAndExit}>
+          {/* Show which cash-management app these edits are for. */}
           <div style={{ padding: '10px 12px', background: '#f8fafc',
                         border: '1px solid #e2e8f0', borderRadius: 6,
                         marginBottom: 16, fontSize: 13, color: '#374151' }}>
-            <div><span style={{ color: '#64748b' }}>Cash management policy:</span> <b>{appLabel}</b></div>
-            <div style={{ marginTop: 4 }}>
-              <span style={{ color: '#64748b' }}>Parameter adjustment policy:</span> <b>{policyLabel}</b>
-            </div>
+            <span style={{ color: '#64748b' }}>Cash management policy:</span> <b>{appLabel}</b>
           </div>
 
           {/* Policy parameter — the one non-hidden thing that varies
@@ -505,8 +552,12 @@ export default function SessionForm({
 
           <button type="submit" className="btn btn-primary" disabled={loading}
             style={{ width: '100%', padding: '11px', fontSize: '0.95rem' }}>
-            {loading ? 'Creating…' : 'Start →'}
+            Save and exit
           </button>
+          <p style={{ fontSize: 11, color: '#94a3b8', margin: '8px 0 0 0', textAlign: 'center' }}>
+            Saves your settings and returns to the landing page. Hit
+            <b> Play the game</b> there to launch with these values.
+          </p>
         </form>
       </div>
     </div>
