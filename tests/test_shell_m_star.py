@@ -86,3 +86,33 @@ def test_m_star_scales_policy_kg_values():
     assert (kg_m10 > kg_m1 + 1e-6).any(), (
         f"m_star=10 should raise KG somewhere: max diff = {(kg_m10 - kg_m1).max()}"
     )
+
+
+def test_kg_endpoint_reflects_session_m_star():
+    """
+    The /sessions/{sid}/kg endpoint feeds the KG(x) chart on the frontend.
+    It must respect the session's current m_star so the noise-factor editor
+    on that chart actually changes what the user sees. Post an observation
+    so the KG has structure, snapshot the curve at m*=1, bump m*, snapshot
+    again, and check the analytic KG values grew monotonically per probe.
+    """
+    r = client.post("/sessions", json={"policy": "kg", "session_seed": 42})
+    sid = r.json()["session_id"]
+    # Give the belief a couple of observations so KG > 0 somewhere.
+    client.post(f"/sessions/{sid}/experiment", json={
+        "theta_init": 0.05, "n_days": 20, "policy": "kg", "K": 2,
+    })
+
+    base = client.get(f"/sessions/{sid}/kg").json()
+    client.post(f"/sessions/{sid}/m_star", json={"m_star": 10})
+    boosted = client.get(f"/sessions/{sid}/kg").json()
+
+    assert boosted["impparams"] == base["impparams"]
+    for a, b in zip(base["analytic_correlated"], boosted["analytic_correlated"]):
+        assert b + 1e-9 >= a, f"m*=10 must not lower KG at any probe (a={a}, b={b})"
+    diffs = [b - a for a, b in zip(base["analytic_correlated"],
+                                   boosted["analytic_correlated"])]
+    assert max(diffs) > 1e-6, (
+        "m*=10 must raise KG somewhere on the probe grid; the endpoint is "
+        "not passing m_star to kg_analytic_correlated_at."
+    )

@@ -254,19 +254,29 @@ export default function App() {
     }
   }, [session, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2]);
 
-  // Policy m* (batch-size trick): POST to /sessions/{sid}/m_star and mirror
-  // the new value on session.m_star so the chart input reflects it.
+  // Policy m* (a.k.a. ρ^lkhd, "noise factor"): POST to
+  // /sessions/{sid}/m_star and mirror the new value on session.m_star.
+  // KG values everywhere the belief is displayed depend on m*, so
+  // refresh the KG comparison (KGChart), the KG(m) card (KGvsMChart),
+  // and the enriched history. Posterior does not depend on m*, no
+  // refetch needed.
   const handleMStarChange = useCallback(async (newMStar) => {
     if (!session) return;
     try {
       const resp = await setMStar(session.id, newMStar);
       setSession(prev => prev ? { ...prev, m_star: resp.m_star } : prev);
-      // KG values in the enriched history depend on m*; refresh.
-      refreshEnriched(session.id);
+      const refetches = [refreshEnriched(session.id)];
+      if (session.dim === 1) {
+        refetches.push(getKGComparison(session.id, 0.01, 50, 10).then(setKgComparison));
+      }
+      refetches.push(
+        getKGvsM(session.id, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2).then(setKgVsM)
+      );
+      await Promise.all(refetches);
     } catch (e) {
       setError(String(e));
     }
-  }, [session, refreshEnriched]);
+  }, [session, refreshEnriched, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2]);
 
   // /experiment endpoint — one click, reset + K+1 iterations. Full
   // refresh of everything on the page afterwards. Belief config
@@ -881,7 +891,11 @@ export default function App() {
                     correlated (analytic vs MC) vs independent beliefs
                   </span>
                 </div>
-                <KGChart kg={kgComparison} />
+                <KGChart
+                  kg={kgComparison}
+                  sessionMStar={session.m_star ?? 1}
+                  onMStarChange={handleMStarChange}
+                />
                 {isHuman && (
                   <ImpparamSlider
                     impparam={impparam}

@@ -818,12 +818,23 @@ def kg_comparison(
     # Search grid: the same 100-point grid the KG policy uses.
     search_grid = np.linspace(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
 
-    ana = kg_analytic_correlated_at(session.belief, search_grid, probes)
+    # ρ^lkhd (a.k.a. m*): the lookahead parameter. It scales the effective
+    # precision of the hypothetical observation the KG integrates over, so
+    # the KG(x) curves the user sees must respect whatever the session's
+    # currently set to (default 1). The "noise factor" editor on the KG
+    # chart mutates this via /sessions/{sid}/m_star and re-fetches.
+    m_star = max(1, int(getattr(session, "_m_star", 1)))
+    ana = kg_analytic_correlated_at(
+        session.belief, search_grid, probes, m_star=m_star,
+    )
     mc = kg_mc_correlated_at(
         session.belief, search_grid, probes,
         n_mc=mc_samples, rng=np.random.default_rng(mc_seed),
+        m_star=m_star,
     )
-    ind = kg_independent_at(session.belief, search_grid, probes)
+    ind = kg_independent_at(
+        session.belief, search_grid, probes, m_star=m_star,
+    )
 
     # Posterior mean at the probe points — needed for the online KG composite.
     mu_probes, _ = session.belief.posterior(probes)
