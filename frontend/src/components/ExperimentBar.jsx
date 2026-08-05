@@ -64,8 +64,10 @@ export default function ExperimentBar({
   cumulativeScore = null, // running total since the last Restart
   totalDays = 0,          // simulated days behind cumulativeScore; resets on Restart
 }) {
-  const [theta1, setTheta1] = useState('');
-  const [theta2, setTheta2] = useState('');
+  // Pre-fill θ with a sensible mid-box value so a first-time visitor
+  // can hit Run without typing anything.
+  const [theta1, setTheta1] = useState('0.1');
+  const [theta2, setTheta2] = useState('0.1');
   const [nDays,  setNDays]  = useState('50');
   const [policy, setPolicy] = useState(defaultPolicy || 'kg');
   const [K,      setK]      = useState('0');
