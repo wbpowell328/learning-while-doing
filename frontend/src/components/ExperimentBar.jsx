@@ -85,24 +85,27 @@ export default function ExperimentBar({
   const isHuman = policy === 'human';
   const policyOptions = dim === 2 ? POLICY_OPTIONS_2D : POLICY_OPTIONS_1D;
 
+  // Input validity — used to disable Run so the user can't fire off a
+  // malformed request (empty θ silently becomes 0 via Number("")=0,
+  // which is outside the [0.01, 0.20] box and used to crash to 500).
+  const t1Str = String(theta1).trim();
+  const t2Str = String(theta2).trim();
+  const nStr  = String(nDays).trim();
+  const t1Num = Number(t1Str), t2Num = Number(t2Str), nNum = Number(nStr);
+  const theta1Valid = t1Str !== '' && Number.isFinite(t1Num);
+  const theta2Valid = t2Str !== '' && Number.isFinite(t2Num);
+  const nDaysValid  = nStr  !== '' && Number.isFinite(nNum) && nNum >= 1;
+  const thetaValid  = dim === 2 ? (theta1Valid && theta2Valid) : theta1Valid;
+  const canRun = thetaValid && nDaysValid;
+
   function commit() {
-    if (running || !onRun) return;
+    if (running || !onRun || !canRun) return;
     const spec = {
-      n_days: Math.max(1, Math.round(Number(nDays) || 1)),
+      n_days: Math.max(1, Math.round(nNum)),
       policy,
       K: isHuman ? 0 : Math.max(0, Math.round(Number(K) || 0)),
+      theta_init: dim === 2 ? [t1Num, t2Num] : t1Num,
     };
-    // θ
-    if (dim === 2) {
-      const t1 = Number(theta1), t2 = Number(theta2);
-      if (!Number.isFinite(t1) || !Number.isFinite(t2)) return;
-      spec.theta_init = [t1, t2];
-    } else {
-      const t1 = Number(theta1);
-      if (!Number.isFinite(t1)) return;
-      spec.theta_init = t1;
-    }
-    // ρ
     if (paramMeta) {
       const v = Number(rho);
       if (Number.isFinite(v)) {
@@ -114,11 +117,11 @@ export default function ExperimentBar({
 
   // "One more" — step from the current session state using the bar's
   // current policy + ρ + N. No θ / K needed (θ picked by policy;
-  // exactly one iteration executes).
+  // exactly one iteration executes). Only requires N to be valid.
   function commitOneMore() {
-    if (running || !onOneMore) return;
+    if (running || !onOneMore || !nDaysValid) return;
     const spec = {
-      n_days: Math.max(1, Math.round(Number(nDays) || 1)),
+      n_days: Math.max(1, Math.round(nNum)),
       policy,   // let backend swap if it differs from current session policy
     };
     if (paramMeta) {
@@ -188,27 +191,34 @@ export default function ExperimentBar({
 
       <button type="button"
               onClick={commit}
-              disabled={running}
+              disabled={running || !canRun}
               className="btn btn-primary"
+              title={
+                !thetaValid  ? 'Enter a starting θ' :
+                !nDaysValid  ? 'Enter a positive N (days per iteration)' :
+                'Reset the session and run K+1 iterations'
+              }
               style={{ padding: '6px 20px', fontSize: 13 }}>
         {running ? 'running…' : 'Run'}
       </button>
-      {onOneMore && (
-        <button type="button"
-                onClick={commitOneMore}
-                disabled={running || !canOneMore || isHuman}
-                className="btn btn-outline"
-                title={
-                  isHuman
-                    ? 'Human policy uses Run at each step'
-                    : !canOneMore
-                      ? 'Run an experiment first, then this steps one more iteration from where you left off'
+      {/* Always rendered — disabled state communicates when it's usable.
+          Conditional wrapping was hiding this button on some deploys. */}
+      <button type="button"
+              onClick={commitOneMore}
+              disabled={running || !canOneMore || isHuman || !nDaysValid}
+              className="btn btn-outline"
+              title={
+                isHuman
+                  ? 'Human policy uses Run at each step'
+                  : !canOneMore
+                    ? 'Run an experiment first, then this steps one more iteration from where you left off'
+                    : !nDaysValid
+                      ? 'Enter a positive N (days per iteration)'
                       : 'Take one more iteration from the current state (no reset)'
-                }
-                style={{ padding: '6px 16px', fontSize: 13 }}>
-          One more
-        </button>
-      )}
+              }
+              style={{ padding: '6px 16px', fontSize: 13 }}>
+        One more
+      </button>
     </div>
   );
 }

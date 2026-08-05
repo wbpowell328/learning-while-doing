@@ -92,6 +92,30 @@ def test_experiment_z_alpha_takes_effect_on_ie_policy():
     assert sess._acq_config.z_alpha == pytest.approx(2.5)
 
 
+def test_experiment_rejects_theta_out_of_box():
+    """
+    Regression: empty θ in the UI used to become Number("") = 0 and hit
+    the endpoint, then the sim raised ValueError on impparam < 0.01 and
+    bubbled up as a raw 500. Now the endpoint returns 400 with a
+    readable message before touching the sim.
+    """
+    sid = make_session()
+    r = client.post(f"/sessions/{sid}/experiment", json={
+        "theta_init": 0.0, "n_days": 50, "policy": "random", "K": 0,
+    })
+    assert r.status_code == 400
+    assert "outside" in r.json()["detail"]
+
+
+def test_experiment_rejects_theta_wrong_dim():
+    sid = make_session(app_name="cash_balance_2d")
+    r = client.post(f"/sessions/{sid}/experiment", json={
+        "theta_init": 0.05, "n_days": 50, "policy": "random", "K": 0,   # scalar for 2-D
+    })
+    assert r.status_code == 400
+    assert "dim" in r.json()["detail"]
+
+
 def test_experiment_rejects_n_days_less_than_one():
     sid = make_session()
     r = client.post(f"/sessions/{sid}/experiment", json={

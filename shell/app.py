@@ -294,6 +294,20 @@ def experiment(sid: str, body: ExperimentRequest) -> ExperimentResponse:
     if n_days < 1:
         raise HTTPException(status_code=400, detail=f"n_days must be >= 1; got {n_days}")
 
+    # Validate theta_init lands inside the session's [impparam_min, impparam_max]
+    # box for its dim — otherwise the simulator raises ValueError which
+    # surfaces as a bare 500. Report the mismatch clearly instead.
+    lo = _as_list(session._acq_config.impparam_min)
+    hi = _as_list(session._acq_config.impparam_max)
+    theta_flat = np.atleast_1d(np.asarray(body.theta_init, dtype=float)).reshape(-1)
+    if theta_flat.size != session.dim:
+        raise HTTPException(status_code=400,
+            detail=f"theta_init has {theta_flat.size} component(s); session dim is {session.dim}")
+    for i, v in enumerate(theta_flat):
+        if not (lo[i] <= float(v) <= hi[i]):
+            raise HTTPException(status_code=400,
+                detail=f"theta_init[{i}]={float(v):.4g} outside [{lo[i]}, {hi[i]}]")
+
     # --- 3. Iteration 1 — user-picked θ --------------------------------
     session.evaluate(body.theta_init, n_days=n_days)
 
