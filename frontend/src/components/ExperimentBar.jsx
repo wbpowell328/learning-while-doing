@@ -161,23 +161,34 @@ export default function ExperimentBar({
              onChange={e => setK(e.target.value)} />
       <span style={labelStyle}>times.</span>
 
-      {/* Always rendered — disabled state communicates when it's usable.
-          Conditional wrapping was hiding this button on some deploys. */}
+      {/* Dual-mode button. Before the first run it acts as "Run" and
+          fires the full Restart-style experiment (uses user-typed θ,
+          K+1 iterations). Once at least one run exists it flips to
+          "One more" and appends a single iteration from the current
+          state — no θ / K needed. Restart (to the right) is always
+          available for a clean-slate reset. */}
       <button type="button"
-              onClick={commitOneMore}
-              disabled={running || !canOneMore || isHuman || !nDaysValid}
-              className="btn btn-outline"
+              onClick={canOneMore ? commitOneMore : commit}
+              disabled={
+                running || isHuman ||
+                (canOneMore ? !nDaysValid : !canRun)
+              }
+              className="btn btn-primary"
               title={
                 isHuman
                   ? 'Human policy uses Restart at each step'
-                  : !canOneMore
-                    ? 'Run an experiment first, then this steps one more iteration from where you left off'
-                    : !nDaysValid
-                      ? 'Enter a positive N (days per iteration)'
-                      : 'Take one more iteration from the current state (no reset)'
+                  : canOneMore
+                    ? (!nDaysValid
+                        ? 'Enter a positive N (days per iteration)'
+                        : 'Take one more iteration from the current state (no reset)')
+                    : (!thetaValid
+                        ? 'Enter a starting θ'
+                        : !nDaysValid
+                          ? 'Enter a positive N (days per iteration)'
+                          : 'Run Repeat + 1 iterations from the starting θ')
               }
               style={{ padding: '6px 16px', fontSize: 13 }}>
-        One more
+        {running ? 'running…' : (canOneMore ? 'One more' : 'Run')}
       </button>
       <button type="button"
               onClick={commit}
