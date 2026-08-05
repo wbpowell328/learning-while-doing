@@ -51,6 +51,13 @@ const selectStyle = {
 };
 const labelStyle = { color: '#475569', fontSize: 13 };
 
+function formatDollars(v) {
+  if (v == null || !Number.isFinite(v)) return '—';
+  const sign = v < 0 ? '−' : '';
+  const abs = Math.abs(v);
+  return `${sign}$${abs.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+}
+
 export default function ExperimentBar({
   dim,               // 1 or 2
   defaultPolicy,     // seeds the dropdown from the SessionForm's Mode choice
@@ -60,6 +67,8 @@ export default function ExperimentBar({
   onRun,             // async (spec) => void — reset+K+1 iterations
   onOneMore,         // async (spec) => void — one more iteration, no reset
   canOneMore = false, // enable "One more" only after at least one Run
+  latestScore = null,     // total reward from the last batch (Restart or One more)
+  cumulativeScore = null, // running total since the last Restart
 }) {
   const [theta1, setTheta1] = useState('');
   const [theta2, setTheta2] = useState('');
@@ -135,9 +144,10 @@ export default function ExperimentBar({
 
   return (
     <div className="card" style={{
-      display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+      display: 'flex', flexDirection: 'column', gap: 10,
       padding: '12px 16px', marginBottom: 16,
     }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
       <span style={labelStyle}>Starting point</span>
       {dim === 2 ? (
         <>
@@ -197,10 +207,10 @@ export default function ExperimentBar({
               title={
                 !thetaValid  ? 'Enter a starting θ' :
                 !nDaysValid  ? 'Enter a positive N (days per iteration)' :
-                'Reset the session and run K+1 iterations'
+                'Reset the session and run K+1 iterations from a clean slate'
               }
               style={{ padding: '6px 20px', fontSize: 13 }}>
-        {running ? 'running…' : 'Run'}
+        {running ? 'running…' : 'Restart'}
       </button>
       {/* Always rendered — disabled state communicates when it's usable.
           Conditional wrapping was hiding this button on some deploys. */}
@@ -210,7 +220,7 @@ export default function ExperimentBar({
               className="btn btn-outline"
               title={
                 isHuman
-                  ? 'Human policy uses Run at each step'
+                  ? 'Human policy uses Restart at each step'
                   : !canOneMore
                     ? 'Run an experiment first, then this steps one more iteration from where you left off'
                     : !nDaysValid
@@ -220,6 +230,37 @@ export default function ExperimentBar({
               style={{ padding: '6px 16px', fontSize: 13 }}>
         One more
       </button>
+    </div>
+
+    {/* Score-boxes row. Latest = total reward from the last button
+        press (Restart batch or One more single step). Cumulative =
+        running total since the last Restart. Restart pins both to the
+        same value; each One more adds to Cumulative only. */}
+    <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
+      <ScoreBox label="Latest score"     value={latestScore}
+                hint="Total reward from the last Restart or One more" />
+      <ScoreBox label="Cumulative score" value={cumulativeScore}
+                hint="Running total across all steps since the last Restart" />
+    </div>
+    </div>
+  );
+}
+
+function ScoreBox({ label, value, hint }) {
+  return (
+    <div title={hint} style={{
+      flex: '0 0 auto', minWidth: 160,
+      border: '1px solid #e2e8f0', borderRadius: 6,
+      padding: '6px 12px', background: '#f8fafc',
+    }}>
+      <div style={{ fontSize: 10, color: '#64748b', fontWeight: 600,
+                    textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a',
+                    fontVariantNumeric: 'tabular-nums' }}>
+        {formatDollars(value)}
+      </div>
     </div>
   );
 }

@@ -149,6 +149,11 @@ export default function App() {
   const [kgVsMPending,  setKgVsMPending]  = useState(false);
   const [history,       setHistory]       = useState([]);
   const [enrichedRows,  setEnrichedRows]  = useState([]);
+  // Score boxes on the ExperimentBar. `latestScore` = sum of rewards
+  // from the last button press (Restart batch or single One more).
+  // `cumulativeScore` = running total since the last Restart.
+  const [latestScore,     setLatestScore]     = useState(null);
+  const [cumulativeScore, setCumulativeScore] = useState(null);
   const [nSteps,        setNSteps]        = useState(0);
   const [bestImpparam,     setBestImpparam]     = useState(null);
   const [lastResult,    setLastResult]    = useState(null);
@@ -275,6 +280,11 @@ export default function App() {
     try {
       const resp = await runExperiment(session.id, spec);
       await applyExperimentResponse(resp, spec);
+      // Restart wipes prior state, so latest = cumulative = sum of the
+      // freshly-generated batch's rewards.
+      const batchTotal = (resp.history ?? []).reduce((s, row) => s + Number(row[1] ?? 0), 0);
+      setLatestScore(batchTotal);
+      setCumulativeScore(batchTotal);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -284,16 +294,23 @@ export default function App() {
 
   const handleOneMore = useCallback(async (spec) => {
     if (!session) return;
+    // Capture how many steps existed BEFORE the call so we can slice
+    // the new-only rows out of the response afterwards.
+    const priorNSteps = nSteps;
     setLoading(true); setError(null);
     try {
       const resp = await runOneMore(session.id, spec);
       await applyExperimentResponse(resp, spec);
+      const newRows = (resp.history ?? []).slice(priorNSteps);
+      const batchTotal = newRows.reduce((s, row) => s + Number(row[1] ?? 0), 0);
+      setLatestScore(batchTotal);
+      setCumulativeScore(prev => (prev ?? 0) + batchTotal);
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
-  }, [session, applyExperimentResponse]);
+  }, [session, nSteps, applyExperimentResponse]);
 
   // GP length_scale (bandwidth) editor: POST refits the belief with the
   // new value replaying the session's history through it, then refetch
@@ -403,6 +420,8 @@ export default function App() {
     setNSteps(0);
     setLastResult(null);
     setReveal(null);
+    setLatestScore(null);
+    setCumulativeScore(null);
     setPosterior(null);
     setKgComparison(null);
     setKgVsM(null);
@@ -549,6 +568,8 @@ export default function App() {
     setNSteps(0);
     setBestImpparam(null);
     setLastResult(null);
+    setLatestScore(null);
+    setCumulativeScore(null);
     setReveal(null);
     setError(null);
   }, [session]);
@@ -633,6 +654,8 @@ export default function App() {
         onRun={handleRunExperiment}
         onOneMore={handleOneMore}
         canOneMore={nSteps > 0}
+        latestScore={latestScore}
+        cumulativeScore={cumulativeScore}
       />
 
       {/* Budget bar (human only) — informational, tracks n_steps vs the
