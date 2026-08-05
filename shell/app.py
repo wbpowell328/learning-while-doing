@@ -30,6 +30,7 @@ from .models import (
     SetMStarRequest, SetMStarResponse,
     SetLengthScaleRequest, SetLengthScaleResponse,
     ExperimentRequest, ExperimentResponse,
+    OneMoreRequest,
 )
 
 
@@ -302,6 +303,43 @@ def experiment(sid: str, body: ExperimentRequest) -> ExperimentResponse:
         session.step(n_days=n_days)
 
     # --- Response ------------------------------------------------------
+    dim = session.dim
+    best = session.best_impparam()
+    hist_out = [
+        (_theta_out(t, dim), float(v)) for t, v in session.history
+    ]
+    return ExperimentResponse(
+        n_steps=int(session.n_steps),
+        best_impparam=_theta_out(best, dim),
+        history=hist_out,
+    )
+
+
+@app.post("/sessions/{sid}/one_more")
+def one_more(sid: str, body: OneMoreRequest) -> ExperimentResponse:
+    """
+    Do exactly one more policy-driven iteration on the CURRENT session
+    (no reset). Optionally swap the policy first — this lets a user run
+    an experiment, look at results, then step forward with the same
+    policy OR pivot to a different one without starting over.
+    """
+    session = _get_or_404(sid)
+
+    n_days = int(body.n_days)
+    if n_days < 1:
+        raise HTTPException(status_code=400, detail=f"n_days must be >= 1; got {n_days}")
+
+    # Optional policy swap.
+    if body.m_star is not None:
+        session.set_m_star(int(body.m_star))
+    if body.z_alpha is not None and (body.policy or session._policy.__class__.__name__ == "IEPolicy"):
+        from dataclasses import replace as _replace
+        session._acq_config = _replace(session._acq_config, z_alpha=float(body.z_alpha))
+    if body.policy is not None:
+        session.set_policy(_make_policy(body.policy, session._acq_config, budget=None))
+
+    session.step(n_days=n_days)
+
     dim = session.dim
     best = session.best_impparam()
     hist_out = [

@@ -98,3 +98,43 @@ def test_experiment_rejects_n_days_less_than_one():
         "theta_init": 0.05, "n_days": 0, "policy": "random", "K": 0,
     })
     assert r.status_code == 400
+
+
+def test_one_more_appends_without_reset():
+    """/one_more advances by exactly one step from the current state."""
+    sid = make_session()
+    client.post(f"/sessions/{sid}/experiment", json={
+        "theta_init": 0.05, "n_days": 20, "policy": "kg", "K": 2, "m_star": 3,
+    })
+    assert _sessions[sid].n_steps == 3
+
+    r = client.post(f"/sessions/{sid}/one_more", json={"n_days": 20})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["n_steps"] == 4
+    # First history row is still the original user-picked θ (no reset).
+    assert body["history"][0][0] == pytest.approx(0.05)
+
+
+def test_one_more_can_switch_policy_mid_stream():
+    sid = make_session()
+    client.post(f"/sessions/{sid}/experiment", json={
+        "theta_init": 0.05, "n_days": 20, "policy": "kg", "K": 1, "m_star": 3,
+    })
+    r = client.post(f"/sessions/{sid}/one_more", json={
+        "n_days": 20, "policy": "ie", "z_alpha": 2.5,
+    })
+    assert r.status_code == 200
+    sess = _sessions[sid]
+    # Policy swapped, history preserved.
+    assert sess._policy.__class__.__name__ == "IEPolicy"
+    assert sess._acq_config.z_alpha == pytest.approx(2.5)
+    assert sess.n_steps == 3
+
+
+def test_one_more_rejects_bad_n_days():
+    sid = make_session()
+    client.post(f"/sessions/{sid}/experiment",
+                json={"theta_init": 0.05, "n_days": 20, "policy": "kg", "K": 1})
+    r = client.post(f"/sessions/{sid}/one_more", json={"n_days": 0})
+    assert r.status_code == 400

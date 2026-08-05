@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, getKGvsM, setMStar, setLengthScale, getObservationsEnriched, runExperiment, deleteSession } from './api';
+import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, getKGvsM, setMStar, setLengthScale, getObservationsEnriched, runExperiment, runOneMore, deleteSession } from './api';
 import SessionForm from './components/SessionForm';
 import PosteriorChart from './components/PosteriorChart';
 import Belief3DChart from './components/Belief3DChart';
@@ -239,42 +239,61 @@ export default function App() {
   // config, not the original one). Mirrors the policy the user chose
   // in the bar back onto session state so subsequent chart labels /
   // KG(m) card reflect it.
+  // Shared refresh after any experiment endpoint returns — mirrors the
+  // response into local state and re-fetches every view that depends on
+  // the belief.
+  const applyExperimentResponse = useCallback(async (resp, spec) => {
+    // Mirror the new policy + parameter on the session record so
+    // downstream UI (badge, KG(m) card sessionMStar, etc.) sees it.
+    setSession(prev => prev ? {
+      ...prev,
+      policy: spec.policy ?? prev.policy,
+      m_star: spec.m_star != null ? spec.m_star : prev.m_star,
+    } : prev);
+    setHistory(resp.history);
+    setNSteps(resp.n_steps);
+    setBestImpparam(resp.best_impparam);
+    setLastResult(null);
+    setReveal(null);
+    const refetches = [];
+    if (session.dim === 1) {
+      refetches.push(getPosterior(session.id).then(setPosterior));
+      refetches.push(getKGComparison(session.id, 0.01, 50, session.budget ?? 10).then(setKgComparison));
+      refetches.push(getKGvsM(session.id, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2).then(setKgVsM));
+    } else {
+      refetches.push(getPosterior2D(session.id, 30).then(setPosterior2D));
+      refetches.push(getKG2D(session.id, 20).then(setKg2D));
+      refetches.push(getKGvsM(session.id, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2).then(setKgVsM));
+    }
+    refetches.push(refreshEnriched(session.id));
+    await Promise.all(refetches);
+  }, [session, refreshEnriched, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2]);
+
   const handleRunExperiment = useCallback(async (spec) => {
     if (!session) return;
     setLoading(true); setError(null);
     try {
       const resp = await runExperiment(session.id, spec);
-      // Mirror the new policy + parameter on the session record.
-      setSession(prev => prev ? {
-        ...prev,
-        policy: spec.policy,
-        m_star: spec.m_star != null ? spec.m_star : prev.m_star,
-      } : prev);
-      // Rebuild all history state from the response.
-      setHistory(resp.history);
-      setNSteps(resp.n_steps);
-      setBestImpparam(resp.best_impparam);
-      setLastResult(null);
-      setReveal(null);
-      // Refetch everything the response doesn't include.
-      const refetches = [];
-      if (session.dim === 1) {
-        refetches.push(getPosterior(session.id).then(setPosterior));
-        refetches.push(getKGComparison(session.id, 0.01, 50, session.budget ?? 10).then(setKgComparison));
-        refetches.push(getKGvsM(session.id, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2).then(setKgVsM));
-      } else {
-        refetches.push(getPosterior2D(session.id, 30).then(setPosterior2D));
-        refetches.push(getKG2D(session.id, 20).then(setKg2D));
-        refetches.push(getKGvsM(session.id, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2).then(setKgVsM));
-      }
-      refetches.push(refreshEnriched(session.id));
-      await Promise.all(refetches);
+      await applyExperimentResponse(resp, spec);
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
-  }, [session, refreshEnriched, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2]);
+  }, [session, applyExperimentResponse]);
+
+  const handleOneMore = useCallback(async (spec) => {
+    if (!session) return;
+    setLoading(true); setError(null);
+    try {
+      const resp = await runOneMore(session.id, spec);
+      await applyExperimentResponse(resp, spec);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [session, applyExperimentResponse]);
 
   // GP length_scale (bandwidth) editor: POST refits the belief with the
   // new value replaying the session's history through it, then refetch
@@ -612,6 +631,8 @@ export default function App() {
         defaultZAlpha={0}
         running={loading}
         onRun={handleRunExperiment}
+        onOneMore={handleOneMore}
+        canOneMore={nSteps > 0}
       />
 
       {/* Budget bar (human only) — informational, tracks n_steps vs the

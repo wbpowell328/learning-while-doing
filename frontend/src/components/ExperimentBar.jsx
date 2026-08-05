@@ -48,7 +48,9 @@ export default function ExperimentBar({
   defaultMStar = 1,
   defaultZAlpha = 0,
   running = false,
-  onRun,             // async (spec) => void
+  onRun,             // async (spec) => void — reset+K+1 iterations
+  onOneMore,         // async (spec) => void — one more iteration, no reset
+  canOneMore = false, // enable "One more" only after at least one Run
 }) {
   const [theta1, setTheta1] = useState('');
   const [theta2, setTheta2] = useState('');
@@ -99,6 +101,24 @@ export default function ExperimentBar({
       }
     }
     onRun(spec);
+  }
+
+  // "One more" — step from the current session state using the bar's
+  // current policy + ρ + N. No θ / K needed (θ picked by policy;
+  // exactly one iteration executes).
+  function commitOneMore() {
+    if (running || !onOneMore) return;
+    const spec = {
+      n_days: Math.max(1, Math.round(Number(nDays) || 1)),
+      policy,   // let backend swap if it differs from current session policy
+    };
+    if (paramMeta) {
+      const v = Number(rho);
+      if (Number.isFinite(v)) {
+        spec[paramMeta.key] = paramMeta.key === 'm_star' ? Math.max(1, Math.round(v)) : v;
+      }
+    }
+    onOneMore(spec);
   }
 
   return (
@@ -164,6 +184,22 @@ export default function ExperimentBar({
               style={{ padding: '6px 20px', fontSize: 13 }}>
         {running ? 'running…' : 'Run'}
       </button>
+      {onOneMore && (
+        <button type="button"
+                onClick={commitOneMore}
+                disabled={running || !canOneMore || isHuman}
+                className="btn btn-outline"
+                title={
+                  isHuman
+                    ? 'Human policy uses Run at each step'
+                    : !canOneMore
+                      ? 'Run an experiment first, then this steps one more iteration from where you left off'
+                      : 'Take one more iteration from the current state (no reset)'
+                }
+                style={{ padding: '6px 16px', fontSize: 13 }}>
+          One more
+        </button>
+      )}
     </div>
   );
 }

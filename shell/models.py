@@ -152,6 +152,19 @@ class ExperimentResponse(BaseModel):
     history: list[tuple[ThetaLike, float]]
 
 
+class OneMoreRequest(BaseModel):
+    """
+    Do one more policy-driven iteration on the CURRENT session state
+    (no reset). Iteration horizon is `n_days`. If `policy` is given
+    (and its associated parameter), swap the session's policy before
+    stepping so the user can flip policies without losing history.
+    """
+    n_days: int
+    policy: str | None = None
+    m_star: int | None = None
+    z_alpha: float | None = None
+
+
 class JumpEventOut(BaseModel):
     day: int
     size_fraction: float   # |jump| / AUM at jump time

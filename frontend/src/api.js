@@ -123,4 +123,10 @@ export const runExperiment = (sid, spec) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(spec),
   });
+export const runOneMore = (sid, spec) =>
+  call(`/sessions/${sid}/one_more`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(spec),
+  });
 export const deleteSession = (sid) => call(`/sessions/${sid}`, { method: 'DELETE' });
