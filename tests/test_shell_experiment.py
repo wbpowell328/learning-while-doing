@@ -176,6 +176,26 @@ def test_reset_clears_history_and_does_not_run():
     assert list(_sessions[sid].history) == []
 
 
+def test_one_more_with_k_runs_k_plus_one_iterations():
+    """
+    /one_more with K=4 executes 5 more policy-driven iterations
+    from the current state (no reset). Symmetric with /experiment.
+    """
+    sid = make_session()
+    client.post(f"/sessions/{sid}/experiment",
+                json={"theta_init": 0.05, "n_days": 20, "policy": "kg", "K": 2})
+    assert _sessions[sid].n_steps == 3
+
+    r = client.post(f"/sessions/{sid}/one_more",
+                    json={"n_days": 20, "K": 4})
+    assert r.status_code == 200
+    # 3 prior + 5 new = 8.
+    assert _sessions[sid].n_steps == 8
+    # First row preserved — no reset.
+    body = r.json()
+    assert body["history"][0][0] == pytest.approx(0.05)
+
+
 def test_one_more_rejects_bad_n_days():
     sid = make_session()
     client.post(f"/sessions/{sid}/experiment",

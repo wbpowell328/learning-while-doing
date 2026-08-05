@@ -332,9 +332,11 @@ def experiment(sid: str, body: ExperimentRequest) -> ExperimentResponse:
 @app.post("/sessions/{sid}/one_more")
 def one_more(sid: str, body: OneMoreRequest) -> ExperimentResponse:
     """
-    Do exactly one more policy-driven iteration on the CURRENT session
-    (no reset). Optionally swap the policy first — this lets a user run
-    an experiment, look at results, then step forward with the same
+    Do K+1 policy-driven iterations on the CURRENT session (no reset).
+    K=0 is the original "one step" behavior; K>0 lets Repeat govern
+    both Run (from scratch) and One more (from the current state).
+    Optionally swap the policy first — this lets a user run an
+    experiment, look at results, then step forward with the same
     policy OR pivot to a different one without starting over.
     """
     session = _get_or_404(sid)
@@ -352,7 +354,10 @@ def one_more(sid: str, body: OneMoreRequest) -> ExperimentResponse:
     if body.policy is not None:
         session.set_policy(_make_policy(body.policy, session._acq_config, budget=None))
 
-    session.step(n_days=n_days)
+    # K+1 iterations from the current state (K=0 → one step).
+    n_iters = max(0, int(body.K)) + 1
+    for _ in range(n_iters):
+        session.step(n_days=n_days)
 
     dim = session.dim
     best = session.best_impparam()

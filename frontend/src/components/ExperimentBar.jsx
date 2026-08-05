@@ -128,13 +128,16 @@ export default function ExperimentBar({
   }
 
   // "One more" — step from the current session state using the bar's
-  // current policy + N. No θ / K needed (θ picked by policy; exactly
-  // one iteration executes). Only requires N to be valid.
+  // current policy + N + Repeat. Repeat governs both Run and One
+  // more symmetrically: K=0 means exactly one iteration; K>0 means
+  // K+1 iterations, all policy-picked, no reset. θ is not sent (the
+  // policy picks it from the current belief).
   function commitOneMore() {
     if (running || !onOneMore || !nDaysValid) return;
     const spec = {
       n_days: Math.max(1, Math.round(nNum)),
       policy,   // let backend swap if it differs from current session policy
+      K: isHuman ? 0 : Math.max(0, Math.round(Number(K) || 0)),
     };
     onOneMore(spec);
   }
@@ -190,8 +193,8 @@ export default function ExperimentBar({
       {/* Dual-mode button. Before the first run it acts as "Run" and
           fires the full Restart-style experiment (uses user-typed θ,
           K+1 iterations). Once at least one run exists it flips to
-          "One more" and appends a single iteration from the current
-          state — no θ / K needed. Restart (to the right) is always
+          "Repeat" and does K+1 more iterations from the current state
+          (K from the Repeat box). Restart (to the right) is always
           available for a clean-slate reset. */}
       <button type="button"
               onClick={canOneMore ? commitOneMore : commit}
@@ -206,7 +209,7 @@ export default function ExperimentBar({
                   : canOneMore
                     ? (!nDaysValid
                         ? 'Enter a positive N (days per iteration)'
-                        : 'Take one more iteration from the current state (no reset)')
+                        : 'Repeat + 1 more iterations from the current state (no reset)')
                     : (!thetaValid
                         ? 'Enter a starting θ'
                         : !nDaysValid
@@ -214,7 +217,7 @@ export default function ExperimentBar({
                           : 'Run Repeat + 1 iterations from the starting θ')
               }
               style={{ padding: '6px 16px', fontSize: 13 }}>
-        {running ? 'running…' : (canOneMore ? 'One more' : 'Run')}
+        {running ? 'running…' : (canOneMore ? 'Repeat' : 'Run')}
       </button>
       <button type="button"
               onClick={() => { if (!running && onRestart) onRestart(); }}

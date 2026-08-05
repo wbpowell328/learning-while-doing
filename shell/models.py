@@ -154,12 +154,16 @@ class ExperimentResponse(BaseModel):
 
 class OneMoreRequest(BaseModel):
     """
-    Do one more policy-driven iteration on the CURRENT session state
-    (no reset). Iteration horizon is `n_days`. If `policy` is given
+    Do K+1 policy-driven iterations on the CURRENT session state
+    (no reset). Symmetric with ExperimentRequest so the ExperimentBar's
+    Repeat box governs both "Run" (from scratch) and "One more" (from
+    the current state). K=0 means exactly one iteration (the original
+    behavior). Iteration horizon is `n_days`. If `policy` is given
     (and its associated parameter), swap the session's policy before
     stepping so the user can flip policies without losing history.
     """
     n_days: int
+    K: int = 0
     policy: str | None = None
     m_star: int | None = None
     z_alpha: float | None = None
