@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 // Defaults must match backend Pydantic defaults (shell/models.py) so the
 // initial UI state is consistent with what the API would use for an empty
@@ -116,16 +116,28 @@ const APPS = [
   { value: 'cash_balance_2d', label: 'Cash balance (2-parameter, θ_ind, θ_inst)', dim: 2 },
 ];
 
-export default function SessionForm({ onCreate, error }) {
-  const [appName, setAppName]       = useState('cash_balance');
-  const [policy, setPolicy]         = useState('human');
-  const [seed, setSeed]             = useState(42);
-  const [horizon, setHorizon]       = useState(26);
-  const [stationary, setStationary] = useState(true);
-  const [loading, setLoading]       = useState(false);
+export default function SessionForm({
+  onCreate, error,
+  initialAppName = 'cash_balance',
+  initialPolicy  = 'kg',
+  autoSubmit     = false,   // when true (URL ?auto=1), fire submit on mount
+}) {
+  // App + policy come from the landing page via URL query params. The
+  // dropdowns for them were moved to the landing page per Warren's spec,
+  // so they aren't rendered here — but we still track the values so the
+  // submit payload carries them through.
+  const [appName]  = useState(initialAppName);
+  const [policy]   = useState(initialPolicy);
+  const [loading, setLoading] = useState(false);
 
-  const [budgetStr, setBudgetStr] = useState('10');
-  const budget = Math.max(1, Math.min(50, Number(budgetStr) || 10));
+  // Random seed + stationary regime — moved into the Advanced Parameters
+  // panel per Warren. Weeks per run is dropped entirely (ExperimentBar's
+  // "Run N days" input now sets the horizon on every iteration); we
+  // still send a default horizon_weeks on session-create so the backend
+  // SessionConfig has a value, but the user never sees it.
+  const [seed, setSeed]             = useState(42);
+  const [stationary, setStationary] = useState(true);
+  const horizon = 26;   // backend default; overridden per-iteration by ExperimentBar
 
   // Policy parameter (single field, meaning depends on the policy):
   //   KG variants → m* (days) — how many repeat experiments the policy
@@ -235,8 +247,11 @@ export default function SessionForm({ onCreate, error }) {
         belief_config: beliefConfigPayload,
         acq_config: acqConfigPayload,
         session_config: { horizon_weeks: horizon },
-        // budget still needed for the human/auto-run loop step budget.
-        budget: isHuman ? budget : null,
+        // Adjustment-budget field was dropped from the UI (the
+        // ExperimentBar's Restart / One more controls make it moot);
+        // send null so the backend uses its own default if it ever
+        // needs one.
+        budget: null,
         // KG-family m* (θ^KGm*, in days). Ignored by non-KG policies.
         m_star: isKGFamily ? mStar : 1,
         report_level: reportLevel,
@@ -245,6 +260,19 @@ export default function SessionForm({ onCreate, error }) {
       setLoading(false);
     }
   }
+
+  // Auto-submit on mount when the landing page's Play button was hit
+  // (URL had ?auto=1). Only fires once — subsequent renders of this
+  // form (e.g. after a New session click) will not re-fire because
+  // React reuses the same instance. Uses the stable defaults for
+  // everything except appName/policy carried in as props.
+  const autoFiredRef = useRef(false);
+  useEffect(() => {
+    if (!autoSubmit || autoFiredRef.current) return;
+    autoFiredRef.current = true;
+    handleSubmit({ preventDefault: () => {} });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSubmit]);
 
   // Reusable renderer for a single advanced-parameter input
   const advField = ([key, label, hint]) => (
@@ -261,46 +289,66 @@ export default function SessionForm({ onCreate, error }) {
     </div>
   );
 
+  // Human-readable summary of the choice carried through from the
+  // landing page — so the user knows what they're about to Start.
+  const appLabel    = APPS.find(a => a.value === appName)?.label ?? appName;
+  const policyLabel = ({
+    human: 'Human — I pick θ each round',
+    kg: 'KG — offline correlated (analytic)',
+    kg_indep: 'KG — offline independent',
+    okg: 'KG — online correlated',
+    okg_indep: 'KG — online independent',
+    ie: 'IE — LCB (upper-confidence exploration)',
+    random: 'Random — baseline',
+  })[effectivePolicy] ?? effectivePolicy;
+
+  // When auto-launching from the landing page, hide the form entirely
+  // and show a brief starting-up notice — the user shouldn't see the
+  // Advanced-parameters panel unless they asked for it.
+  if (autoSubmit) {
+    return (
+      <div className="setup-wrap">
+        <div className="card setup-card" style={{ textAlign: 'center', padding: 32 }}>
+          <div style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginBottom: 8 }}>
+            Starting session…
+          </div>
+          <div style={{ fontSize: 13, color: '#64748b' }}>
+            {appLabel} · {policyLabel}
+          </div>
+          {error && (
+            <div style={{ marginTop: 16, color: '#b91c1c', fontSize: 13 }}>
+              {String(error?.message ?? error)}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="setup-wrap">
       <div className="card setup-card">
-        <h1 className="form-title">Learning While Doing</h1>
+        <h1 className="form-title">Advanced parameters</h1>
         <p className="form-subtitle">
-          Find the optimal cash buffer ratio θ for a mutual fund.
+          Tune the belief prior, simulation truth, seed, and reporting
+          level. The cash-management app and the parameter-adjustment
+          policy were chosen on the landing page.
         </p>
 
         <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>Application</label>
-            <select value={appName} onChange={e => setAppName(e.target.value)}>
-              {APPS.map(a => (
-                <option key={a.value} value={a.value}>{a.label}</option>
-              ))}
-            </select>
-            {is2D && (
-              <span style={{ fontSize: 12, color: '#64748b' }}>
-                2-parameter app — Human mode is 1-D only; automated modes
-                (KG, IE, Random) work here.
-              </span>
-            )}
+          {/* Summary of the two landing-page choices — read-only. */}
+          <div style={{ padding: '10px 12px', background: '#f8fafc',
+                        border: '1px solid #e2e8f0', borderRadius: 6,
+                        marginBottom: 16, fontSize: 13, color: '#374151' }}>
+            <div><span style={{ color: '#64748b' }}>Cash management policy:</span> <b>{appLabel}</b></div>
+            <div style={{ marginTop: 4 }}>
+              <span style={{ color: '#64748b' }}>Parameter adjustment policy:</span> <b>{policyLabel}</b>
+            </div>
           </div>
 
-          <div className="form-group">
-            <label>Mode</label>
-            <select value={effectivePolicy} onChange={e => setPolicy(e.target.value)}>
-              {!is2D && <option value="human">Human — I pick θ each round</option>}
-              <option value="kg">KG — offline correlated (analytic)</option>
-              <option value="kg_indep">KG — offline independent</option>
-              <option value="okg">KG — online correlated</option>
-              <option value="okg_indep">KG — online independent</option>
-              <option value="ie">IE — LCB (upper-confidence exploration)</option>
-              <option value="random">Random — baseline</option>
-            </select>
-          </div>
-
-          {/* Policy parameter — single field, meaning depends on the
-              policy. KG family: m* (days). IE: z_alpha (# std devs).
-              Random / Human: no parameter. */}
+          {/* Policy parameter — the one non-hidden thing that varies
+              by policy. Kept out here so it's visible without expanding
+              Advanced. KG family: m*. IE: z_alpha. Random / Human: none. */}
           {isKGFamily && (
             <div className="form-group">
               <label>Policy parameter — m* (days)</label>
@@ -332,52 +380,37 @@ export default function SessionForm({ onCreate, error }) {
             </div>
           )}
 
-          {isHuman && (
-            <div className="form-group">
-              <label>Adjustment budget</label>
-              <input
-                type="number" value={budgetStr} min={1} max={50}
-                onChange={e => setBudgetStr(e.target.value)}
-                onBlur={() => setBudgetStr(String(budget))}
-              />
-              <span style={{ fontSize: 12, color: '#64748b' }}>
-                Number of times you can run the simulator.
-              </span>
-            </div>
-          )}
-
-          <div className="form-row">
-            <div className="form-group">
-              <label>Random seed</label>
-              <input type="number" value={seed} min={0} max={9999}
-                onChange={e => setSeed(Number(e.target.value))} />
-            </div>
-            <div className="form-group">
-              <label>Weeks per run</label>
-              <input type="number" value={horizon} min={1} max={52}
-                onChange={e => setHorizon(Number(e.target.value))} />
-            </div>
-          </div>
-
-          <div className="form-group" style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <input type="checkbox" id="stationary" checked={stationary}
-              onChange={e => setStationary(e.target.checked)}
-              style={{ width: 16, height: 16, cursor: 'pointer' }} />
-            <label htmlFor="stationary" style={{ cursor: 'pointer' }}>
-              Stationary regime (no market regime switching)
-            </label>
-          </div>
-
           {/* Advanced parameters (collapsible) */}
-          <details style={{ marginBottom: 16, borderTop: '1px solid #e2e8f0', paddingTop: 12 }}>
+          <details style={{ marginBottom: 16, borderTop: '1px solid #e2e8f0', paddingTop: 12 }} open>
             <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#374151',
                               padding: '4px 0', userSelect: 'none' }}>
-              Advanced parameters — belief prior & simulation truth
+              Advanced parameters — belief prior, simulation truth, seed
             </summary>
             <div style={{ marginTop: 12, padding: '12px 16px', background: '#f8fafc',
                           borderRadius: 6, border: '1px solid #e2e8f0' }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b',
                             textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 }}>
+                Session
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label style={{ fontSize: 12 }}>Random seed</label>
+                  <input type="number" value={seed} min={0} max={9999}
+                    onChange={e => setSeed(Number(e.target.value))} />
+                </div>
+                <div className="form-group" style={{ justifyContent: 'flex-end' }}>
+                  <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={stationary}
+                      onChange={e => setStationary(e.target.checked)}
+                      style={{ width: 16, height: 16, cursor: 'pointer' }} />
+                    Stationary regime (no market regime switching)
+                  </label>
+                </div>
+              </div>
+
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b',
+                            textTransform: 'uppercase', letterSpacing: 0.6,
+                            marginTop: 16, marginBottom: 8 }}>
                 Reporting
               </div>
               <div className="form-group">

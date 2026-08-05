@@ -137,7 +137,35 @@ function argmaxOnGrid(values, axis1, axis2) {
   return [axis1[i], axis2[j]];
 }
 
+// Parse ?app=…&policy=…&auto=… once on mount. Landing page (CASTLE
+// site) links here with these baked in — auto=1 means "skip the
+// Advanced-parameters panel and go straight to the game". Anything
+// invalid quietly falls back to defaults so a hand-typed URL can't
+// break the app.
+const VALID_APPS     = new Set(['cash_balance', 'cash_balance_2d']);
+const VALID_POLICIES = new Set(['kg', 'kg_indep', 'okg', 'okg_indep', 'ie', 'random', 'human']);
+function parseLaunchParams() {
+  try {
+    const p = new URLSearchParams(window.location.search);
+    const app    = p.get('app');
+    const policy = p.get('policy');
+    const auto   = p.get('auto');
+    return {
+      initialAppName: VALID_APPS.has(app)         ? app    : 'cash_balance',
+      initialPolicy:  VALID_POLICIES.has(policy)  ? policy : 'kg',
+      autoSubmit:     auto === '1' || auto === 'true',
+    };
+  } catch {
+    return { initialAppName: 'cash_balance', initialPolicy: 'kg', autoSubmit: false };
+  }
+}
+
 export default function App() {
+  // Read once — subsequent navigations inside the app should not
+  // re-trigger auto-launch. Landing page → this app is a full page
+  // load, so this runs fresh each time the user clicks Play.
+  const launchParams = useRef(parseLaunchParams()).current;
+
   const [session,       setSession]       = useState(null);
   const [posterior,     setPosterior]     = useState(null);
   const [kgComparison,  setKgComparison]  = useState(null);
@@ -572,14 +600,28 @@ export default function App() {
     setCumulativeScore(null);
     setReveal(null);
     setError(null);
+    // After the user hits "New session" they get the setup panel —
+    // don't auto-launch a second session using the URL flag.
+    setAutoCount(n => n + 1);
   }, [session]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (!session) {
+    // autoSubmit only applies to the very first render (fresh page
+    // load from the landing page). After the user clicks "New session"
+    // they should see the panel, so we consume the flag by tracking
+    // how many times we've been rendered without a session.
+    const autoSubmit = launchParams.autoSubmit && autoCount === 0;
     return (
       <div className="app">
-        <SessionForm onCreate={handleCreate} error={error} />
+        <SessionForm
+          onCreate={handleCreate}
+          error={error}
+          initialAppName={launchParams.initialAppName}
+          initialPolicy={launchParams.initialPolicy}
+          autoSubmit={autoSubmit}
+        />
       </div>
     );
   }
