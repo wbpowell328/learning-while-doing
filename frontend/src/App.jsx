@@ -757,6 +757,7 @@ export default function App() {
         latestScore={latestScore}
         cumulativeScore={cumulativeScore}
         totalDays={totalDays}
+        lastTheta={history.length > 0 ? history[history.length - 1][0] : null}
       />
 
       {/* Budget bar (human only) — informational, tracks n_steps vs the

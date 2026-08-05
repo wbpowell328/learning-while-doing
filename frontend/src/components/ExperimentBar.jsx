@@ -16,7 +16,7 @@
 // Advanced Parameters panel at session-create time; it lives on the
 // session state and is *not* re-sent per Restart from this bar.
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const POLICY_OPTIONS_1D = [
   { value: 'kg',        label: 'KG offline correlated (analytic)' },
@@ -63,6 +63,7 @@ export default function ExperimentBar({
   latestScore = null,     // total reward from the last batch (Restart or One more)
   cumulativeScore = null, // running total since the last Restart
   totalDays = 0,          // simulated days behind cumulativeScore; resets on Restart
+  lastTheta = null,       // θ from the most recent iteration; null = fresh session
 }) {
   // Pre-fill θ with a sensible mid-box value so a first-time visitor
   // can hit Run without typing anything.
@@ -76,6 +77,28 @@ export default function ExperimentBar({
   // the policy dropdown's onChange snaps K to '0' when switching to
   // Human, and the Repeat input is disabled while Human is selected.
   const isHuman = policy === 'human';
+
+  // Keep the θ input in sync with what actually happened. After every
+  // Run / One more, App.jsx passes the last iteration's θ down; we
+  // mirror it into the box (and swap the label to "Current point").
+  // When history clears (Restart), lastTheta goes null and we snap
+  // back to the pre-fill 0.1 so the box always reads well.
+  useEffect(() => {
+    if (lastTheta == null) {
+      setTheta1('0.1');
+      setTheta2('0.1');
+    } else if (dim === 2 && Array.isArray(lastTheta)) {
+      setTheta1(String(lastTheta[0]));
+      setTheta2(String(lastTheta[1]));
+    } else {
+      setTheta1(String(lastTheta));
+    }
+  }, [lastTheta, dim]);
+
+  // Label follows history: on a fresh / just-Restarted session the box
+  // is the user's starting point; once anything has run, it's the
+  // last-tested θ, so the label reads "Current point".
+  const thetaLabel = lastTheta == null ? 'Starting point' : 'Current point';
   const policyOptions = dim === 2 ? POLICY_OPTIONS_2D : POLICY_OPTIONS_1D;
 
   // Input validity — used to disable Run so the user can't fire off a
@@ -122,7 +145,7 @@ export default function ExperimentBar({
       padding: '12px 16px', marginBottom: 16,
     }}>
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-      <span style={labelStyle}>Starting point</span>
+      <span style={labelStyle}>{thetaLabel}</span>
       {dim === 2 ? (
         <>
           <input type="number" step="any" value={theta1}
