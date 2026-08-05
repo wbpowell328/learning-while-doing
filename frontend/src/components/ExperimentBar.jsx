@@ -119,7 +119,7 @@ export default function ExperimentBar({
     const spec = {
       n_days: Math.max(1, Math.round(nNum)),
       policy,
-      K: isHuman ? 0 : Math.max(0, Math.round(Number(K) || 0)),
+      K: isHuman ? 0 : Math.min(20, Math.max(0, Math.round(Number(K) || 0))),
       theta_init: dim === 2 ? [t1Num, t2Num] : t1Num,
     };
     // m_star / z_alpha are session-level (set in Advanced parameters);
@@ -137,7 +137,7 @@ export default function ExperimentBar({
     const spec = {
       n_days: Math.max(1, Math.round(nNum)),
       policy,   // let backend swap if it differs from current session policy
-      K: isHuman ? 0 : Math.max(0, Math.round(Number(K) || 0)),
+      K: isHuman ? 0 : Math.min(20, Math.max(0, Math.round(Number(K) || 0))),
     };
     onOneMore(spec);
   }
@@ -183,10 +183,12 @@ export default function ExperimentBar({
       </select>
 
       <span style={labelStyle}>. Repeat</span>
-      <input type="number" min={0} step={1} value={K}
+      <input type="number" min={0} max={20} step={1} value={K}
              placeholder="K" style={numStyleShort}
              disabled={isHuman}
-             title={isHuman ? 'Human policy runs one iteration at a time (K=0)' : ''}
+             title={isHuman
+               ? 'Human policy runs one iteration at a time (K=0)'
+               : 'Number of policy-driven repetitions (0–20)'}
              onChange={e => setK(e.target.value)} />
       <span style={labelStyle}>times.</span>
 
