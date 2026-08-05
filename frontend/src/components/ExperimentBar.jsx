@@ -207,7 +207,7 @@ export default function ExperimentBar({
               title={
                 !thetaValid  ? 'Enter a starting θ' :
                 !nDaysValid  ? 'Enter a positive N (days per iteration)' :
-                'Reset the session and run K+1 iterations from a clean slate'
+                'Reset the session and run Repeat + 1 iterations from a clean slate'
               }
               style={{ padding: '6px 20px', fontSize: 13 }}>
         {running ? 'running…' : 'Restart'}
