@@ -36,9 +36,18 @@ function paramForPolicy(policy) {
   return null;   // random, human — no parameter
 }
 
-const inputStyle = {
+// Tight width defaults for the numeric fields — Warren's ask was to
+// shrink Starting point, Run, Parameter, and Repeat to roughly a fifth
+// of their previous size. Policy dropdown keeps its wider style since
+// it holds long labels.
+const numStyle = {
+  padding: '4px 6px', border: '1px solid #cbd5e1', borderRadius: 4,
+  fontSize: 13, width: 55, boxSizing: 'border-box',
+};
+const numStyleShort = { ...numStyle, width: 45 };
+const selectStyle = {
   padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: 4,
-  fontSize: 13, minWidth: 60,
+  fontSize: 13, minWidth: 160,
 };
 const labelStyle = { color: '#475569', fontSize: 13 };
 
@@ -130,25 +139,25 @@ export default function ExperimentBar({
       {dim === 2 ? (
         <>
           <input type="number" step="any" value={theta1}
-                 placeholder="θ₁" style={inputStyle}
+                 placeholder="θ₁" style={numStyle}
                  onChange={e => setTheta1(e.target.value)} />
           <input type="number" step="any" value={theta2}
-                 placeholder="θ₂" style={inputStyle}
+                 placeholder="θ₂" style={numStyle}
                  onChange={e => setTheta2(e.target.value)} />
         </>
       ) : (
         <input type="number" step="any" value={theta1}
-               placeholder="θ" style={inputStyle}
+               placeholder="θ" style={numStyle}
                onChange={e => setTheta1(e.target.value)} />
       )}
 
       <span style={labelStyle}>Run</span>
       <input type="number" min={1} step={1} value={nDays}
-             placeholder="N" style={inputStyle}
+             placeholder="N" style={numStyleShort}
              onChange={e => setNDays(e.target.value)} />
       <span style={labelStyle}>days. Then update using policy</span>
 
-      <select value={policy} style={{ ...inputStyle, minWidth: 160 }}
+      <select value={policy} style={selectStyle}
               onChange={e => setPolicy(e.target.value)}>
         {policyOptions.map(o => (
           <option key={o.value} value={o.value}>{o.label}</option>
@@ -159,7 +168,7 @@ export default function ExperimentBar({
         <>
           <span style={labelStyle}>with parameter</span>
           <input type="number" step={paramMeta.step} min={paramMeta.min}
-                 value={rho} placeholder="ρ" style={inputStyle}
+                 value={rho} placeholder="ρ" style={numStyleShort}
                  onChange={e => setRho(e.target.value)}
                  title={paramMeta.label} />
         </>
@@ -171,7 +180,7 @@ export default function ExperimentBar({
 
       <span style={labelStyle}>. Repeat</span>
       <input type="number" min={0} step={1} value={K}
-             placeholder="K" style={inputStyle}
+             placeholder="K" style={numStyleShort}
              disabled={isHuman}
              title={isHuman ? 'Human policy runs one iteration at a time (K=0)' : ''}
              onChange={e => setK(e.target.value)} />
