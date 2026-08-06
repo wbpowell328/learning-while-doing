@@ -62,6 +62,7 @@ class AcqConfigIn(BaseModel):
     impparam_max: Union[float, list[float]] = 0.20
     grid_size: int = 100
     z_alpha: float = 0.0
+    sigma_greedy: float = 0.0    # RandomizedGreedy θ-noise std; 0 = pure greedy
 
 
 class SessionConfigIn(BaseModel):
@@ -83,6 +84,7 @@ class CreateSessionRequest(BaseModel):
         "kg_indep",   # offline independent
         "okg",        # online correlated (Ryzhov)
         "okg_indep",  # online independent
+        "randomized_greedy",  # argmin(mu) + N(0, σ_greedy)
         "human",
     ] = "human"
     # Required by the online-KG policies (they need N to compute (N-n) in the
@@ -120,6 +122,22 @@ class SetMStarResponse(BaseModel):
     m_star: int
 
 
+class SetZAlphaRequest(BaseModel):
+    z_alpha: float
+
+
+class SetZAlphaResponse(BaseModel):
+    z_alpha: float
+
+
+class SetSigmaGreedyRequest(BaseModel):
+    sigma_greedy: float
+
+
+class SetSigmaGreedyResponse(BaseModel):
+    sigma_greedy: float
+
+
 class SetLengthScaleRequest(BaseModel):
     # Scalar for 1-D or list-of-dim for 2-D (ARD).
     length_scale: Union[float, list[float]]
@@ -143,6 +161,7 @@ class ExperimentRequest(BaseModel):
     # Policy parameters — only the one that applies to `policy` is used.
     m_star: int | None = None    # KG-family batch-size trick multiplier
     z_alpha: float | None = None # IE upper-confidence-bound coefficient
+    sigma_greedy: float | None = None   # RandomizedGreedy θ-noise std
 
 
 class ExperimentResponse(BaseModel):
@@ -167,6 +186,7 @@ class OneMoreRequest(BaseModel):
     policy: str | None = None
     m_star: int | None = None
     z_alpha: float | None = None
+    sigma_greedy: float | None = None
 
 
 class JumpEventOut(BaseModel):

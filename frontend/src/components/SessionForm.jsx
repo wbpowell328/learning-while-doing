@@ -171,10 +171,11 @@ export default function SessionForm({
   // Policy parameter (single field, meaning depends on the policy):
   //   KG variants → m* (days) — how many repeat experiments the policy
   //     assumes when computing KG (batch-size trick).
-  //   IE → z_alpha (# std devs) — LCB coefficient.
+  //   IE → z_alpha (# std devs) — UCB coefficient (maximise frame).
   //   Random / Human → unused.
-  const [mStarStr,  setMStarStr]  = useState(savedAdv.mStar  != null ? String(savedAdv.mStar)  : '1');
-  const [zAlphaStr, setZAlphaStr] = useState(savedAdv.zAlpha != null ? String(savedAdv.zAlpha) : '0');
+  const [mStarStr,       setMStarStr]       = useState(savedAdv.mStar       != null ? String(savedAdv.mStar)       : '1');
+  const [zAlphaStr,      setZAlphaStr]      = useState(savedAdv.zAlpha      != null ? String(savedAdv.zAlpha)      : '0');
+  const [sigmaGreedyStr, setSigmaGreedyStr] = useState(savedAdv.sigmaGreedy != null ? String(savedAdv.sigmaGreedy) : '0');
 
   // Reporting level — controls how much of the diagnostic UI is shown.
   // Basic = core charts only; Advanced also shows the KG(x;m) card.
@@ -199,10 +200,12 @@ export default function SessionForm({
   const isHuman = effectivePolicy === 'human';
   const isKGFamily = ['kg', 'kg_indep', 'okg', 'okg_indep'].includes(effectivePolicy);
   const isIE = effectivePolicy === 'ie';
+  const isRandomizedGreedy = effectivePolicy === 'randomized_greedy';
 
   // Parsed numeric versions of the policy-parameter inputs.
-  const mStar  = Math.max(1, Math.round(Number(mStarStr) || 1));
-  const zAlpha = Math.max(0, Number(zAlphaStr) || 0);
+  const mStar       = Math.max(1, Math.round(Number(mStarStr) || 1));
+  const zAlpha      = Math.max(0, Number(zAlphaStr) || 0);
+  const sigmaGreedy = Math.max(0, Number(sigmaGreedyStr) || 0);
 
   // θ search-box bounds — always sent as scalars for 1-D, as 2-tuples for 2-D.
   const impparamMin = is2D
@@ -265,7 +268,7 @@ export default function SessionForm({
   // "Save and exit" (and every session-create) round-trips edits.
   function persistAdvanced() {
     writeSavedAdvanced({
-      seed, stationary, mStar, zAlpha, reportLevel, adv,
+      seed, stationary, mStar, zAlpha, sigmaGreedy, reportLevel, adv,
     });
   }
 
@@ -276,9 +279,13 @@ export default function SessionForm({
     setLoading(true);
     try {
       persistAdvanced();
-      // acq_config carries the IE's z_alpha (θ^IE). Server-side default
-      // is 0 (greedy); we only send a nonzero value when IE is selected.
-      const acqConfigPayload = isIE ? { z_alpha: zAlpha } : {};
+      // acq_config carries the IE's z_alpha (θ^IE) or RandomizedGreedy's
+      // sigma_greedy — server-side defaults are 0, so we only send the
+      // one that applies to the selected policy.
+      const acqConfigPayload =
+        isIE               ? { z_alpha: zAlpha } :
+        isRandomizedGreedy ? { sigma_greedy: sigmaGreedy } :
+        {};
       await onCreate({
         app_name: appName,
         policy: effectivePolicy,
@@ -342,12 +349,13 @@ export default function SessionForm({
   // landing page — so the user knows what they're about to Start.
   const appLabel    = APPS.find(a => a.value === appName)?.label ?? appName;
   const policyLabel = ({
-    human: 'Human — I pick θ each round',
+    human: 'Manual — I pick θ each round',
+    randomized_greedy: 'Randomized greedy',
     kg: 'KG — offline correlated (analytic)',
     kg_indep: 'KG — offline independent',
     okg: 'KG — online correlated',
     okg_indep: 'KG — online independent',
-    ie: 'IE — LCB (upper-confidence exploration)',
+    ie: 'IE',
     random: 'Random — baseline',
   })[effectivePolicy] ?? effectivePolicy;
 
@@ -423,6 +431,21 @@ export default function SessionForm({
                 IE score = μ_n(x) − z_alpha · σ_n(x). z_alpha = 0 is pure
                 exploitation (greedy); higher values pull toward under-observed
                 θ. Typical exploration range: 0 – 3.
+              </span>
+            </div>
+          )}
+          {isRandomizedGreedy && (
+            <div className="form-group">
+              <label>Policy parameter — σ_greedy (θ-noise std)</label>
+              <input
+                type="number" value={sigmaGreedyStr} min={0} step="any"
+                onChange={e => setSigmaGreedyStr(e.target.value)}
+                onBlur={() => setSigmaGreedyStr(String(sigmaGreedy))}
+              />
+              <span style={{ fontSize: 12, color: '#64748b' }}>
+                θ_next = argmax(belief) + N(0, σ_greedy²), clipped to the
+                θ-box. σ_greedy = 0 is pure greedy exploitation; larger
+                values jitter around the best-guess θ.
               </span>
             </div>
           )}

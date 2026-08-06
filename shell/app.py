@@ -15,6 +15,7 @@ from policy import (
     BeliefConfig, AcquisitionConfig, SessionConfig,
     RandomPolicy, IEPolicy, KGPolicy, Session,
     KGMCPolicy, KGIndependentPolicy, OKGCorrelatedPolicy, OKGIndependentPolicy,
+    RandomizedGreedyPolicy,
     kg_analytic_correlated_at, kg_mc_correlated_at, kg_independent_at,
     kg_vs_batch_size, kg_indep_scalar_vs_batch_size, kg_indep_beliefs_vs_batch_size,
 )
@@ -28,6 +29,8 @@ from .models import (
     RevealResponse, KGComparisonResponse,
     BatchRequest, BatchResponse, BatchPolicyResult,
     SetMStarRequest, SetMStarResponse,
+    SetZAlphaRequest, SetZAlphaResponse,
+    SetSigmaGreedyRequest, SetSigmaGreedyResponse,
     SetLengthScaleRequest, SetLengthScaleResponse,
     ExperimentRequest, ExperimentResponse,
     OneMoreRequest,
@@ -119,6 +122,8 @@ def _make_policy(name: str, acq_cfg: AcquisitionConfig, budget: int | None):
         return OKGCorrelatedPolicy(acq_cfg)     # online correlated (μ + KG(m*))
     if name == "okg_indep":
         return OKGIndependentPolicy(acq_cfg)    # online independent
+    if name == "randomized_greedy":
+        return RandomizedGreedyPolicy(acq_cfg)  # argmin(mu) + N(0, σ_greedy)
     return RandomPolicy(acq_cfg)  # "random" and "human" both use RandomPolicy
 
 
@@ -220,6 +225,59 @@ def set_m_star(sid: str, body: SetMStarRequest) -> SetMStarResponse:
     return SetMStarResponse(m_star=session.m_star)
 
 
+@app.post("/sessions/{sid}/z_alpha")
+def set_z_alpha(sid: str, body: SetZAlphaRequest) -> SetZAlphaResponse:
+    """
+    Update the IE exploration coefficient z_alpha for an existing session.
+    Effective on the NEXT policy.propose(); past steps unchanged. If the
+    policy isn't currently IE the value is still stored on the acq_config
+    so it takes effect if the user later switches to IE.
+    """
+    session = _get_or_404(sid)
+    from dataclasses import replace as _replace
+    session._acq_config = _replace(session._acq_config, z_alpha=float(body.z_alpha))
+    # Rebuild the policy so IE picks up the new coefficient. For non-IE
+    # policies this is a harmless re-create with the same class.
+    session.set_policy(_make_policy(
+        _policy_name_from_class(session._policy),
+        session._acq_config, budget=None,
+    ))
+    return SetZAlphaResponse(z_alpha=float(session._acq_config.z_alpha))
+
+
+@app.post("/sessions/{sid}/sigma_greedy")
+def set_sigma_greedy(sid: str, body: SetSigmaGreedyRequest) -> SetSigmaGreedyResponse:
+    """
+    Update the RandomizedGreedy θ-noise std σ_greedy for an existing
+    session. Same semantics as /z_alpha: stored on acq_config, takes
+    effect on the next propose(), harmless when a different policy is
+    active.
+    """
+    session = _get_or_404(sid)
+    from dataclasses import replace as _replace
+    session._acq_config = _replace(session._acq_config,
+                                   sigma_greedy=max(0.0, float(body.sigma_greedy)))
+    session.set_policy(_make_policy(
+        _policy_name_from_class(session._policy),
+        session._acq_config, budget=None,
+    ))
+    return SetSigmaGreedyResponse(sigma_greedy=float(session._acq_config.sigma_greedy))
+
+
+def _policy_name_from_class(policy) -> str:
+    """Reverse-map a Policy instance to the registry string used by _make_policy."""
+    cls = policy.__class__.__name__
+    return {
+        "IEPolicy": "ie",
+        "KGPolicy": "kg",
+        "KGIndependentPolicy": "kg_indep",
+        "OKGCorrelatedPolicy": "okg",
+        "OKGIndependentPolicy": "okg_indep",
+        "RandomizedGreedyPolicy": "randomized_greedy",
+        "RandomPolicy": "random",
+    }.get(cls, "random")
+
+
 @app.post("/sessions/{sid}/length_scale")
 def set_length_scale(sid: str, body: SetLengthScaleRequest) -> SetLengthScaleResponse:
     """
@@ -289,6 +347,12 @@ def experiment(sid: str, body: ExperimentRequest) -> ExperimentResponse:
         session._acq_config = _replace(session._acq_config, z_alpha=float(body.z_alpha))
         # Rebuild the policy so it captures the new config.
         session.set_policy(_make_policy(body.policy, session._acq_config, budget=None))
+    # sigma_greedy analogously carries the RandomizedGreedy θ-noise std.
+    if body.sigma_greedy is not None and body.policy == "randomized_greedy":
+        from dataclasses import replace as _replace
+        session._acq_config = _replace(session._acq_config,
+                                       sigma_greedy=float(body.sigma_greedy))
+        session.set_policy(_make_policy(body.policy, session._acq_config, budget=None))
 
     n_days = int(body.n_days)
     if n_days < 1:
@@ -351,6 +415,13 @@ def one_more(sid: str, body: OneMoreRequest) -> ExperimentResponse:
     if body.z_alpha is not None and (body.policy or session._policy.__class__.__name__ == "IEPolicy"):
         from dataclasses import replace as _replace
         session._acq_config = _replace(session._acq_config, z_alpha=float(body.z_alpha))
+    if body.sigma_greedy is not None and (
+        body.policy == "randomized_greedy"
+        or session._policy.__class__.__name__ == "RandomizedGreedyPolicy"
+    ):
+        from dataclasses import replace as _replace
+        session._acq_config = _replace(session._acq_config,
+                                       sigma_greedy=float(body.sigma_greedy))
     if body.policy is not None:
         session.set_policy(_make_policy(body.policy, session._acq_config, budget=None))
 

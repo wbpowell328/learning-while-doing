@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, getKGvsM, setMStar, setLengthScale, getObservationsEnriched, runExperiment, runOneMore, resetSession, deleteSession } from './api';
+import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, getKGvsM, setMStar, setZAlpha, setSigmaGreedy, setLengthScale, getObservationsEnriched, runExperiment, runOneMore, resetSession, deleteSession } from './api';
 import SessionForm from './components/SessionForm';
 import PosteriorChart from './components/PosteriorChart';
 import Belief3DChart from './components/Belief3DChart';
@@ -278,6 +278,31 @@ export default function App() {
     }
   }, [session, refreshEnriched, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2]);
 
+  // z_alpha (IE) — mid-session tunable via the ExperimentBar's
+  // "policy parameter" slot. IE's argmin score = μ - z_alpha·σ, so the
+  // KG(x) chart doesn't depend on z_alpha; no refetch needed there.
+  const handleZAlphaChange = useCallback(async (newZAlpha) => {
+    if (!session) return;
+    try {
+      const resp = await setZAlpha(session.id, newZAlpha);
+      setSession(prev => prev ? { ...prev, z_alpha: resp.z_alpha } : prev);
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [session]);
+
+  // σ_greedy (RandomizedGreedy) — same story: doesn't affect displayed
+  // KG or posterior; only the next proposal.
+  const handleSigmaGreedyChange = useCallback(async (newSigmaGreedy) => {
+    if (!session) return;
+    try {
+      const resp = await setSigmaGreedy(session.id, newSigmaGreedy);
+      setSession(prev => prev ? { ...prev, sigma_greedy: resp.sigma_greedy } : prev);
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [session]);
+
   // /experiment endpoint — one click, reset + K+1 iterations. Full
   // refresh of everything on the page afterwards. Belief config
   // (length_scale, m*) that the user set via mid-session controls is
@@ -502,6 +527,12 @@ export default function App() {
       seed: session_seed,
       budget: budget ?? null,
       m_star: created.m_star ?? 1,
+      // z_alpha / sigma_greedy default to 0 unless the SessionForm
+      // sent them in acq_config. Mirroring them on session state lets
+      // the ExperimentBar's policy-parameter field show their current
+      // values without an extra round-trip.
+      z_alpha:      acq_config?.z_alpha      ?? 0,
+      sigma_greedy: acq_config?.sigma_greedy ?? 0,
       // Whatever length_scale the user set in Advanced Parameters at
       // create time — the belief_config payload carries it.
       length_scale: belief_config?.length_scale ?? 0.04,
@@ -768,6 +799,12 @@ export default function App() {
         cumulativeScore={cumulativeScore}
         totalDays={totalDays}
         lastTheta={history.length > 0 ? history[history.length - 1][0] : null}
+        sessionMStar={session.m_star ?? 1}
+        sessionZAlpha={session.z_alpha ?? 0}
+        sessionSigmaGreedy={session.sigma_greedy ?? 0}
+        onMStarChange={handleMStarChange}
+        onZAlphaChange={handleZAlphaChange}
+        onSigmaGreedyChange={handleSigmaGreedyChange}
       />
 
       {/* Budget bar (human only) — informational, tracks n_steps vs the

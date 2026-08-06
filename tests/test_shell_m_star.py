@@ -88,6 +88,38 @@ def test_m_star_scales_policy_kg_values():
     )
 
 
+def test_z_alpha_endpoint_updates_session():
+    """POST /z_alpha stores the new value on acq_config; IE picks it up."""
+    r = client.post("/sessions", json={"policy": "ie", "session_seed": 42})
+    sid = r.json()["session_id"]
+    assert _sessions[sid]._acq_config.z_alpha == 0.0
+
+    r = client.post(f"/sessions/{sid}/z_alpha", json={"z_alpha": 2.5})
+    assert r.status_code == 200
+    assert r.json()["z_alpha"] == pytest.approx(2.5)
+    assert _sessions[sid]._acq_config.z_alpha == pytest.approx(2.5)
+
+
+def test_sigma_greedy_endpoint_updates_session():
+    """POST /sigma_greedy stores the new value on acq_config."""
+    r = client.post("/sessions", json={"policy": "randomized_greedy", "session_seed": 42})
+    sid = r.json()["session_id"]
+    assert _sessions[sid]._acq_config.sigma_greedy == 0.0
+
+    r = client.post(f"/sessions/{sid}/sigma_greedy", json={"sigma_greedy": 0.03})
+    assert r.status_code == 200
+    assert r.json()["sigma_greedy"] == pytest.approx(0.03)
+    assert _sessions[sid]._acq_config.sigma_greedy == pytest.approx(0.03)
+
+
+def test_z_alpha_endpoint_on_non_ie_policy_is_stored():
+    """Storing z_alpha on a KG session works; takes effect if user later swaps to IE."""
+    r = client.post("/sessions", json={"policy": "kg", "session_seed": 42})
+    sid = r.json()["session_id"]
+    client.post(f"/sessions/{sid}/z_alpha", json={"z_alpha": 1.5})
+    assert _sessions[sid]._acq_config.z_alpha == pytest.approx(1.5)
+
+
 def test_kg_endpoint_reflects_session_m_star():
     """
     The /sessions/{sid}/kg endpoint feeds the KG(x) chart on the frontend.

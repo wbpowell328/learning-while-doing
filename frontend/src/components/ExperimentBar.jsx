@@ -19,15 +19,16 @@
 import { useState, useEffect } from 'react';
 
 const POLICY_OPTIONS_1D = [
-  { value: 'kg',        label: 'KG offline correlated (analytic)' },
-  { value: 'kg_indep',  label: 'KG offline independent' },
-  { value: 'okg',       label: 'KG online correlated' },
-  { value: 'okg_indep', label: 'KG online independent' },
-  { value: 'ie',        label: 'IE — LCB' },
-  { value: 'random',    label: 'Random' },
-  { value: 'human',     label: 'Human — pick each θ' },
+  { value: 'kg',                label: 'KG offline correlated (analytic)' },
+  { value: 'kg_indep',          label: 'KG offline independent' },
+  { value: 'okg',               label: 'KG online correlated' },
+  { value: 'okg_indep',         label: 'KG online independent' },
+  { value: 'ie',                label: 'IE' },
+  { value: 'randomized_greedy', label: 'Randomized greedy' },
+  { value: 'random',            label: 'Random' },
+  { value: 'human',             label: 'Manual' },
 ];
-// Human is 1-D only for now.
+// Manual (human) is 1-D only for now.
 const POLICY_OPTIONS_2D = POLICY_OPTIONS_1D.filter(o => o.value !== 'human');
 
 // Tight width defaults for the numeric fields — Warren's ask was to
@@ -44,6 +45,71 @@ const selectStyle = {
   fontSize: 13, minWidth: 160,
 };
 const labelStyle = { color: '#475569', fontSize: 13 };
+
+// Per-policy tunable-parameter descriptor. Returns null for policies
+// that have no parameter (input area stays blank in the UI). Labels
+// come from Warren's spec (2026-08); if a policy grows a second
+// parameter later this schema will need to broaden.
+function policyParamMeta(policy, values, handlers) {
+  const { sessionMStar, sessionZAlpha, sessionSigmaGreedy } = values;
+  const { onMStarChange, onZAlphaChange, onSigmaGreedyChange } = handlers;
+  if (policy === 'okg' || policy === 'okg_indep') {
+    return {
+      label: 'ρˡᵏʰᵈ',
+      title: 'Lookahead parameter — multiplies the precision of the KG measurement noise',
+      value: sessionMStar,
+      step: 1, min: 1, integer: true,
+      onCommit: onMStarChange,
+    };
+  }
+  if (policy === 'ie') {
+    return {
+      label: 'θᴵᴱ',
+      title: 'IE score = μ_n(θ) + θ^IE · σ_n(θ). Multiplies the std dev of μ^n_θ.',
+      value: sessionZAlpha,
+      step: 'any', min: 0, integer: false,
+      onCommit: onZAlphaChange,
+    };
+  }
+  if (policy === 'randomized_greedy') {
+    return {
+      label: 'ρˢᵗᵈᵈᵉᵛ',
+      title: 'Std dev of Gaussian noise added to the greedy θ (same units as θ)',
+      value: sessionSigmaGreedy,
+      step: 'any', min: 0, integer: false,
+      onCommit: onSigmaGreedyChange,
+    };
+  }
+  return null;   // kg, kg_indep, random, human — no parameter
+}
+
+// Small controlled input for the current policy parameter. Commits on
+// blur / Enter so we don't fire a request per keystroke; falls back
+// to the last-good value if the user types garbage.
+function PolicyParamInput({ meta }) {
+  const { label, title, value, step, min, integer, onCommit } = meta;
+  const [str, setStr] = useState(String(value));
+  useEffect(() => { setStr(String(value)); }, [value]);
+  const commit = () => {
+    const v = integer ? Math.round(Number(str)) : Number(str);
+    if (!Number.isFinite(v) || v < min) { setStr(String(value)); return; }
+    if (v === value) return;
+    if (onCommit) onCommit(v);
+  };
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 8 }}
+          title={title}>
+      <span style={labelStyle}>{label}</span>
+      <input
+        type="number" value={str} step={step} min={min}
+        onChange={e => setStr(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }}
+        style={{ ...numStyleShort, width: 60 }}
+      />
+    </span>
+  );
+}
 
 function formatDollars(v) {
   if (v == null || !Number.isFinite(v)) return '—';
@@ -64,6 +130,14 @@ export default function ExperimentBar({
   cumulativeScore = null, // running total since the last Restart
   totalDays = 0,          // simulated days behind cumulativeScore; resets on Restart
   lastTheta = null,       // θ from the most recent iteration; null = fresh session
+  // Current session values for the tunable policy parameters — one
+  // and only one is shown at a time based on the selected policy.
+  sessionMStar       = 1,
+  sessionZAlpha      = 0,
+  sessionSigmaGreedy = 0,
+  onMStarChange,          // async (n) => void
+  onZAlphaChange,         // async (x) => void
+  onSigmaGreedyChange,    // async (x) => void
 }) {
   // Pre-fill θ with a sensible mid-box value so a first-time visitor
   // can hit Run without typing anything.
@@ -100,6 +174,15 @@ export default function ExperimentBar({
   // last-tested θ, so the label reads "Current point".
   const thetaLabel = lastTheta == null ? 'Starting point' : 'Current point';
   const policyOptions = dim === 2 ? POLICY_OPTIONS_2D : POLICY_OPTIONS_1D;
+
+  // Resolve the tunable parameter for the current policy — or null if
+  // this policy has none, in which case the slot to the right of Restart
+  // stays blank.
+  const paramMeta = policyParamMeta(
+    policy,
+    { sessionMStar, sessionZAlpha, sessionSigmaGreedy },
+    { onMStarChange, onZAlphaChange, onSigmaGreedyChange },
+  );
 
   // Input validity — used to disable Run so the user can't fire off a
   // malformed request (empty θ silently becomes 0 via Number("")=0,
@@ -229,6 +312,11 @@ export default function ExperimentBar({
               style={{ padding: '6px 20px', fontSize: 13 }}>
         {running ? 'running…' : 'Restart'}
       </button>
+
+      {/* Policy-parameter slot: label + editable value for the currently
+          selected policy, or nothing when the policy has no parameter.
+          Value lives on session state (mid-session edits propagate). */}
+      {paramMeta && <PolicyParamInput meta={paramMeta} />}
     </div>
 
     {/* Score-boxes row. Latest = total reward from the last button

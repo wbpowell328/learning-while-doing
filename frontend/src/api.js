@@ -109,6 +109,18 @@ export const setMStar = (sid, mStar) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ m_star: Math.max(1, Math.round(mStar)) }),
   });
+export const setZAlpha = (sid, zAlpha) =>
+  call(`/sessions/${sid}/z_alpha`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ z_alpha: Math.max(0, Number(zAlpha)) }),
+  });
+export const setSigmaGreedy = (sid, sigmaGreedy) =>
+  call(`/sessions/${sid}/sigma_greedy`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sigma_greedy: Math.max(0, Number(sigmaGreedy)) }),
+  });
 export const setLengthScale = (sid, lengthScale) =>
   call(`/sessions/${sid}/length_scale`, {
     method: 'POST',

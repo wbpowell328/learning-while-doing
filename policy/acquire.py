@@ -37,6 +37,9 @@ class AcquisitionConfig:
     grid_size: int = 100
     # IE tunable parameter — see IEPolicy docstring.
     z_alpha: float = 0.0
+    # RandomizedGreedy tunable parameter — Gaussian noise std added to
+    # the argmax-of-belief θ (same units as θ). 0 = pure greedy.
+    sigma_greedy: float = 0.0
 
 
 def _make_grid(lo, hi, grid_size: int) -> np.ndarray:
@@ -121,6 +124,45 @@ class IEPolicy:
         z = self.config.z_alpha
         score = mu - z * std
         return _grid_pick(self._grid, int(np.argmin(score)))
+
+
+# ---------------------------------------------------------------------------
+# Randomized greedy
+# ---------------------------------------------------------------------------
+
+class RandomizedGreedyPolicy:
+    """
+    Pick θ that appears to be best under the current belief, then jitter
+    it by N(0, σ_greedy) noise (per-dimension in the multivariate case).
+    The belief works in the internal "minimise" frame, so "best" is
+    argmin of the posterior mean over the grid.
+
+        θ_next = clip( argmin_θ μ_n(θ) + N(0, σ_greedy²) ,
+                       impparam_min, impparam_max )
+
+    σ_greedy = 0 recovers pure greedy exploitation (deterministic argmin
+    of the posterior mean). Larger σ_greedy explores the neighborhood of
+    the greedy pick without ever fully abandoning it.
+    """
+
+    def __init__(self, config: AcquisitionConfig | None = None) -> None:
+        self.config = config or AcquisitionConfig()
+        cfg = self.config
+        self._grid = _make_grid(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
+        self._lo = np.atleast_1d(np.asarray(cfg.impparam_min, dtype=float))
+        self._hi = np.atleast_1d(np.asarray(cfg.impparam_max, dtype=float))
+        self._dim = self._lo.size
+
+    def propose(self, model: BeliefModel, rng: np.random.Generator):
+        mu, _ = model.posterior(self._grid)
+        best_row = self._grid[int(np.argmin(mu))]
+        sigma = max(0.0, float(self.config.sigma_greedy))
+        if sigma > 0.0:
+            noise = rng.normal(0.0, sigma, size=self._dim)
+            proposal = np.clip(best_row + noise, self._lo, self._hi)
+        else:
+            proposal = best_row
+        return float(proposal[0]) if self._dim == 1 else proposal
 
 
 # ---------------------------------------------------------------------------
