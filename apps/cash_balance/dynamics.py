@@ -68,8 +68,14 @@ def sample_flows(
         ind[day] = retail_flow
         inst[day] = inst_flow
 
-        # Cash absorbs both flows first (can go negative).
+        # Cash absorbs both flows first (can go negative on redemption).
         cash += retail_flow + inst_flow
+        # Record cash HERE — pre-rebalance — so shortfall dips show on
+        # the chart. Post-rebalance cash always snaps back to θ×AUM
+        # (because the day-end rebalance draws from invested to cover),
+        # which hides the fact that a shortfall occurred and cost the
+        # fund the borrow-rate penalty. Warren's ask 2026-08.
+        cash_series[day] = cash
         # Invested earns market return.
         invested *= (1.0 + r_market_daily)
         aum = cash + invested
@@ -79,7 +85,6 @@ def sample_flows(
         transfer = max(transfer, -invested)   # no leverage
         cash += transfer
         invested -= transfer
-        cash_series[day] = cash
     return ind, inst, cash_series
 
 

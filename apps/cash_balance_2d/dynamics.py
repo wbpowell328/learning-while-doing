@@ -90,6 +90,8 @@ def sample_flows(
         aum_ind  += flow_ind
         aum_inst += flow_inst
         cash += flow_ind + flow_inst
+        # Pre-rebalance cash — see 1-D dynamics for the "why" comment.
+        cash_series[day] = cash
         invested *= (1.0 + r_market_daily)
         # Rebalance toward θ_ind·aum_ind + θ_inst·aum_inst (immediate).
         target_cash = theta_ind * aum_ind + theta_inst * aum_inst
@@ -97,7 +99,6 @@ def sample_flows(
         transfer = max(transfer, -invested)   # no leverage
         cash += transfer
         invested -= transfer
-        cash_series[day] = cash
     return ind, inst, cash_series
 
 
