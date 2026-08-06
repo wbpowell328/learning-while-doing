@@ -29,18 +29,20 @@ def sample_flows(
     config: SimConfig,
     session_seed: int,
     n_days: int,
-) -> tuple[np.ndarray, np.ndarray]:
+    impparam=None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Sample-path helper for the deposits/redemptions report. Mirrors the
-    exogenous portion of run_path but skips rebalancing, cost, and any
-    dependence on θ. Returns per-day signed net flows:
-      ind_flow_daily[t]   = individual investor net flow on day t
-      inst_flow_daily[t]  = institutional investor net flow on day t
+    Sample-path helper for the deposits/redemptions report. Returns
+    three per-day arrays:
+      ind_flow[t]     — individual investor net flow on day t
+      inst_flow[t]    — institutional investor net flow on day t
+      cash_series[t]  — end-of-day cash under a constant-θ rebalance
+                        (no policy adjustment across days). Can be
+                        negative on shortfall days.
 
-    Positive = deposit, negative = redemption. Individual AUM feeds
-    back into itself; institutional AUM feeds back into itself.
-    Sufficient for a diagnostic sample-path view. Uses a dedicated
-    spawn_key so it doesn't collide with policy-run RNG streams.
+    `impparam` is a length-2 (θ_ind, θ_inst); defaults to (0.10, 0.10)
+    when None. Positive flow = deposit, negative = redemption. Uses a
+    dedicated spawn_key so it doesn't collide with policy-run streams.
     """
     rng = np.random.default_rng(
         np.random.SeedSequence(entropy=session_seed, spawn_key=(0xF10C5A,)),
@@ -50,14 +52,25 @@ def sample_flows(
     mu_ind_daily    = cfg.mu_ind_annual * dt
     sigma_ind_daily = cfg.sigma_ind_annual * np.sqrt(dt)
     jump_rate_daily = cfg.jump_rate_inst_annual * dt
+    r_market_daily  = cfg.r_market_annual * dt
     mu_regime_daily = tuple(m * dt for m in cfg.mu_regime_annual)
+
+    if impparam is None:
+        theta_ind, theta_inst = 0.10, 0.10
+    else:
+        theta_arr = np.atleast_1d(np.asarray(impparam, dtype=float)).reshape(-1)
+        theta_ind  = float(theta_arr[0])
+        theta_inst = float(theta_arr[-1])  # -1 tolerates scalar input
 
     aum_ind  = cfg.initial_aum_ind_fraction * cfg.initial_aum
     aum_inst = cfg.initial_aum - aum_ind
+    cash = theta_ind * aum_ind + theta_inst * aum_inst
+    invested = aum_ind + aum_inst - cash
     regime = cfg.initial_regime
 
     ind = np.empty(n_days)
     inst = np.empty(n_days)
+    cash_series = np.empty(n_days)
     for day in range(n_days):
         if not cfg.stationary and rng.random() < cfg.regime_switch_prob:
             regime = 1 - regime
@@ -72,9 +85,20 @@ def sample_flows(
             flow_inst += direction * size_frac * aum_inst
         ind[day] = flow_ind
         inst[day] = flow_inst
+
+        # Flows update per-class AUM and hit cash.
         aum_ind  += flow_ind
         aum_inst += flow_inst
-    return ind, inst
+        cash += flow_ind + flow_inst
+        invested *= (1.0 + r_market_daily)
+        # Rebalance toward θ_ind·aum_ind + θ_inst·aum_inst (immediate).
+        target_cash = theta_ind * aum_ind + theta_inst * aum_inst
+        transfer = target_cash - cash
+        transfer = max(transfer, -invested)   # no leverage
+        cash += transfer
+        invested -= transfer
+        cash_series[day] = cash
+    return ind, inst, cash_series
 
 
 def _make_rng(session_seed: int, experiment_index: int) -> np.random.Generator:

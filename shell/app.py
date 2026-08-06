@@ -509,7 +509,11 @@ def flow_sample(sid: str, horizon: int = 200) -> dict:
     if not hasattr(app_mod, "sample_flows"):
         raise HTTPException(status_code=400,
             detail=f"App '{app_name}' does not implement sample_flows")
-    ind, inst = app_mod.sample_flows(
+    # Warren-2026-08: the cash line is drawn on the same graph using a
+    # FIXED initial θ (0.10 or [0.10, 0.10] for 2-D). Deliberately
+    # decoupled from any belief-driven policy so the report stays a
+    # pure "what would happen with a simple starter buffer?" view.
+    ind, inst, cash_series = app_mod.sample_flows(
         session._sim_config, session._session_seed, n,
     )
     ind_dep  = np.clip(ind,  a_min=0.0, a_max=None)
@@ -523,6 +527,7 @@ def flow_sample(sid: str, horizon: int = 200) -> dict:
         "individual_redemption": ind_red.tolist(),
         "institutional_deposit":    inst_dep.tolist(),
         "institutional_redemption": inst_red.tolist(),
+        "cash_balance":          cash_series.tolist(),
         "dim": int(session.dim),
     }
 
