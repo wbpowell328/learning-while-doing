@@ -593,9 +593,12 @@ def observations_enriched(sid: str) -> dict:
             "kg": kg_val,
         })
         # Now fold this observation in for the next row's "prior" state
-        # (per-day frame).
+        # (per-day frame). Per-obs noise matches what Session uses so
+        # replay mirrors the live belief.
+        import math
         internal_batch = float(disp_val) if session.minimize else -float(disp_val)
-        fresh.update(impparam, internal_batch / n)
+        fresh.update(impparam, internal_batch / n,
+                     noise_std=float(fresh.config.noise_std) / math.sqrt(max(1, n)))
 
     return {"rows": rows}
 

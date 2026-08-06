@@ -89,6 +89,12 @@ class BeliefModel:
         # Observation store — always 2-D internally: X shape (n, dim), y shape (n,).
         self._X: np.ndarray = np.empty((0, self.dim), dtype=float)
         self._y: np.ndarray = np.empty((0,), dtype=float)
+        # Per-observation noise variance. Empty means "use config.noise_std²
+        # for every row" (backward-compat with callers that don't pass one).
+        # Populated by Session when observations come from different-length
+        # batches so the belief can trust longer batches more (variance of
+        # a per-day-average scales as σ² / n_days).
+        self._obs_noise_var: np.ndarray = np.empty((0,), dtype=float)
         self._chol:  np.ndarray | None = None
         self._alpha: np.ndarray | None = None
 
@@ -96,13 +102,24 @@ class BeliefModel:
     # Public API
     # ------------------------------------------------------------------
 
-    def update(self, impparam, observed_cost: float) -> None:
-        """Append one (θ, cost) observation and invalidate the cached decomposition."""
+    def update(self, impparam, observed_cost: float,
+               noise_std: float | None = None) -> None:
+        """
+        Append one (θ, cost) observation.
+
+        `noise_std` (optional): if given, overrides config.noise_std for
+        just this observation. Session uses this so a per-day-average over
+        n days is told to the belief with noise σ_n / √n_days (avg-of-iid
+        scaling), instead of the belief conservatively assuming single-
+        day noise on every observation.
+        """
         x = _as_2d(impparam, self.dim)
         if x.shape[0] != 1:
             raise ValueError(f"update() expects a single point; got shape {x.shape}")
         self._X = np.vstack([self._X, x])
         self._y = np.concatenate([self._y, [float(observed_cost)]])
+        var = float(noise_std) ** 2 if noise_std is not None else float(self.config.noise_std) ** 2
+        self._obs_noise_var = np.concatenate([self._obs_noise_var, [var]])
         self._chol = None
         self._alpha = None
 
@@ -196,7 +213,11 @@ class BeliefModel:
         n = self._X.shape[0]
 
         K = self._rbf(self._X, self._X)
-        K += (cfg.noise_std ** 2 + cfg.jitter) * np.eye(n)
+        # Per-observation noise variance on the diagonal (falls back to
+        # config.noise_std² when a row was appended without an override).
+        noise_var = self._obs_noise_var if self._obs_noise_var.size == n \
+                    else np.full(n, cfg.noise_std ** 2)
+        K += np.diag(noise_var + cfg.jitter)
 
         self._chol = np.linalg.cholesky(K)
         residual = self._y - cfg.prior_mean

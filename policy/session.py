@@ -138,6 +138,18 @@ class Session:
             return float(result.total_cost)
         return float(result.total_reward)
 
+    def _per_obs_noise(self, n_days: int) -> float:
+        """
+        Noise std for a single per-day-average observation over n_days.
+        The belief's config.noise_std is the per-DAY noise; the average
+        of n_days iid daily samples has std σ_n / √n_days. Feeding this
+        as the observation's noise makes the belief trust longer batches
+        more, which is the whole point of accumulating days.
+        """
+        import math
+        n = max(1, int(n_days))
+        return float(self._belief.config.noise_std) / math.sqrt(n)
+
     def _effective_n_days(self, n_days: int | None) -> int:
         """
         Resolve the batch length in trading days.
@@ -167,7 +179,8 @@ class Session:
             experiment_index=self._step_count,
             n_days=n,
         )
-        self._belief.update(impparam, self._observed_value(result, n))
+        self._belief.update(impparam, self._observed_value(result, n),
+                            noise_std=self._per_obs_noise(n))
         self._history.append((impparam, self._display_value(result)))
         self._history_n_days.append(n)
         self._step_count += 1
@@ -184,7 +197,8 @@ class Session:
             experiment_index=self._step_count,
             n_days=n,
         )
-        self._belief.update(impparam, self._observed_value(result, n))
+        self._belief.update(impparam, self._observed_value(result, n),
+                            noise_std=self._per_obs_noise(n))
         self._history.append((impparam, self._display_value(result)))
         self._history_n_days.append(n)
         self._step_count += 1
@@ -201,7 +215,8 @@ class Session:
         n = self._effective_n_days(n_days)
         # Belief always minimises; negate reward for maximise apps.
         internal_batch = v if self._minimize else -v
-        self._belief.update(impparam, internal_batch / n)
+        self._belief.update(impparam, internal_batch / n,
+                            noise_std=self._per_obs_noise(n))
         self._history.append((impparam, v))
         self._history_n_days.append(n)
 
@@ -324,7 +339,8 @@ class Session:
         for (impparam, disp_val), n_days in zip(self._history, self._history_n_days):
             n = max(1, int(n_days))
             per_day = float(disp_val) / n if self._minimize else -float(disp_val) / n
-            new_belief.update(impparam, per_day)
+            new_belief.update(impparam, per_day,
+                              noise_std=self._per_obs_noise(n))
         self._belief = new_belief
 
     @property
