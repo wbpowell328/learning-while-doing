@@ -126,6 +126,7 @@ export default function ExperimentBar({
   onOneMore,         // async (spec) => void — one more iteration, no reset
   onRestart,         // async () => void — reset to initial conditions, do NOT run
   onManualEvaluate,  // async (theta, n_days) => void — Manual-policy single eval
+  initialTheta,      // scalar (1-D) or [t1, t2] (2-D) — pre-fill for Starting-point
   canOneMore = false, // enable "One more" only after at least one Run
   latestScore = null,     // total reward from the last batch (Restart or One more)
   cumulativeScore = null, // running total since the last Restart
@@ -140,10 +141,12 @@ export default function ExperimentBar({
   onZAlphaChange,         // async (x) => void
   onSigmaGreedyChange,    // async (x) => void
 }) {
-  // Pre-fill θ with a sensible mid-box value so a first-time visitor
-  // can hit Run without typing anything.
-  const [theta1, setTheta1] = useState('0.1');
-  const [theta2, setTheta2] = useState('0.1');
+  // Pre-fill θ from the Advanced-parameters "Initial value" field
+  // (or 0.10 if the user didn't set one). 2-D case takes both dims.
+  const _init1 = Array.isArray(initialTheta) ? Number(initialTheta[0]) : Number(initialTheta);
+  const _init2 = Array.isArray(initialTheta) ? Number(initialTheta[1]) : Number(initialTheta);
+  const [theta1, setTheta1] = useState(String(Number.isFinite(_init1) ? _init1 : 0.1));
+  const [theta2, setTheta2] = useState(String(Number.isFinite(_init2) ? _init2 : 0.1));
   const [nDays,  setNDays]  = useState('50');
   const [policy, setPolicy] = useState(defaultPolicy || 'kg');
   const [K,      setK]      = useState('0');
@@ -160,15 +163,18 @@ export default function ExperimentBar({
   // back to the pre-fill 0.1 so the box always reads well.
   useEffect(() => {
     if (lastTheta == null) {
-      setTheta1('0.1');
-      setTheta2('0.1');
+      // No history yet (fresh session or Restart) — snap back to the
+      // Advanced-parameters initial θ.
+      setTheta1(String(Number.isFinite(_init1) ? _init1 : 0.1));
+      setTheta2(String(Number.isFinite(_init2) ? _init2 : 0.1));
     } else if (dim === 2 && Array.isArray(lastTheta)) {
       setTheta1(String(lastTheta[0]));
       setTheta2(String(lastTheta[1]));
     } else {
       setTheta1(String(lastTheta));
     }
-  }, [lastTheta, dim]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastTheta, dim, _init1, _init2]);
 
   // Label follows history: on a fresh / just-Restarted session the box
   // is the user's starting point; once anything has run, it's the

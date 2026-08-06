@@ -426,12 +426,16 @@ export default function App() {
         setBestImpparam(p2.best_impparam);
       }
       // Restart also resets the ExperimentBar's Starting-point box to
-      // its 0.1 pre-fill (via its lastTheta=null useEffect); mirror
-      // that on the cash-balance chart so both surfaces agree.
+      // its pre-fill (via its lastTheta=null useEffect); mirror that
+      // on the cash-balance chart using the same initial θ the user
+      // set in Advanced Parameters.
+      const init = session.initial_theta;
       if (session.dim === 2) {
-        await refreshFlowSample(0.1, 0.1);
+        const t1 = Array.isArray(init) ? Number(init[0]) : 0.1;
+        const t2 = Array.isArray(init) ? Number(init[1]) : 0.1;
+        await refreshFlowSample(t1, t2);
       } else {
-        await refreshFlowSample(0.1);
+        await refreshFlowSample(Number(init ?? 0.1));
       }
     } catch (e) {
       setError(String(e));
@@ -542,7 +546,7 @@ export default function App() {
   const handleCreate = useCallback(async ({
     app_name, policy, session_seed,
     sim_config, belief_config, acq_config, session_config,
-    budget, m_star, report_level, flow_horizon,
+    budget, m_star, report_level, flow_horizon, initial_theta,
   }) => {
     setError(null);
     // Single-policy mode is the only mode now; batch mode was removed.
@@ -580,6 +584,10 @@ export default function App() {
       length_scale: belief_config?.length_scale ?? 0.04,
       // Frontend-only setting — controls which diagnostic panels render.
       report_level: report_level ?? 'basic',
+      // Starting θ from Advanced Parameters. Pre-fills the
+      // ExperimentBar's Starting-point box and seeds the initial
+      // cash-balance chart. Scalar for 1-D, 2-vector for 2-D.
+      initial_theta: initial_theta ?? (dim === 2 ? [0.1, 0.1] : 0.1),
     });
     setHistory([]);
     setEnrichedRows([]);
@@ -600,13 +608,17 @@ export default function App() {
     setKg2D(null);
     setFlowSample(null);
     const horizon = Math.max(1, Math.min(5000, Math.round(Number(flow_horizon) || 200)));
+    // Initial cash-line θ — same value that pre-fills the ExperimentBar's
+    // Starting-point box. Falls back to 0.1 if nothing was supplied.
+    const initTheta1 = Array.isArray(initial_theta) ? Number(initial_theta[0]) : Number(initial_theta ?? 0.1);
+    const initTheta2 = Array.isArray(initial_theta) ? Number(initial_theta[1]) : null;
 
     if (dim === 1) {
       const [post, kg, kgm, flow] = await Promise.all([
         getPosterior(session_id),
         getKGComparison(session_id, 0.01, 50, effectiveBudget),
         getKGvsM(session_id, 50, null),   // fresh session — belief's σ_ε, default m_max
-        getFlowSample(session_id, horizon),
+        getFlowSample(session_id, horizon, initTheta1),
       ]);
       setPosterior(post);
       setKgComparison(kg);
@@ -619,7 +631,7 @@ export default function App() {
         getPosterior2D(session_id, 30),
         getKG2D(session_id, 20),
         getKGvsM(session_id, 50, null, null, null),
-        getFlowSample(session_id, horizon),
+        getFlowSample(session_id, horizon, initTheta1, initTheta2),
       ]);
       setPosterior2D(p2);
       setKg2D(kg2);
@@ -851,6 +863,7 @@ export default function App() {
         onOneMore={handleOneMore}
         onRestart={handleRestart}
         onManualEvaluate={handleEvaluate}
+        initialTheta={session.initial_theta}
         canOneMore={nSteps > 0}
         latestScore={latestScore}
         cumulativeScore={cumulativeScore}

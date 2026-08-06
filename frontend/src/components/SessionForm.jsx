@@ -18,6 +18,12 @@ const ADV_DEFAULTS = {
   signal_std:        '15',
   noise_std:         '100',
   prior_mean:        '175',
+  // Starting θ that pre-fills the ExperimentBar's "Starting point"
+  // box (and thereby the initial cash-balance sample-path chart).
+  // Two components for the 2-D app.
+  initial_theta:     '0.10',
+  initial_theta1:    '0.10',
+  initial_theta2:    '0.10',
   // Simulation model (1-D app only) — the underlying truth F(θ) and its per-run noise.
   // Jump size is displayed in dollars for legibility; converted to
   // jump_mean_log = ln(median$ / initial_aum) on submit. initial_aum
@@ -167,6 +173,10 @@ const ROWS_1D = [
     source: 'adv:theta1_max', step: 'any', min: 0,
     range: '',
     desc: 'Upper limit for the fraction of assets under management (AUM) held in cash.' },
+  { kind: 'number', label: 'Initial value of θ',
+    source: 'adv:initial_theta', step: 'any', min: 0,
+    range: 'inside the θ box',
+    desc: 'Starting cash-buffer fraction that pre-fills the "Starting point" box on the game\'s control bar. Also seeds the initial cash-balance sample-path chart.' },
 
   { kind: 'section', label: 'Parameters controlling belief about the profit function (all per day)' },
   { kind: 'number', label: 'Length scale (ℓ)',
@@ -239,6 +249,14 @@ const ROWS_2D = [
     step: 'any', min: 0,
     range: '[0.01 – 0.40]',
     desc: 'Min and max for the fraction of institutional AUM held in cash.' },
+  { kind: 'number', label: 'Initial value of θ₁ (retail)',
+    source: 'adv:initial_theta1', step: 'any', min: 0,
+    range: 'inside θ₁ box',
+    desc: 'Starting individual-investor cash-buffer fraction. Pre-fills the θ₁ box on the control bar and seeds the cash-balance sample chart.' },
+  { kind: 'number', label: 'Initial value of θ₂ (institutional)',
+    source: 'adv:initial_theta2', step: 'any', min: 0,
+    range: 'inside θ₂ box',
+    desc: 'Starting institutional cash-buffer fraction. Pre-fills the θ₂ box on the control bar.' },
 
   { kind: 'section', label: 'Parameters controlling belief about the profit function (all per day)' },
   { kind: 'number', label: 'Length scale (ℓ)',
@@ -531,6 +549,12 @@ export default function SessionForm({
         m_star: isKGFamily ? mStar : 1,
         report_level: reportLevel,
         flow_horizon: flowHorizon,
+        // Starting θ for the ExperimentBar's Starting-point box and
+        // the initial cash-balance sample-path fetch. 2-D uses a
+        // 2-vector; 1-D a scalar.
+        initial_theta: is2D
+          ? [numeric('initial_theta1'), numeric('initial_theta2')]
+          : numeric('initial_theta'),
       });
     } finally {
       setLoading(false);
