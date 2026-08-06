@@ -61,6 +61,24 @@ def _to_display(session: "Session", value):
         arr = -arr
     return arr
 
+
+def _display_n_days(session: "Session") -> int:
+    """
+    Reference batch length for scaling per-day belief quantities into
+    per-batch dollars for display. Uses the most recent iteration's
+    n_days when the session has any history, otherwise the session's
+    baseline horizon (horizon_weeks × 5).
+
+    Rationale: the user's mental model comes from the last Run/Repeat
+    click, and every downstream chart (GP posterior, KG(x), etc.) is
+    easier to read in the same "per-batch" units the score boxes and
+    observation dots already use.
+    """
+    n_hist = getattr(session, "history_n_days", None)
+    if n_hist:
+        return max(1, int(n_hist[-1]))
+    return max(1, int(session._sc.horizon_weeks) * 5)
+
 app = FastAPI(title="learning-while-doing")
 
 # CORS: default to Vite dev; override in prod via ALLOWED_ORIGINS (comma-separated).
@@ -640,7 +658,11 @@ def posterior_2d(sid: str, grid_size: int = 30) -> Posterior2DResponse:
     grid = np.stack([G1.ravel(), G2.ravel()], axis=-1)   # (grid_size**2, 2)
 
     mean, std = session.belief.posterior(grid)
-    mean_display = _to_display(session, mean)  # negated for maximise apps
+    # Scale per-day belief output to per-batch dollars so the surface
+    # matches the observation dots (which are per-batch reward).
+    n = _display_n_days(session)
+    mean_display = _to_display(session, mean) * n
+    std = np.asarray(std, dtype=float) * n
 
     # History flattened as rows [theta1, theta2, value_in_display_frame]
     # (session.history already stores display-frame values.)
@@ -682,6 +704,8 @@ def kg_2d(sid: str, grid_size: int = 20) -> KG2DResponse:
 
     # candidates == grid — KG at every grid point using itself as the search set.
     kg = kg_analytic_correlated_at(session.belief, grid, grid)
+    # Belief is per-day; display per-batch to match history dots on the surface.
+    kg = np.asarray(kg, dtype=float) * _display_n_days(session)
 
     hist_rows: list[list[float]] = []
     for t, c in session.history:
@@ -976,16 +1000,22 @@ def kg_comparison(
     remaining = max(0, int(budget) - steps_used)
     online_ana_internal = mu_probes - remaining * ana
     online_ind_internal = mu_probes - remaining * ind
-    online_ana = _to_display(session, online_ana_internal).tolist()
-    online_ind = _to_display(session, online_ind_internal).tolist()
-    mu_display = _to_display(session, mu_probes).tolist()
+    # Scale from per-day to per-batch dollars for the chart. Both μ and
+    # KG are linear in the target function, so both get × n_days.
+    n = _display_n_days(session)
+    online_ana = (_to_display(session, online_ana_internal) * n).tolist()
+    online_ind = (_to_display(session, online_ind_internal) * n).tolist()
+    mu_display = (_to_display(session, mu_probes) * n).tolist()
+    ana_disp = (np.asarray(ana, dtype=float) * n).tolist()
+    mc_disp  = (np.asarray(mc,  dtype=float) * n).tolist()
+    ind_disp = (np.asarray(ind, dtype=float) * n).tolist()
 
     return KGComparisonResponse(
         impparams=probes.tolist(),
         posterior_mean=mu_display,
-        analytic_correlated=ana.tolist(),
-        mc_correlated=mc.tolist(),
-        independent=ind.tolist(),
+        analytic_correlated=ana_disp,
+        mc_correlated=mc_disp,
+        independent=ind_disp,
         online_correlated=online_ana,
         online_independent=online_ind,
         budget=int(budget),
@@ -1069,10 +1099,14 @@ def kg_vs_m(sid: str, theta: float | None = None, theta2: float | None = None,
     # updated only by observations that fell in its own bin. Historical
     # posterior uses the belief's actual noise; future_noise_std applies
     # only to hypothetical batch experiments in the KG expression.
-    # Session history is in display frame; negate for maximise apps so
-    # the belief sees "value to minimise".
+    # Session history is in per-batch display frame; convert to the
+    # belief's per-day frame (÷ n_days), then negate for maximise
+    # apps so the belief sees "value to minimise".
+    _hist_pairs   = session.history
+    _hist_n_days  = session.history_n_days
     history_internal = [
-        (t, (v if session.minimize else -v)) for t, v in session.history
+        (t, ((v / max(1, int(n))) if session.minimize else -(v / max(1, int(n)))))
+        for (t, v), n in zip(_hist_pairs, _hist_n_days)
     ]
     kg_positive_indep = kg_indep_beliefs_vs_batch_size(
         belief_for_kg, search_grid, theta_used, m_positive,
@@ -1173,10 +1207,16 @@ def posterior(sid: str, grid_size: int = 200) -> PosteriorResponse:
     cfg = session._acq_config
     grid = np.linspace(cfg.impparam_min, cfg.impparam_max, grid_size)
     mean, std = session.belief.posterior(grid)
+    # Belief is per-day; observations in the chart are per-batch dollars.
+    # Scale mean and std by the reference batch length so the line and
+    # the dots read on the same axis. std of a deterministic function
+    # scales linearly with n_days (F_batch = n × F_per_day → σ_batch
+    # = n × σ_per_day).
+    n = _display_n_days(session)
     return PosteriorResponse(
         impparams=grid.tolist(),
-        mean=_to_display(session, mean).tolist(),  # reward frame for maximise apps
-        std=std.tolist(),
+        mean=(_to_display(session, mean) * n).tolist(),
+        std=(np.asarray(std, dtype=float) * n).tolist(),
         best_impparam=session.best_impparam(),
     )
 
