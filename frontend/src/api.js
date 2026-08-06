@@ -129,6 +129,8 @@ export const setLengthScale = (sid, lengthScale) =>
   });
 export const getObservationsEnriched = (sid) =>
   call(`/sessions/${sid}/observations_enriched`);
+export const getFlowSample = (sid, horizon = 200) =>
+  call(`/sessions/${sid}/flow_sample?horizon=${horizon}`);
 export const runExperiment = (sid, spec) =>
   call(`/sessions/${sid}/experiment`, {
     method: 'POST',

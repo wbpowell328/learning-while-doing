@@ -74,6 +74,10 @@ app.add_middleware(
 
 # In-memory session store: session_id -> Session
 _sessions: dict[str, Session] = {}
+# Parallel map: session_id → app_name, so endpoints that need the app
+# module (sample_flows, etc.) can dispatch. The Session object itself
+# doesn't carry app_name — it only knows the simulate function.
+_session_app: dict[str, str] = {}
 
 
 def _make_step_response(result, session: Session) -> StepResponse:
@@ -200,6 +204,7 @@ def create_session(req: CreateSessionRequest) -> CreateSessionResponse:
     )
     sid = str(uuid4())
     _sessions[sid] = session
+    _session_app[sid] = req.app_name
 
     return CreateSessionResponse(
         session_id=sid,
@@ -460,6 +465,48 @@ def reset_session(sid: str) -> ExperimentResponse:
         best_impparam=_theta_out(best, dim),
         history=[],
     )
+
+
+@app.get("/sessions/{sid}/flow_sample")
+def flow_sample(sid: str, horizon: int = 200) -> dict:
+    """
+    A single exogenous sample path of daily deposits and redemptions
+    over `horizon` trading days — the flows the fund would see even
+    without any policy choice. Used by the "Deposits & redemptions"
+    report on the right column.
+
+    Returns per-day arrays split by investor class and direction:
+      individual_deposit    — positive part of retail flow (0 on days with net outflow)
+      individual_redemption — magnitude of the negative part
+      institutional_deposit / institutional_redemption — same, for the
+                              jump process
+
+    All values are dollars. `horizon` clamped to [1, 5000] to protect
+    against typos.
+    """
+    session = _get_or_404(sid)
+    n = max(1, min(5000, int(horizon)))
+    app_name = _session_app.get(sid, "cash_balance")
+    app_mod = apps.get_app(app_name)
+    if not hasattr(app_mod, "sample_flows"):
+        raise HTTPException(status_code=400,
+            detail=f"App '{app_name}' does not implement sample_flows")
+    ind, inst = app_mod.sample_flows(
+        session._sim_config, session._session_seed, n,
+    )
+    ind_dep  = np.clip(ind,  a_min=0.0, a_max=None)
+    ind_red  = np.clip(-ind, a_min=0.0, a_max=None)
+    inst_dep = np.clip(inst,  a_min=0.0, a_max=None)
+    inst_red = np.clip(-inst, a_min=0.0, a_max=None)
+    return {
+        "horizon": n,
+        "days": list(range(1, n + 1)),
+        "individual_deposit":    ind_dep.tolist(),
+        "individual_redemption": ind_red.tolist(),
+        "institutional_deposit":    inst_dep.tolist(),
+        "institutional_redemption": inst_red.tolist(),
+        "dim": int(session.dim),
+    }
 
 
 @app.get("/sessions/{sid}/observations_enriched")
@@ -1130,6 +1177,7 @@ def posterior(sid: str, grid_size: int = 200) -> PosteriorResponse:
 def delete_session(sid: str) -> None:
     _get_or_404(sid)
     del _sessions[sid]
+    _session_app.pop(sid, None)
 
 
 # ---------------------------------------------------------------------------

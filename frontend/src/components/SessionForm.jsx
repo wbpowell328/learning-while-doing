@@ -177,6 +177,12 @@ export default function SessionForm({
   const [zAlphaStr,      setZAlphaStr]      = useState(savedAdv.zAlpha      != null ? String(savedAdv.zAlpha)      : '0');
   const [sigmaGreedyStr, setSigmaGreedyStr] = useState(savedAdv.sigmaGreedy != null ? String(savedAdv.sigmaGreedy) : '0');
 
+  // Horizon H for the "Deposits & redemptions" sample-path report on
+  // the right column. Display-only — doesn't affect the belief or the
+  // simulator's policy runs.
+  const [flowHorizonStr, setFlowHorizonStr] = useState(savedAdv.flowHorizon != null ? String(savedAdv.flowHorizon) : '200');
+  const flowHorizon = Math.max(1, Math.min(5000, Math.round(Number(flowHorizonStr) || 200)));
+
   // Reporting level — controls how much of the diagnostic UI is shown.
   // Basic = core charts only; Advanced also shows the KG(x;m) card.
   const [reportLevel, setReportLevel] = useState(savedAdv.reportLevel ?? 'basic');
@@ -268,7 +274,7 @@ export default function SessionForm({
   // "Save and exit" (and every session-create) round-trips edits.
   function persistAdvanced() {
     writeSavedAdvanced({
-      seed, stationary, mStar, zAlpha, sigmaGreedy, reportLevel, adv,
+      seed, stationary, mStar, zAlpha, sigmaGreedy, flowHorizon, reportLevel, adv,
     });
   }
 
@@ -302,6 +308,7 @@ export default function SessionForm({
         // KG-family m* (θ^KGm*, in days). Ignored by non-KG policies.
         m_star: isKGFamily ? mStar : 1,
         report_level: reportLevel,
+        flow_horizon: flowHorizon,
       });
     } finally {
       setLoading(false);
@@ -494,6 +501,19 @@ export default function SessionForm({
                 <span style={{ fontSize: 11, color: '#94a3b8' }}>
                   Basic shows the main KG, GP posterior, cash, and history cards.
                   Advanced adds diagnostic panels like the KG-vs-batch-size chart.
+                </span>
+              </div>
+              <div className="form-group">
+                <label style={{ fontSize: 12 }}>Deposits &amp; redemptions — horizon H (days)</label>
+                <input
+                  type="number" value={flowHorizonStr} min={1} max={5000} step={1}
+                  onChange={e => setFlowHorizonStr(e.target.value)}
+                  onBlur={() => setFlowHorizonStr(String(flowHorizon))}
+                  style={{ maxWidth: 120 }}
+                />
+                <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                  Length of the exogenous sample-path report on the right column.
+                  Default 200 ≈ one working year.
                 </span>
               </div>
 

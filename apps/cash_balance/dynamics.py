@@ -13,6 +13,57 @@ from .config import SimConfig
 from .result import JumpEvent
 
 
+def sample_flows(
+    config: SimConfig,
+    session_seed: int,
+    n_days: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Sample-path helper for the deposits/redemptions report — mirrors the
+    exogenous portion of run_path but skips rebalancing, cost, and any
+    dependence on θ. Returns per-day signed net flows:
+      ind_flow_daily[t]   = retail (individual) net flow on day t
+      inst_flow_daily[t]  = institutional net flow on day t
+
+    Positive = deposit, negative = redemption. AUM evolves under retail
+    flows only (no market gain, no institutional feedback into AUM base)
+    — a first-order proxy sufficient for a diagnostic report. Uses a
+    dedicated spawn_key so it doesn't collide with policy runs' RNG
+    stream (which _make_rng spawns from position 0..K).
+    """
+    rng = np.random.default_rng(
+        np.random.SeedSequence(entropy=session_seed, spawn_key=(0xF10C5A,)),
+    )
+    cfg = config
+    dt = 1.0 / cfg.trading_days_per_year
+    mu_daily = cfg.mu_net_annual * dt
+    sigma_daily = cfg.sigma_net_annual * np.sqrt(dt)
+    jump_rate_daily = cfg.jump_rate_annual * dt
+    mu_regime_daily = tuple(m * dt for m in cfg.mu_regime_annual)
+
+    aum = cfg.initial_aum
+    regime = cfg.initial_regime
+    ind = np.empty(n_days)
+    inst = np.empty(n_days)
+
+    for day in range(n_days):
+        if not cfg.stationary and rng.random() < cfg.regime_switch_prob:
+            regime = 1 - regime
+        mu_eff = mu_daily + mu_regime_daily[regime]
+        retail_flow = aum * (mu_eff + sigma_daily * rng.standard_normal())
+        n_jumps = rng.poisson(jump_rate_daily)
+        inst_flow = 0.0
+        for _ in range(n_jumps):
+            log_size = cfg.jump_mean_log + cfg.jump_std_log * rng.standard_normal()
+            size_frac = float(np.exp(log_size))
+            direction = 1 if rng.random() < cfg.jump_inflow_prob else -1
+            inst_flow += direction * size_frac * aum
+        ind[day] = retail_flow
+        inst[day] = inst_flow
+        aum += retail_flow  # retail feeds AUM; institutional treated as a shock
+    return ind, inst
+
+
 def _make_rng(session_seed: int, experiment_index: int) -> np.random.Generator:
     """
     Derive an independent, reproducible RNG for (session_seed, experiment_index).

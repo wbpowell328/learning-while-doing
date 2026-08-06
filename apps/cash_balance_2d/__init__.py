@@ -23,6 +23,7 @@ scan verifying an interior minimum near (0.02, 0.26) with default params.
 from .simulator import simulate
 from .config import SimConfig
 from .result import SimResult, JumpEvent
+from .dynamics import sample_flows
 
 # Registry metadata — see apps/base.py Simulator Protocol
 NAME       = "cash_balance_2d"
@@ -30,5 +31,5 @@ LABEL      = "Cash balance (2-parameter, scaffold)"
 MINIMIZE   = False   # maximise expected total reward
 THETA_DIM  = 2   # will become meaningful once the second parameter is wired in
 
-__all__ = ["simulate", "SimConfig", "SimResult", "JumpEvent",
+__all__ = ["simulate", "sample_flows", "SimConfig", "SimResult", "JumpEvent",
            "NAME", "LABEL", "MINIMIZE", "THETA_DIM"]

@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, getKGvsM, setMStar, setZAlpha, setSigmaGreedy, setLengthScale, getObservationsEnriched, runExperiment, runOneMore, resetSession, deleteSession } from './api';
+import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, getKGvsM, setMStar, setZAlpha, setSigmaGreedy, setLengthScale, getObservationsEnriched, getFlowSample, runExperiment, runOneMore, resetSession, deleteSession } from './api';
 import SessionForm from './components/SessionForm';
 import PosteriorChart from './components/PosteriorChart';
 import Belief3DChart from './components/Belief3DChart';
@@ -10,6 +10,7 @@ import ImpparamSlider from './components/ImpparamSlider';
 import HistoryTable from './components/HistoryTable';
 import HumanControls from './components/HumanControls';
 import CashChart from './components/CashChart';
+import FlowSampleChart from './components/FlowSampleChart';
 import JumpLog from './components/JumpLog';
 import RevealPanel from './components/RevealPanel';
 // BatchResults component intentionally not imported — the batch-mode
@@ -196,6 +197,7 @@ export default function App() {
   const [impparam,         setImpparam]         = useState(0.10);
   const [posterior2D,   setPosterior2D]   = useState(null);   // 2-D belief surface
   const [kg2D,          setKg2D]          = useState(null);   // 2-D KG surface
+  const [flowSample,    setFlowSample]    = useState(null);   // deposits/redemptions sample path
   const stopRef = useRef(false);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -501,7 +503,7 @@ export default function App() {
   const handleCreate = useCallback(async ({
     app_name, policy, session_seed,
     sim_config, belief_config, acq_config, session_config,
-    budget, m_star, report_level,
+    budget, m_star, report_level, flow_horizon,
   }) => {
     setError(null);
     // Single-policy mode is the only mode now; batch mode was removed.
@@ -527,6 +529,7 @@ export default function App() {
       seed: session_seed,
       budget: budget ?? null,
       m_star: created.m_star ?? 1,
+      flow_horizon: Math.max(1, Math.min(5000, Math.round(Number(flow_horizon) || 200))),
       // z_alpha / sigma_greedy default to 0 unless the SessionForm
       // sent them in acq_config. Mirroring them on session state lets
       // the ExperimentBar's policy-parameter field show their current
@@ -556,28 +559,34 @@ export default function App() {
     setKgVsMTheta2(null);
     setPosterior2D(null);
     setKg2D(null);
+    setFlowSample(null);
+    const horizon = Math.max(1, Math.min(5000, Math.round(Number(flow_horizon) || 200)));
 
     if (dim === 1) {
-      const [post, kg, kgm] = await Promise.all([
+      const [post, kg, kgm, flow] = await Promise.all([
         getPosterior(session_id),
         getKGComparison(session_id, 0.01, 50, effectiveBudget),
         getKGvsM(session_id, 50, null),   // fresh session — belief's σ_ε, default m_max
+        getFlowSample(session_id, horizon),
       ]);
       setPosterior(post);
       setKgComparison(kg);
       setKgVsM(kgm);
       setBestImpparam(post.best_impparam);
+      setFlowSample(flow);
     } else {
-      // 2-D: fetch belief surface + KG surface + KG(m) card in parallel.
-      const [p2, kg2, kgm] = await Promise.all([
+      // 2-D: fetch belief surface + KG surface + KG(m) card + flow sample in parallel.
+      const [p2, kg2, kgm, flow] = await Promise.all([
         getPosterior2D(session_id, 30),
         getKG2D(session_id, 20),
         getKGvsM(session_id, 50, null, null, null),
+        getFlowSample(session_id, horizon),
       ]);
       setPosterior2D(p2);
       setKg2D(kg2);
       setKgVsM(kgm);
       setBestImpparam(p2.best_impparam);
+      setFlowSample(flow);
     }
   }, []);
 
@@ -682,6 +691,7 @@ export default function App() {
     setPosterior(null);
     setPosterior2D(null);
     setKg2D(null);
+    setFlowSample(null);
     setKgComparison(null);
     setKgVsM(null);
     setKgVsMSigmaEps(null);
@@ -1009,6 +1019,21 @@ export default function App() {
             </div>
           )}
           {session.dim === 1 && reveal && <RevealPanel reveal={reveal} />}
+
+          {/* Deposits & redemptions sample path — exogenous flows the
+              fund would see even without a policy choice. Horizon is
+              set in Advanced parameters (default 200 days). */}
+          <div className="card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                Deposits &amp; redemptions — sample path
+              </span>
+              <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                {flowSample ? `H = ${flowSample.horizon} days` : ''}
+              </span>
+            </div>
+            <FlowSampleChart sample={flowSample} />
+          </div>
 
           {lastResult && session.dim === 1 && lastResult.cash_series && (
             <div className="card">
