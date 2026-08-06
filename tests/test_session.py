@@ -128,13 +128,23 @@ def test_multiple_steps():
 
 
 def test_history_matches_belief_observations():
+    """
+    History stores per-BATCH display values; the belief operates on
+    per-DAY values (batch total ÷ n_days) so mixed batch lengths stay
+    coherent. θs still match; y-values are related by n_days.
+    """
     session = make_session()
     for _ in range(4):
         session.step()
-    h_c, h_cost = zip(*session.history)
-    b_c, b_cost = session.belief.observations
+    h_c, h_v = zip(*session.history)
+    b_c, b_v = session.belief.observations
     assert list(h_c) == b_c
-    assert list(h_cost) == b_cost
+    # For minimise apps history=total_cost, belief=total_cost/n_days.
+    # For maximise apps history=total_reward, belief=-total_reward/n_days.
+    n_days = session.history_n_days
+    for h, b, n in zip(h_v, b_v, n_days):
+        expected = (h / n) if session.minimize else (-h / n)
+        assert abs(float(b) - expected) < 1e-9, f"h={h}, n={n}, b={b}"
 
 
 # ---------------------------------------------------------------------------

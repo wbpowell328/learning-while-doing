@@ -545,20 +545,27 @@ def observations_enriched(sid: str) -> dict:
 
     # Rebuild the belief incrementally. For each row, record μ and KG at
     # its θ BEFORE that row's observation is folded in.
+    # The belief operates in per-day units; convert to per-batch (row's
+    # n_days) at display time so the μ column stays comparable with the
+    # observed reward column (which is per-batch dollars).
     fresh = _BeliefModel(session.belief.config, dim=session.dim)
     m_star = session.m_star
+    n_days_per_row = session.history_n_days
 
     rows: list[dict] = []
     for i, (impparam, disp_val) in enumerate(session.history):
         # Normalise θ to (1, dim) for posterior/KG queries.
         theta_flat = np.atleast_1d(np.asarray(impparam, dtype=float)).reshape(-1)
         theta_query = theta_flat.reshape(1, -1)
+        n = max(1, int(n_days_per_row[i]))
 
         mu_arr, _ = fresh.posterior(theta_query)
-        mu_display = float(_to_display(session, mu_arr)[0])
-        kg_val = float(
+        mu_per_day = float(_to_display(session, mu_arr)[0])
+        mu_display = mu_per_day * n
+        kg_per_day = float(
             kg_analytic_correlated_at(fresh, search_grid, theta_query, m_star=m_star)[0]
         )
+        kg_val = kg_per_day * n  # scale KG to per-batch for display symmetry
 
         rows.append({
             "step": i,
@@ -567,9 +574,10 @@ def observations_enriched(sid: str) -> dict:
             "mu": mu_display,
             "kg": kg_val,
         })
-        # Now fold this observation in for the next row's "prior" state.
-        internal = float(disp_val) if session.minimize else -float(disp_val)
-        fresh.update(impparam, internal)
+        # Now fold this observation in for the next row's "prior" state
+        # (per-day frame).
+        internal_batch = float(disp_val) if session.minimize else -float(disp_val)
+        fresh.update(impparam, internal_batch / n)
 
     return {"rows": rows}
 

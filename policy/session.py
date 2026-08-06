@@ -100,28 +100,54 @@ class Session:
         # For dim=1 history entries look like (float, float) as before;
         # for dim≥2 they are (np.ndarray, float).
         self._history: list[tuple] = []
+        # Parallel list: n_days per observation (batch length). Needed
+        # so a refit (e.g. length_scale change) can replay the belief
+        # in per-day units even when past batches had different
+        # lengths. Kept parallel to _history rather than folded into
+        # the tuple so existing (θ, value) unpacking keeps working.
+        self._history_n_days: list[int] = []
         self._step_count: int = 0
 
     # ------------------------------------------------------------------
     # Primary interface
     # ------------------------------------------------------------------
 
-    def _observed_value(self, result) -> float:
+    def _observed_value(self, result, n_days: int) -> float:
         """
-        The scalar this run contributes to belief / history.
+        The scalar this run contributes to the belief (per-day frame).
 
-        Belief always minimises internally, so for a maximisation app we feed
-        it -total_reward. History stores the display-frame value so callers
-        see rewards for maximise apps and costs for minimise apps.
+        The belief operates on reward-per-day so mixed batch lengths
+        stay coherent — if F(θ) is truly the daily expected reward,
+        a 50-day run and a 200-day run at the same θ produce the same
+        expected per-day observation. Without this normalization, the
+        GP would see 4x-different y-values for the same θ and get
+        badly poisoned when a user changes N mid-session (Warren
+        noticed this 2026-08).
+
+        Belief always minimises internally, so for a maximisation app
+        we feed -reward. History stores the display-frame *batch*
+        value so callers keep seeing per-batch dollars.
         """
+        n = max(1, int(n_days))
         if self._minimize:
-            return float(result.total_cost)
-        return -float(result.total_reward)
+            return float(result.total_cost) / n
+        return -float(result.total_reward) / n
 
     def _display_value(self, result) -> float:
         if self._minimize:
             return float(result.total_cost)
         return float(result.total_reward)
+
+    def _effective_n_days(self, n_days: int | None) -> int:
+        """
+        Resolve the batch length in trading days.
+
+        If the caller passes n_days, use that. Otherwise default to
+        horizon_weeks * 5 (the session's baseline). Never returns < 1
+        (the belief-side divide-by-n_days would explode).
+        """
+        n = int(n_days) if n_days is not None else int(self._sc.horizon_weeks) * 5
+        return max(1, n)
 
     def step(self, n_days: int | None = None):
         """
@@ -131,6 +157,7 @@ class Session:
         this one iteration only — the /experiment endpoint uses this
         so the user's chosen "N days" applies to every iteration.
         """
+        n = self._effective_n_days(n_days)
         impparam = self._policy.propose(self._belief, self._rng)
         result = self._simulate(
             config=self._sim_config,
@@ -138,38 +165,45 @@ class Session:
             horizon_weeks=self._sc.horizon_weeks,
             session_seed=self._session_seed,
             experiment_index=self._step_count,
-            n_days=n_days,
+            n_days=n,
         )
-        self._belief.update(impparam, self._observed_value(result))
+        self._belief.update(impparam, self._observed_value(result, n))
         self._history.append((impparam, self._display_value(result)))
+        self._history_n_days.append(n)
         self._step_count += 1
         return result
 
     def evaluate(self, impparam, n_days: int | None = None):
         """Run the simulator at a caller-specified θ (scalar or vector)."""
+        n = self._effective_n_days(n_days)
         result = self._simulate(
             config=self._sim_config,
             impparam=impparam,
             horizon_weeks=self._sc.horizon_weeks,
             session_seed=self._session_seed,
             experiment_index=self._step_count,
-            n_days=n_days,
+            n_days=n,
         )
-        self._belief.update(impparam, self._observed_value(result))
+        self._belief.update(impparam, self._observed_value(result, n))
         self._history.append((impparam, self._display_value(result)))
+        self._history_n_days.append(n)
         self._step_count += 1
         return result
 
-    def observe(self, impparam, total_cost: float) -> None:
+    def observe(self, impparam, total_cost: float, n_days: int | None = None) -> None:
         """
         Inject an external observation without running a new simulation.
         Argument is in the app's display frame (cost for min, reward for max).
+        `n_days` defaults to horizon_weeks*5; used to scale the observation
+        into the belief's per-day frame.
         """
         v = float(total_cost)
+        n = self._effective_n_days(n_days)
         # Belief always minimises; negate reward for maximise apps.
-        internal = v if self._minimize else -v
-        self._belief.update(impparam, internal)
+        internal_batch = v if self._minimize else -v
+        self._belief.update(impparam, internal_batch / n)
         self._history.append((impparam, v))
+        self._history_n_days.append(n)
 
     def best_impparam(self):
         """
@@ -217,6 +251,16 @@ class Session:
         return list(self._history)
 
     @property
+    def history_n_days(self) -> list[int]:
+        """
+        Parallel to `history` — the batch length (trading days) each
+        observation was collected over. Callers doing per-day↔per-batch
+        conversion for display (e.g. the μⁿ column in the observations
+        table) need this per-row.
+        """
+        return list(self._history_n_days)
+
+    @property
     def minimize(self) -> bool:
         return self._minimize
 
@@ -247,6 +291,7 @@ class Session:
         """
         self._belief = BeliefModel(self._belief.config, dim=self._dim)
         self._history = []
+        self._history_n_days = []
         self._step_count = 0
         self._rng = np.random.default_rng(self._session_seed)
 
@@ -272,11 +317,14 @@ class Session:
         # Preserve everything on the config except length_scale.
         new_config = replace(self._belief.config, length_scale=length_scale)
         new_belief = BeliefModel(new_config, dim=self._dim)
-        # session.history is in display frame; negate for maximise apps
-        # so the belief sees the "value to minimise".
-        for impparam, disp_val in self._history:
-            internal = float(disp_val) if self._minimize else -float(disp_val)
-            new_belief.update(impparam, internal)
+        # session.history is in display frame (per-batch dollars); the
+        # belief operates on per-day values, so divide by that row's
+        # n_days when replaying. Negate for maximise apps so the belief
+        # sees "value to minimise".
+        for (impparam, disp_val), n_days in zip(self._history, self._history_n_days):
+            n = max(1, int(n_days))
+            per_day = float(disp_val) / n if self._minimize else -float(disp_val) / n
+            new_belief.update(impparam, per_day)
         self._belief = new_belief
 
     @property

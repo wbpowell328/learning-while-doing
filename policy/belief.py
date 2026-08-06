@@ -30,9 +30,13 @@ class BeliefConfig:
     # length_scale: scalar → same across all dims (isotropic);
     #               sequence of length d → per-dimension (ARD).
     length_scale: float | Sequence[float] = 0.04
-    signal_std: float = 5_000.0   # prior amplitude of F(θ) in cost units
-    noise_std:  float = 3_000.0   # per-observation noise std
-    prior_mean: float = 5_000.0   # constant prior mean of F(θ)
+    # Per-day units. The Session divides observations by n_days before
+    # calling belief.update, so signal_std / noise_std / prior_mean all
+    # describe the daily reward frame rather than a batch total. This
+    # keeps the belief coherent across mixed batch lengths.
+    signal_std: float = 25.0       # prior amplitude of F(θ), $/day
+    noise_std:  float = 100.0      # per-day observation noise, $/day
+    prior_mean: float = 175.0      # expected daily reward before any data
     jitter:     float = 1e-6      # diagonal jitter for Cholesky stability
 
 

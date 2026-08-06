@@ -6,15 +6,18 @@ import { useState, useEffect, useRef } from 'react';
 // numbers on submit; onBlur canonicalizes ("050" → "50").
 const ADV_DEFAULTS = {
   // Belief prior — the GP's assumptions before it sees any data.
-  // Values are in the *reward* frame (typical run reward ~$35k, varies
-  // ~$1-3k across θ, per-run noise ~$1-2k). Session negates prior_mean
-  // internally so the belief layer keeps operating on "values to
-  // minimise" (=-reward); signal_std and noise_std are variances so are
-  // frame-independent.
+  // Values are in the *reward-per-day* frame so the belief stays
+  // coherent when Run length changes mid-session. On a ~200-day
+  // batch, per-batch dollars ≈ n_days × per-day dollars:
+  //   prior_mean  175   ≈ $35k per 200-day batch
+  //   signal_std   15   ≈ $3k  per 200-day batch (linear in n)
+  //   noise_std   100   ≈ $1.4k per 200-day batch (scales as √n)
+  // Session divides observations by n_days on ingest so mixed batch
+  // lengths land as comparable per-day numbers.
   length_scale:      '0.04',
-  signal_std:        '3000',
-  noise_std:         '1500',
-  prior_mean:        '35000',
+  signal_std:        '15',
+  noise_std:         '100',
+  prior_mean:        '175',
   // Simulation model (1-D app only) — the underlying truth F(θ) and its per-run noise
   jump_rate_annual:  '12',
   jump_std_log:      '0.5',
@@ -151,23 +154,23 @@ const ROWS_1D = [
     range: '',
     desc: 'Upper limit for the fraction of assets under management (AUM) held in cash.' },
 
-  { kind: 'section', label: 'Parameters controlling belief about the profit function' },
+  { kind: 'section', label: 'Parameters controlling belief about the profit function (all per day)' },
   { kind: 'number', label: 'Length scale (ℓ)',
     source: 'adv:length_scale', step: 'any', min: 0,
     range: '0.01 – 10',
     desc: 'Smoothness of the belief about the profit function. Larger produces a smoother graph — testing one value of θ teaches us more about the entire function.' },
-  { kind: 'number', label: 'Variation of the profit function (σ_f)',
+  { kind: 'number', label: 'Variation of the profit function (σ_f, $/day)',
     source: 'adv:signal_std', step: 'any', min: 0,
-    range: '$10 – $50,000',
-    desc: 'Standard deviation of the spread of values the profit function might take over the entire response surface (all values of θ).' },
-  { kind: 'number', label: 'Initial estimate of profit function (m₀)',
+    range: '$1 – $500 / day',
+    desc: 'Standard deviation of the daily reward that the profit function might take across the θ box. Batch variation ≈ n_days × this value.' },
+  { kind: 'number', label: 'Initial estimate of profit function (m₀, $/day)',
     source: 'adv:prior_mean', step: 'any',
-    range: '$1,000 – $100,000',
-    desc: 'Constant estimate of the entire function used before any observations.' },
-  { kind: 'number', label: 'Std. deviation of an experiment (σ_n)',
+    range: '$50 – $2,000 / day',
+    desc: 'Expected daily reward before any observations. A 200-day batch would then earn ≈ 200 × this value. Given per-day so a change to Run length in the control bar rescales correctly.' },
+  { kind: 'number', label: 'Std. deviation of a daily observation (σ_n, $/day)',
     source: 'adv:noise_std', step: 'any', min: 0,
-    range: '$10 – $50,000',
-    desc: 'Standard deviation of the profits from simulating a single day.' },
+    range: '$10 – $1,000 / day',
+    desc: 'Noise on one day of simulated reward. Batch noise scales as √n_days — a 200-day run averages down to ≈ σ_n / √200 per day.' },
 
   { kind: 'section', label: 'Model of deposits and redemptions' },
   { kind: 'number', label: 'Std dev of daily deposits / redemptions',
@@ -219,23 +222,23 @@ const ROWS_2D = [
     range: '[0.01 – 0.40]',
     desc: 'Min and max for the fraction of institutional AUM held in cash.' },
 
-  { kind: 'section', label: 'Parameters controlling belief about the profit function' },
+  { kind: 'section', label: 'Parameters controlling belief about the profit function (all per day)' },
   { kind: 'number', label: 'Length scale (ℓ)',
     source: 'adv:length_scale', step: 'any', min: 0,
     range: '0.01 – 10',
     desc: 'Smoothness of the belief about the profit function. Larger produces a smoother graph.' },
-  { kind: 'number', label: 'Variation of the profit function (σ_f)',
+  { kind: 'number', label: 'Variation of the profit function (σ_f, $/day)',
     source: 'adv:signal_std', step: 'any', min: 0,
-    range: '$10 – $50,000',
-    desc: 'Standard deviation of the spread of values the profit function might take across all θ.' },
-  { kind: 'number', label: 'Initial estimate of profit function (m₀)',
+    range: '$1 – $500 / day',
+    desc: 'Standard deviation of the daily reward across the θ box. Batch variation ≈ n_days × this value.' },
+  { kind: 'number', label: 'Initial estimate of profit function (m₀, $/day)',
     source: 'adv:prior_mean', step: 'any',
-    range: '$1,000 – $100,000',
-    desc: 'Constant estimate of the entire function used before any observations.' },
-  { kind: 'number', label: 'Std. deviation of an experiment (σ_n)',
+    range: '$50 – $2,000 / day',
+    desc: 'Expected daily reward before any observations. A 200-day batch would then earn ≈ 200 × this value. Given per-day so a change to Run length in the control bar rescales correctly.' },
+  { kind: 'number', label: 'Std. deviation of a daily observation (σ_n, $/day)',
     source: 'adv:noise_std', step: 'any', min: 0,
-    range: '$10 – $50,000',
-    desc: 'Standard deviation of the profits from simulating a single day.' },
+    range: '$10 – $1,000 / day',
+    desc: 'Noise on one day of simulated reward. Batch noise scales as √n_days.' },
 
   { kind: 'section', label: 'Model of deposits and redemptions — individual investors' },
   { kind: 'number', label: 'Annual net inflow',
@@ -279,17 +282,48 @@ const ROWS_2D = [
 // so the "Save and exit" flow is meaningful — the user's edits survive
 // leaving the page and re-launching the game from the landing page.
 // Bump the suffix if the shape of the saved blob ever changes.
-const ADVANCED_STORAGE_KEY = 'lwd_advanced_v1';
+// Bumped v1 → v2 when belief params flipped to per-day units. Values
+// saved under the old key are auto-migrated below (once) and the old
+// key deleted so the migration doesn't re-run.
+const OLD_ADVANCED_STORAGE_KEY = 'lwd_advanced_v1';
+const ADVANCED_STORAGE_KEY     = 'lwd_advanced_v2';
 // Where "Save and exit" sends the user back to. Landing page on the
 // CASTLE site — the game is embedded there behind the Play button.
 const LANDING_URL = 'https://warrenpowell.org/learning-while-doing/';
 
 function readSavedAdvanced() {
   try {
-    const raw = window.localStorage.getItem(ADVANCED_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return (parsed && typeof parsed === 'object') ? parsed : {};
+    // First: prefer the current-version blob if it exists.
+    const rawNew = window.localStorage.getItem(ADVANCED_STORAGE_KEY);
+    if (rawNew) {
+      const parsed = JSON.parse(rawNew);
+      return (parsed && typeof parsed === 'object') ? parsed : {};
+    }
+    // Otherwise: try the legacy per-batch-units blob and migrate.
+    const rawOld = window.localStorage.getItem(OLD_ADVANCED_STORAGE_KEY);
+    if (!rawOld) return {};
+    const oldParsed = JSON.parse(rawOld);
+    if (!oldParsed || typeof oldParsed !== 'object') return {};
+    // Rescale belief params from per-200-day-batch to per-day, only
+    // for values that were saved and look like the old magnitudes.
+    const REF = 200;    // typical batch length used to seed the old defaults
+    const advOld = (oldParsed.adv && typeof oldParsed.adv === 'object') ? oldParsed.adv : {};
+    const advNew = { ...advOld };
+    for (const k of ['prior_mean', 'signal_std', 'noise_std']) {
+      const v = Number(advNew[k]);
+      // Heuristic: anything above the new-defaults ceiling was almost
+      // certainly per-batch; scale it down. noise_std uses √n (batch
+      // noise = √n · per-day-noise); signal_std / prior_mean scale
+      // linearly (batch = n · per-day).
+      if (Number.isFinite(v) && v > 1000) {
+        const scale = (k === 'noise_std') ? Math.sqrt(REF) : REF;
+        advNew[k] = String(Math.round((v / scale) * 100) / 100);
+      }
+    }
+    const migrated = { ...oldParsed, adv: advNew };
+    window.localStorage.setItem(ADVANCED_STORAGE_KEY, JSON.stringify(migrated));
+    window.localStorage.removeItem(OLD_ADVANCED_STORAGE_KEY);
+    return migrated;
   } catch { return {}; }
 }
 function writeSavedAdvanced(blob) {
