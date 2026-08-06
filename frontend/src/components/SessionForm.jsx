@@ -18,8 +18,13 @@ const ADV_DEFAULTS = {
   signal_std:        '15',
   noise_std:         '100',
   prior_mean:        '175',
-  // Simulation model (1-D app only) — the underlying truth F(θ) and its per-run noise
+  // Simulation model (1-D app only) — the underlying truth F(θ) and its per-run noise.
+  // Jump size is displayed in dollars for legibility; converted to
+  // jump_mean_log = ln(median$ / initial_aum) on submit. initial_aum
+  // is the 1-D config default of $1,000,000; if that ever changes,
+  // the conversion below has to change too.
   jump_rate_annual:  '12',
+  jump_median_dollars: '11000',   // median jump = $11k on $1M AUM  ~1.1% AUM (exp(-4.5))
   jump_std_log:      '0.5',
   sigma_net_annual:  '0.02',
   r_borrow_annual:   '0.10',
@@ -38,10 +43,19 @@ const ADV_DEFAULTS = {
   r_borrow_ind_annual:   '0.005',  // goodwill cost per $ of deferred individual redemption
   // Institutional investor process (2-D app) — Poisson × lognormal on aum_inst
   jump_rate_inst_annual: '12',     // jumps/year
-  jump_mean_log_inst:    '-2.5',   // median jump ~exp(-2.5) ≈ 8% of aum_inst
-  jump_std_log_inst:     '0.6',    // log-space std of jump sizes
-  r_borrow_inst_annual:  '0.02',   // 2% redemption fee on forced institutional liquidation
+  // 2-D institutional jump median in $ (converted to jump_mean_log_inst
+  // on submit using aum_inst = initial_aum × initial_aum_ind_fraction
+  // complement = $500k by default). exp(-2.5) × $500k ≈ $41k.
+  jump_median_dollars_inst: '41000',
+  jump_std_log_inst:        '0.6',
+  r_borrow_inst_annual:     '0.02',   // 2% redemption fee on forced institutional liquidation
 };
+
+// AUM references for the median-dollars ↔ jump_mean_log conversion.
+// Must match apps/*/config.py — updating here without updating there
+// (or vice-versa) will misconvert jump sizes.
+const AUM_1D          = 1_000_000;   // apps/cash_balance/config.py initial_aum
+const AUM_INST_2D     = 500_000;     // apps/cash_balance_2d — 50% of $1M initial_aum
 
 // Field metadata for the advanced-parameters panel
 const BELIEF_FIELDS = [
@@ -181,14 +195,18 @@ const ROWS_1D = [
     source: 'adv:r_borrow_annual', step: 'any', min: 0,
     range: '0.02 – 0.20',
     desc: 'Borrowing cost when the cash balance goes negative.' },
-  { kind: 'number', label: 'Jump rate',
+  { kind: 'number', label: 'Jump rate (per year)',
     source: 'adv:jump_rate_annual', step: 'any', min: 0,
     range: '0 – 120',
     desc: 'Average rate of large inflow / outflow shocks per year.' },
-  { kind: 'number', label: 'Log of std dev of jumps',
+  { kind: 'number', label: 'Median jump size ($)',
+    source: 'adv:jump_median_dollars', step: 'any', min: 1,
+    range: '$1k – $500k',
+    desc: 'Dollar size of the "typical" (50th-percentile) jump. On a $1M fund, $11k is ~1.1% of AUM; $50k is ~5%. This is what makes low-θ shortfalls likely — bigger median jumps mean bigger cash buffers are worth holding.' },
+  { kind: 'number', label: 'Jump-size spread (log std)',
     source: 'adv:jump_std_log', step: 'any', min: 0,
     range: '0.1 – 2',
-    desc: 'Log of the standard deviation of the size of a jump.' },
+    desc: 'Spread of jump sizes on a log scale. sd = 0.5 → the 84th-percentile jump is ≈ 1.65 × median; sd = 1.5 → ≈ 4.5 × median (fat tail).' },
 
   { kind: 'section', label: 'Session' },
   { kind: 'int', label: 'Random number seed', source: 'seed', min: 0, max: 9999,
@@ -255,21 +273,21 @@ const ROWS_2D = [
     desc: 'Cost per $ of deferred individual redemption — small, because individual investors can wait.' },
 
   { kind: 'section', label: 'Model of deposits and redemptions — institutional investors' },
-  { kind: 'number', label: 'Jump rate / year',
+  { kind: 'number', label: 'Jump rate (per year)',
     source: 'adv:jump_rate_inst_annual', step: 'any', min: 0,
     range: '1 – 120',
     desc: 'Rate of large institutional deposits or withdrawals per year.' },
-  { kind: 'number', label: 'Log (jump size)',
-    source: 'adv:jump_mean_log_inst', step: 'any',
-    range: '',
-    desc: 'Median jump size = exp(this value), as a fraction of institutional AUM.' },
-  { kind: 'number', label: 'Std. deviation of log of jump sizes',
+  { kind: 'number', label: 'Median jump size ($)',
+    source: 'adv:jump_median_dollars_inst', step: 'any', min: 1,
+    range: '$1k – $250k',
+    desc: 'Dollar size of the "typical" (50th-percentile) institutional jump. On $500k institutional AUM, $41k is ~8%.' },
+  { kind: 'number', label: 'Jump-size spread (log std)',
     source: 'adv:jump_std_log_inst', step: 'any', min: 0,
-    range: '',
-    desc: 'Controls the variation of jump sizes.' },
+    range: '0.1 – 2',
+    desc: 'Spread on a log scale. sd = 0.6 → the 84th-percentile jump ≈ 1.8 × median.' },
   { kind: 'number', label: 'Institutional redemption fee',
     source: 'adv:r_borrow_inst_annual', step: 'any', min: 0,
-    range: '',
+    range: '0.01 – 0.20',
     desc: 'Cost per $ of forced liquidation to meet an institutional withdrawal.' },
 
   { kind: 'section', label: 'Session' },
@@ -414,6 +432,16 @@ export default function SessionForm({
     ? [numeric('theta1_max'), numeric('theta2_max')]
     : numeric('theta1_max');
 
+  // Convert user-visible median-jump-in-dollars back into the
+  // log-fraction the backend expects. Guards against ≤ 0 (Math.log
+  // would return -Infinity / NaN) by falling back to the ADV_DEFAULTS
+  // dollar value.
+  const _log_from_median = (key, aum) => {
+    const raw = Number(adv[key]);
+    const md  = (raw > 0) ? raw : Number(ADV_DEFAULTS[key]);
+    return Math.log(md / aum);
+  };
+
   // sim_config payload — field names are app-specific. Unknown fields are
   // dropped server-side; we just include everything the target app understands.
   const simConfigPayload = is2D
@@ -431,13 +459,14 @@ export default function SessionForm({
         r_borrow_ind_annual:   numeric('r_borrow_ind_annual'),
         // Institutional investor process
         jump_rate_inst_annual: numeric('jump_rate_inst_annual'),
-        jump_mean_log_inst:    numeric('jump_mean_log_inst'),
+        jump_mean_log_inst:    _log_from_median('jump_median_dollars_inst', AUM_INST_2D),
         jump_std_log_inst:     numeric('jump_std_log_inst'),
         r_borrow_inst_annual:  numeric('r_borrow_inst_annual'),
       }
     : {
         stationary,
         jump_rate_annual: numeric('jump_rate_annual'),
+        jump_mean_log:    _log_from_median('jump_median_dollars', AUM_1D),
         jump_std_log:     numeric('jump_std_log'),
         sigma_net_annual: numeric('sigma_net_annual'),
         r_borrow_annual:  numeric('r_borrow_annual'),
