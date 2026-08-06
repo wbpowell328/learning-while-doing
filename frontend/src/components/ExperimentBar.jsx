@@ -125,6 +125,7 @@ export default function ExperimentBar({
   onRun,             // async (spec) => void — reset+K+1 iterations
   onOneMore,         // async (spec) => void — one more iteration, no reset
   onRestart,         // async () => void — reset to initial conditions, do NOT run
+  onManualEvaluate,  // async (theta, n_days) => void — Manual-policy single eval
   canOneMore = false, // enable "One more" only after at least one Run
   latestScore = null,     // total reward from the last batch (Restart or One more)
   cumulativeScore = null, // running total since the last Restart
@@ -225,6 +226,15 @@ export default function ExperimentBar({
     onOneMore(spec);
   }
 
+  // Manual (human) policy: evaluate at the user-typed θ, one iteration,
+  // no reset. Distinct from commitOneMore (which uses policy.propose)
+  // because Manual wants the user's θ, not a policy pick.
+  function commitManualEvaluate() {
+    if (running || !onManualEvaluate || !canRun) return;
+    const theta = dim === 2 ? [t1Num, t2Num] : t1Num;
+    onManualEvaluate(theta, Math.max(1, Math.round(nNum)));
+  }
+
   return (
     <div className="card" style={{
       display: 'flex', flexDirection: 'column', gap: 10,
@@ -275,22 +285,31 @@ export default function ExperimentBar({
              onChange={e => setK(e.target.value)} />
       <span style={labelStyle}>times.</span>
 
-      {/* Dual-mode button. Before the first run it acts as "Run" and
-          fires the full Restart-style experiment (uses user-typed θ,
-          K+1 iterations). Once at least one run exists it flips to
-          "Repeat" and does K+1 more iterations from the current state
-          (K from the Repeat box). Restart (to the right) is always
-          available for a clean-slate reset. */}
+      {/* Dual-mode button — three behaviours based on policy + history:
+            Manual                     → always "Run", evaluates user's
+                                         θ each click (no reset).
+            Non-Manual, no history yet → "Run", full Restart-style
+                                         experiment at user's θ.
+            Non-Manual, has history    → "Repeat", K+1 more policy-
+                                         picked iterations, no reset.
+          Restart (to the right) is always a clean-slate reset. */}
       <button type="button"
-              onClick={canOneMore ? commitOneMore : commit}
+              onClick={
+                isHuman     ? commitManualEvaluate :
+                canOneMore  ? commitOneMore :
+                              commit
+              }
               disabled={
-                running || isHuman ||
-                (canOneMore ? !nDaysValid : !canRun)
+                running ||
+                (isHuman ? !canRun :
+                  (canOneMore ? !nDaysValid : !canRun))
               }
               className="btn btn-primary"
               title={
                 isHuman
-                  ? 'Human policy uses Restart at each step'
+                  ? (!canRun
+                      ? 'Enter both θ and a positive N (days per iteration)'
+                      : 'Evaluate the simulator at your θ (one iteration, no reset)')
                   : canOneMore
                     ? (!nDaysValid
                         ? 'Enter a positive N (days per iteration)'
@@ -302,7 +321,7 @@ export default function ExperimentBar({
                           : 'Run Repeat + 1 iterations from the starting θ')
               }
               style={{ padding: '6px 16px', fontSize: 13 }}>
-        {running ? 'running…' : (canOneMore ? 'Repeat' : 'Run')}
+        {running ? 'running…' : (isHuman ? 'Run' : (canOneMore ? 'Repeat' : 'Run'))}
       </button>
       <button type="button"
               onClick={() => { if (!running && onRestart) onRestart(); }}

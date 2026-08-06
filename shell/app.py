@@ -486,21 +486,29 @@ def reset_session(sid: str) -> ExperimentResponse:
 
 
 @app.get("/sessions/{sid}/flow_sample")
-def flow_sample(sid: str, horizon: int = 200) -> dict:
+def flow_sample(sid: str, horizon: int = 200,
+                theta: float | None = None,
+                theta2: float | None = None) -> dict:
     """
     A single exogenous sample path of daily deposits and redemptions
     over `horizon` trading days — the flows the fund would see even
     without any policy choice. Used by the "Deposits & redemptions"
     report on the right column.
 
-    Returns per-day arrays split by investor class and direction:
+    Returns per-day arrays split by investor class and direction plus
+    the resulting cash trajectory under a constant-θ rebalance:
       individual_deposit    — positive part of retail flow (0 on days with net outflow)
       individual_redemption — magnitude of the negative part
       institutional_deposit / institutional_redemption — same, for the
                               jump process
+      cash_balance          — end-of-day cash under `theta` rebalance
 
-    All values are dollars. `horizon` clamped to [1, 5000] to protect
-    against typos.
+    `theta` (optional, both dims) defaults to 0.10 when omitted, so a
+    fresh session with no user θ shows a sensible starter trajectory.
+    Frontend passes the ExperimentBar's Starting-point θ once the user
+    has picked one so the cash line reflects their choice.
+
+    All values are dollars. `horizon` clamped to [1, 5000].
     """
     session = _get_or_404(sid)
     n = max(1, min(5000, int(horizon)))
@@ -509,12 +517,18 @@ def flow_sample(sid: str, horizon: int = 200) -> dict:
     if not hasattr(app_mod, "sample_flows"):
         raise HTTPException(status_code=400,
             detail=f"App '{app_name}' does not implement sample_flows")
-    # Warren-2026-08: the cash line is drawn on the same graph using a
-    # FIXED initial θ (0.10 or [0.10, 0.10] for 2-D). Deliberately
-    # decoupled from any belief-driven policy so the report stays a
-    # pure "what would happen with a simple starter buffer?" view.
+    # Build the impparam argument based on dim + which query params
+    # were passed. Missing → None → sample_flows uses its own default.
+    if session.dim == 2:
+        if theta is not None and theta2 is not None:
+            impparam = [float(theta), float(theta2)]
+        else:
+            impparam = None
+    else:
+        impparam = float(theta) if theta is not None else None
     ind, inst, cash_series = app_mod.sample_flows(
         session._sim_config, session._session_seed, n,
+        impparam=impparam,
     )
     ind_dep  = np.clip(ind,  a_min=0.0, a_max=None)
     ind_red  = np.clip(-ind, a_min=0.0, a_max=None)
@@ -641,7 +655,7 @@ def state(sid: str) -> StateResponse:
 @app.post("/sessions/{sid}/evaluate")
 def evaluate(sid: str, body: EvaluateRequest) -> StepResponse:
     session = _get_or_404(sid)
-    result = session.evaluate(body.impparam)
+    result = session.evaluate(body.impparam, n_days=body.n_days)
     return _make_step_response(result, session)
 
 

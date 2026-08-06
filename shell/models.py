@@ -234,6 +234,7 @@ class StateResponse(BaseModel):
 
 class EvaluateRequest(BaseModel):
     impparam: ThetaLike
+    n_days: int | None = None
 
 
 class PosteriorResponse(BaseModel):

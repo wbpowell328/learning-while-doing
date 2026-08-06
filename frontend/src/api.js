@@ -19,10 +19,10 @@ export const createSession = (body) =>
   });
 
 export const runStep     = (sid) => call(`/sessions/${sid}/step`, { method: 'POST' });
-export const evaluateC   = (sid, impparam) => call(`/sessions/${sid}/evaluate`, {
+export const evaluateC   = (sid, impparam, n_days = null) => call(`/sessions/${sid}/evaluate`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ impparam }),
+  body: JSON.stringify(n_days == null ? { impparam } : { impparam, n_days }),
 });
 export const getPosterior  = (sid) => call(`/sessions/${sid}/posterior`);
 export const getPosterior2D = (sid, gridSize = 30) =>
@@ -129,8 +129,12 @@ export const setLengthScale = (sid, lengthScale) =>
   });
 export const getObservationsEnriched = (sid) =>
   call(`/sessions/${sid}/observations_enriched`);
-export const getFlowSample = (sid, horizon = 200) =>
-  call(`/sessions/${sid}/flow_sample?horizon=${horizon}`);
+export const getFlowSample = (sid, horizon = 200, theta = null, theta2 = null) => {
+  const qs = [`horizon=${horizon}`];
+  if (theta  != null) qs.push(`theta=${theta}`);
+  if (theta2 != null) qs.push(`theta2=${theta2}`);
+  return call(`/sessions/${sid}/flow_sample?${qs.join('&')}`);
+};
 export const runExperiment = (sid, spec) =>
   call(`/sessions/${sid}/experiment`, {
     method: 'POST',

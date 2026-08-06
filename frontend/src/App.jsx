@@ -342,6 +342,19 @@ export default function App() {
     await Promise.all(refetches);
   }, [session, refreshEnriched, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2]);
 
+  // Refetch the deposits/redemptions sample with a specific θ so the
+  // cash-balance line on that chart reflects whatever the user just
+  // ran with. Backend default (0.10) is used when theta is null (fresh
+  // session before any user action).
+  const refreshFlowSample = useCallback(async (theta = null, theta2 = null) => {
+    if (!session) return;
+    const horizon = session.flow_horizon ?? 200;
+    try {
+      const flow = await getFlowSample(session.id, horizon, theta, theta2);
+      setFlowSample(flow);
+    } catch (e) { /* non-fatal — chart just keeps prior view */ }
+  }, [session]);
+
   const handleRunExperiment = useCallback(async (spec) => {
     if (!session) return;
     setLoading(true); setError(null);
@@ -356,12 +369,20 @@ export default function App() {
       setCumulativeScore(batchTotal);
       // Total simulated days = iterations × n_days. Restart resets.
       setTotalDays(rows.length * Number(spec.n_days ?? 0));
+      // Update the cash-balance sample-path chart to use the θ the
+      // user just chose (spec.theta_init). Both 1-D and 2-D supported.
+      const t = spec.theta_init;
+      if (Array.isArray(t) && t.length >= 2) {
+        await refreshFlowSample(t[0], t[1]);
+      } else if (t != null) {
+        await refreshFlowSample(Number(t));
+      }
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
-  }, [session, applyExperimentResponse]);
+  }, [session, applyExperimentResponse, refreshFlowSample]);
 
   // Restart: reset the backend session to initial conditions (empty
   // belief, empty history, re-seeded RNG) and zero all UI counters —
@@ -404,12 +425,20 @@ export default function App() {
         setKgVsM(kgm);
         setBestImpparam(p2.best_impparam);
       }
+      // Restart also resets the ExperimentBar's Starting-point box to
+      // its 0.1 pre-fill (via its lastTheta=null useEffect); mirror
+      // that on the cash-balance chart so both surfaces agree.
+      if (session.dim === 2) {
+        await refreshFlowSample(0.1, 0.1);
+      } else {
+        await refreshFlowSample(0.1);
+      }
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
-  }, [session, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2]);
+  }, [session, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2, refreshFlowSample]);
 
   const handleOneMore = useCallback(async (spec) => {
     if (!session) return;
@@ -425,12 +454,22 @@ export default function App() {
       setLatestScore(batchTotal);
       setCumulativeScore(prev => (prev ?? 0) + batchTotal);
       setTotalDays(prev => prev + newRows.length * Number(spec.n_days ?? 0));
+      // Cash-balance chart follows the most recent θ (policy-picked here).
+      const lastRow = (resp.history ?? []).at(-1);
+      if (lastRow) {
+        const t = lastRow[0];
+        if (Array.isArray(t) && t.length >= 2) {
+          await refreshFlowSample(t[0], t[1]);
+        } else if (t != null) {
+          await refreshFlowSample(Number(t));
+        }
+      }
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
-  }, [session, nSteps, applyExperimentResponse]);
+  }, [session, nSteps, applyExperimentResponse, refreshFlowSample]);
 
   // GP length_scale (bandwidth) editor: POST refits the belief with the
   // new value replaying the session's history through it, then refetch
@@ -590,14 +629,19 @@ export default function App() {
     }
   }, []);
 
-  // ── Human: evaluate at a chosen θ ───────────────────────────────────────
+  // ── Manual (human) policy: evaluate at a chosen θ ───────────────────────
+  //
+  // Used by both the ImpparamSlider (legacy human control) and by the
+  // ExperimentBar's Run button when Manual is selected — one iteration
+  // at the user-typed θ, no reset. Score boxes, totalDays, and the
+  // cash-balance chart all follow.
 
-  const handleEvaluate = useCallback(async (impparam) => {
+  const handleEvaluate = useCallback(async (impparam, n_days = null) => {
     if (!session || loading) return;
     setLoading(true);
     setError(null);
     try {
-      const result = await evaluateC(session.id, impparam);
+      const result = await evaluateC(session.id, impparam, n_days);
       const [post, kg, kgm] = await Promise.all([
         getPosterior(session.id),
         getKGComparison(session.id, 0.01, 50, session.budget ?? 10),
@@ -605,6 +649,19 @@ export default function App() {
       ]);
       applyResult(result, post, kg, kgm);
       refreshEnriched(session.id);
+      // Score bookkeeping — Manual uses this instead of Run/Repeat's
+      // batch-total accounting. Each click adds one iteration's reward.
+      const reward = Number(result.total_reward ?? 0);
+      const days   = Number(n_days ?? result.n_days ?? 0);
+      setLatestScore(reward);
+      setCumulativeScore(prev => (prev ?? 0) + reward);
+      setTotalDays(prev => prev + days);
+      // Cash chart tracks the θ the user just tested.
+      if (Array.isArray(impparam) && impparam.length >= 2) {
+        await refreshFlowSample(impparam[0], impparam[1]);
+      } else if (impparam != null) {
+        await refreshFlowSample(Number(impparam));
+      }
       if (session.budget && result.n_steps >= session.budget) {
         await fetchReveal(session.id);
       }
@@ -613,7 +670,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [session, loading, applyResult, fetchReveal, refreshEnriched, kgVsMSigmaEps, kgVsMMMax, kgVsMTheta, kgVsMTheta2]);
+  }, [session, loading, applyResult, fetchReveal, refreshEnriched, refreshFlowSample, kgVsMSigmaEps, kgVsMMMax, kgVsMTheta, kgVsMTheta2]);
 
   // ── Automated: single step ────────────────────────────────────────────────
 
@@ -793,6 +850,7 @@ export default function App() {
         onRun={handleRunExperiment}
         onOneMore={handleOneMore}
         onRestart={handleRestart}
+        onManualEvaluate={handleEvaluate}
         canOneMore={nSteps > 0}
         latestScore={latestScore}
         cumulativeScore={cumulativeScore}
