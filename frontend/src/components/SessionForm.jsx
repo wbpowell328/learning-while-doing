@@ -116,6 +116,165 @@ const APPS = [
   { value: 'cash_balance_2d', label: 'Cash balance (2-parameter, θ_ind, θ_inst)', dim: 2 },
 ];
 
+// Row schemas for the Variable | Default | Range | Explanation table.
+// Mirrors Warren's "Cash management - advanced parameters" spreadsheet.
+// `source` addresses where the value lives:
+//   'reportLevel', 'seed', 'mStarStr'     → direct component state
+//   'adv:<key>'                            → adv[key] (the ADV_DEFAULTS map)
+// Row `kind`:
+//   'section'  → header row spanning all columns
+//   'select'   → dropdown with `options`
+//   'int'      → integer input
+//   'number'   → floating-point input
+//   'pair'     → two side-by-side inputs (Default cell holds both)
+const ROWS_1D = [
+  { kind: 'section', label: 'Administrative' },
+  { kind: 'select', label: 'Report level', source: 'reportLevel',
+    options: [
+      { value: 'basic',    label: 'Basic' },
+      { value: 'advanced', label: 'Advanced' },
+    ],
+    range: 'Basic, advanced',
+    desc: '"Basic" shows just the reports needed to play the game. "Advanced" adds diagnostic panels — the KG(x;m) S-curve chart, for one — for understanding model behavior.' },
+
+  { kind: 'section', label: 'Parameters governing search policies' },
+  { kind: 'int', label: 'Lookahead horizon for knowledge gradient (ρˡᵏʰᵈ)',
+    source: 'mStarStr', min: 1, max: 100,
+    range: '[1–100]',
+    desc: 'If =1, the KG computes the value of a single experiment for the decision we make now. If >1, the KG assumes we perform ρˡᵏʰᵈ replications, reducing the noise of the observation.' },
+  { kind: 'number', label: 'Search box bound — min',
+    source: 'adv:theta1_min', step: 'any', min: 0,
+    range: '',
+    desc: 'Lower limit for the fraction of assets under management (AUM) held in cash.' },
+  { kind: 'number', label: 'Search box bound — max',
+    source: 'adv:theta1_max', step: 'any', min: 0,
+    range: '',
+    desc: 'Upper limit for the fraction of assets under management (AUM) held in cash.' },
+
+  { kind: 'section', label: 'Parameters controlling belief about the profit function' },
+  { kind: 'number', label: 'Length scale (ℓ)',
+    source: 'adv:length_scale', step: 'any', min: 0,
+    range: '0.01 – 10',
+    desc: 'Smoothness of the belief about the profit function. Larger produces a smoother graph — testing one value of θ teaches us more about the entire function.' },
+  { kind: 'number', label: 'Variation of the profit function (σ_f)',
+    source: 'adv:signal_std', step: 'any', min: 0,
+    range: '$10 – $50,000',
+    desc: 'Standard deviation of the spread of values the profit function might take over the entire response surface (all values of θ).' },
+  { kind: 'number', label: 'Initial estimate of profit function (m₀)',
+    source: 'adv:prior_mean', step: 'any',
+    range: '$1,000 – $100,000',
+    desc: 'Constant estimate of the entire function used before any observations.' },
+  { kind: 'number', label: 'Std. deviation of an experiment (σ_n)',
+    source: 'adv:noise_std', step: 'any', min: 0,
+    range: '$10 – $50,000',
+    desc: 'Standard deviation of the profits from simulating a single day.' },
+
+  { kind: 'section', label: 'Model of deposits and redemptions' },
+  { kind: 'number', label: 'Std dev of daily deposits / redemptions',
+    source: 'adv:sigma_net_annual', step: 'any', min: 0,
+    range: '',
+    desc: 'Standard deviation of the routine deposits / redemptions of retail investors.' },
+  { kind: 'number', label: 'Borrowing cost',
+    source: 'adv:r_borrow_annual', step: 'any', min: 0,
+    range: '0.02 – 0.20',
+    desc: 'Borrowing cost when the cash balance goes negative.' },
+  { kind: 'number', label: 'Jump rate',
+    source: 'adv:jump_rate_annual', step: 'any', min: 0,
+    range: '0 – 120',
+    desc: 'Average rate of large inflow / outflow shocks per year.' },
+  { kind: 'number', label: 'Log of std dev of jumps',
+    source: 'adv:jump_std_log', step: 'any', min: 0,
+    range: '0.1 – 2',
+    desc: 'Log of the standard deviation of the size of a jump.' },
+
+  { kind: 'section', label: 'Session' },
+  { kind: 'int', label: 'Random number seed', source: 'seed', min: 0, max: 9999,
+    range: '',
+    desc: 'Seed governing the generation of deposits and redemptions.' },
+];
+
+const ROWS_2D = [
+  { kind: 'section', label: 'Administrative' },
+  { kind: 'select', label: 'Report level', source: 'reportLevel',
+    options: [
+      { value: 'basic',    label: 'Basic' },
+      { value: 'advanced', label: 'Advanced' },
+    ],
+    range: 'Basic, advanced',
+    desc: '"Basic" shows just the reports needed to play the game. "Advanced" adds diagnostic panels for understanding model behavior.' },
+
+  { kind: 'section', label: 'Parameters governing search policies' },
+  { kind: 'int', label: 'Lookahead horizon for knowledge gradient (ρˡᵏʰᵈ)',
+    source: 'mStarStr', min: 1, max: 100,
+    range: '[1–100]',
+    desc: 'If =1, the KG computes the value of a single experiment. If >1, the KG assumes we perform ρˡᵏʰᵈ replications, reducing the noise of the observation.' },
+  { kind: 'pair', label: 'Search box bounds — retail investor (θ₁)',
+    sources: ['adv:theta1_min', 'adv:theta1_max'],
+    step: 'any', min: 0,
+    range: '[0.01 – 0.20]',
+    desc: 'Min and max for the fraction of individual (retail) AUM held in cash.' },
+  { kind: 'pair', label: 'Search box bounds — institutional investor (θ₂)',
+    sources: ['adv:theta2_min', 'adv:theta2_max'],
+    step: 'any', min: 0,
+    range: '[0.01 – 0.40]',
+    desc: 'Min and max for the fraction of institutional AUM held in cash.' },
+
+  { kind: 'section', label: 'Parameters controlling belief about the profit function' },
+  { kind: 'number', label: 'Length scale (ℓ)',
+    source: 'adv:length_scale', step: 'any', min: 0,
+    range: '0.01 – 10',
+    desc: 'Smoothness of the belief about the profit function. Larger produces a smoother graph.' },
+  { kind: 'number', label: 'Variation of the profit function (σ_f)',
+    source: 'adv:signal_std', step: 'any', min: 0,
+    range: '$10 – $50,000',
+    desc: 'Standard deviation of the spread of values the profit function might take across all θ.' },
+  { kind: 'number', label: 'Initial estimate of profit function (m₀)',
+    source: 'adv:prior_mean', step: 'any',
+    range: '$1,000 – $100,000',
+    desc: 'Constant estimate of the entire function used before any observations.' },
+  { kind: 'number', label: 'Std. deviation of an experiment (σ_n)',
+    source: 'adv:noise_std', step: 'any', min: 0,
+    range: '$10 – $50,000',
+    desc: 'Standard deviation of the profits from simulating a single day.' },
+
+  { kind: 'section', label: 'Model of deposits and redemptions — individual investors' },
+  { kind: 'number', label: 'Annual net inflow',
+    source: 'adv:mu_ind_annual', step: 'any',
+    range: '',
+    desc: 'Long-run average net flow (deposits − withdrawals). 0 = steady state (inflows ≈ outflows on average).' },
+  { kind: 'number', label: 'Volatility',
+    source: 'adv:sigma_ind_annual', step: 'any', min: 0,
+    range: '0.01 – 0.10',
+    desc: 'Annualized standard deviation of daily individual flows / AUM.' },
+  { kind: 'number', label: 'Deferral fee',
+    source: 'adv:r_borrow_ind_annual', step: 'any', min: 0,
+    range: '0.001 – 0.05',
+    desc: 'Cost per $ of deferred individual redemption — small, because individual investors can wait.' },
+
+  { kind: 'section', label: 'Model of deposits and redemptions — institutional investors' },
+  { kind: 'number', label: 'Jump rate / year',
+    source: 'adv:jump_rate_inst_annual', step: 'any', min: 0,
+    range: '1 – 120',
+    desc: 'Rate of large institutional deposits or withdrawals per year.' },
+  { kind: 'number', label: 'Log (jump size)',
+    source: 'adv:jump_mean_log_inst', step: 'any',
+    range: '',
+    desc: 'Median jump size = exp(this value), as a fraction of institutional AUM.' },
+  { kind: 'number', label: 'Std. deviation of log of jump sizes',
+    source: 'adv:jump_std_log_inst', step: 'any', min: 0,
+    range: '',
+    desc: 'Controls the variation of jump sizes.' },
+  { kind: 'number', label: 'Institutional redemption fee',
+    source: 'adv:r_borrow_inst_annual', step: 'any', min: 0,
+    range: '',
+    desc: 'Cost per $ of forced liquidation to meet an institutional withdrawal.' },
+
+  { kind: 'section', label: 'Session' },
+  { kind: 'int', label: 'Random number seed', source: 'seed', min: 0, max: 9999,
+    range: '',
+    desc: 'Seed governing the generation of deposits and redemptions.' },
+];
+
 // Advanced-parameters are persisted in localStorage keyed by this string
 // so the "Save and exit" flow is meaningful — the user's edits survive
 // leaving the page and re-launching the game from the landing page.
@@ -389,220 +548,175 @@ export default function SessionForm({
     );
   }
 
+  // Row schema for the current app.
+  const rows = is2D ? ROWS_2D : ROWS_1D;
+
+  // Getters / setters for a source path (`reportLevel`, `seed`, `mStarStr`,
+  // or `adv:<key>`) — keeps the row renderer decoupled from state layout.
+  const getVal = (src) => {
+    if (src.startsWith('adv:')) return adv[src.slice(4)] ?? '';
+    if (src === 'reportLevel') return reportLevel;
+    if (src === 'seed')        return String(seed);
+    if (src === 'mStarStr')    return mStarStr;
+    return '';
+  };
+  const setVal = (src, v) => {
+    if (src.startsWith('adv:')) return setField(src.slice(4), v);
+    if (src === 'reportLevel') return setReportLevel(v);
+    if (src === 'seed')        return setSeed(Number(v) || 0);
+    if (src === 'mStarStr')    return setMStarStr(v);
+  };
+  // Canonicalize on blur: for adv fields, snap to numeric; for seed, coerce int.
+  const blurVal = (src) => {
+    if (src.startsWith('adv:')) return canonicalize(src.slice(4));
+    if (src === 'seed')        return setSeed(Math.max(0, Math.min(9999, Math.round(Number(seed) || 0))));
+    if (src === 'mStarStr')    return setMStarStr(String(Math.max(1, Math.min(100, Math.round(Number(mStarStr) || 1)))));
+  };
+
   return (
-    <div className="setup-wrap">
-      <div className="card setup-card">
+    <div className="setup-wrap" style={{ alignItems: 'flex-start', paddingTop: 24 }}>
+      <div className="card" style={{ maxWidth: 1100, width: '100%' }}>
         <h1 className="form-title">Advanced parameters</h1>
         <p className="form-subtitle">
-          Tune the belief prior, simulation truth, seed, policy
-          parameters, and reporting level. Save and exit to return to
-          the landing page — the parameter-adjustment policy is chosen
-          inside the game on the control bar.
+          Edit any value in the <b>Default</b> column. Save and exit
+          returns you to the landing page — the parameter-adjustment
+          policy is chosen inside the game on the control bar.
         </p>
 
         <form onSubmit={handleSaveAndExit}>
-          {/* Show which cash-management app these edits are for. */}
+          {/* App this panel is editing — read-only, carried from the landing page. */}
           <div style={{ padding: '10px 12px', background: '#f8fafc',
                         border: '1px solid #e2e8f0', borderRadius: 6,
                         marginBottom: 16, fontSize: 13, color: '#374151' }}>
             <span style={{ color: '#64748b' }}>Cash management policy:</span> <b>{appLabel}</b>
           </div>
 
-          {/* Policy parameter — the one non-hidden thing that varies
-              by policy. Kept out here so it's visible without expanding
-              Advanced. KG family: m*. IE: z_alpha. Random / Human: none. */}
-          {isKGFamily && (
-            <div className="form-group">
-              <label>Policy parameter — m* (days)</label>
-              <input
-                type="number" value={mStarStr} min={1} step={1}
-                onChange={e => setMStarStr(e.target.value)}
-                onBlur={() => setMStarStr(String(mStar))}
-              />
-              <span style={{ fontSize: 12, color: '#64748b' }}>
-                KG evaluated as if we ran m* repeat experiments (precision ×m*).
-                m*=1 recovers the classical single-shot KG. Tunable mid-session
-                on the KG(x;m) card.
-              </span>
-            </div>
-          )}
-          {isIE && (
-            <div className="form-group">
-              <label>Policy parameter — z_alpha (# std devs)</label>
-              <input
-                type="number" value={zAlphaStr} min={0} step="any"
-                onChange={e => setZAlphaStr(e.target.value)}
-                onBlur={() => setZAlphaStr(String(zAlpha))}
-              />
-              <span style={{ fontSize: 12, color: '#64748b' }}>
-                IE score = μ_n(x) − z_alpha · σ_n(x). z_alpha = 0 is pure
-                exploitation (greedy); higher values pull toward under-observed
-                θ. Typical exploration range: 0 – 3.
-              </span>
-            </div>
-          )}
-          {isRandomizedGreedy && (
-            <div className="form-group">
-              <label>Policy parameter — σ_greedy (θ-noise std)</label>
-              <input
-                type="number" value={sigmaGreedyStr} min={0} step="any"
-                onChange={e => setSigmaGreedyStr(e.target.value)}
-                onBlur={() => setSigmaGreedyStr(String(sigmaGreedy))}
-              />
-              <span style={{ fontSize: 12, color: '#64748b' }}>
-                θ_next = argmax(belief) + N(0, σ_greedy²), clipped to the
-                θ-box. σ_greedy = 0 is pure greedy exploitation; larger
-                values jitter around the best-guess θ.
-              </span>
-            </div>
-          )}
-
-          {/* Advanced parameters (collapsible) */}
-          <details style={{ marginBottom: 16, borderTop: '1px solid #e2e8f0', paddingTop: 12 }} open>
-            <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#374151',
-                              padding: '4px 0', userSelect: 'none' }}>
-              Advanced parameters — belief prior, simulation truth, seed
-            </summary>
-            <div style={{ marginTop: 12, padding: '12px 16px', background: '#f8fafc',
-                          borderRadius: 6, border: '1px solid #e2e8f0' }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b',
-                            textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 }}>
-                Session
-              </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label style={{ fontSize: 12 }}>Random seed</label>
-                  <input type="number" value={seed} min={0} max={9999}
-                    onChange={e => setSeed(Number(e.target.value))} />
-                </div>
-                <div className="form-group" style={{ justifyContent: 'flex-end' }}>
-                  <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={stationary}
-                      onChange={e => setStationary(e.target.checked)}
-                      style={{ width: 16, height: 16, cursor: 'pointer' }} />
-                    Stationary regime (no market regime switching)
-                  </label>
-                </div>
-              </div>
-
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b',
-                            textTransform: 'uppercase', letterSpacing: 0.6,
-                            marginTop: 16, marginBottom: 8 }}>
-                Reporting
-              </div>
-              <div className="form-group">
-                <label style={{ fontSize: 12 }}>Report level</label>
-                <select value={reportLevel}
-                        onChange={e => setReportLevel(e.target.value)}
-                        style={{ maxWidth: 200 }}>
-                  <option value="basic">Basic — core charts only</option>
-                  <option value="advanced">Advanced — includes KG(x;m) S-curve diagnostic</option>
-                </select>
-                <span style={{ fontSize: 11, color: '#94a3b8' }}>
-                  Basic shows the main KG, GP posterior, cash, and history cards.
-                  Advanced adds diagnostic panels like the KG-vs-batch-size chart.
-                </span>
-              </div>
-              <div className="form-group">
-                <label style={{ fontSize: 12 }}>Deposits &amp; redemptions — horizon H (days)</label>
-                <input
-                  type="number" value={flowHorizonStr} min={1} max={5000} step={1}
-                  onChange={e => setFlowHorizonStr(e.target.value)}
-                  onBlur={() => setFlowHorizonStr(String(flowHorizon))}
-                  style={{ maxWidth: 120 }}
-                />
-                <span style={{ fontSize: 11, color: '#94a3b8' }}>
-                  Length of the exogenous sample-path report on the right column.
-                  Default 200 ≈ one working year.
-                </span>
-              </div>
-
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b',
-                            textTransform: 'uppercase', letterSpacing: 0.6,
-                            marginTop: 16, marginBottom: 8 }}>
-                Belief prior (GP hyperparameters — algorithm assumptions)
-              </div>
-              <div className="form-row">{BELIEF_FIELDS.slice(0, 2).map(advField)}</div>
-              <div className="form-row">{BELIEF_FIELDS.slice(2, 4).map(advField)}</div>
-
-              {!is2D && (
-                <>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b',
-                                textTransform: 'uppercase', letterSpacing: 0.6,
-                                marginTop: 16, marginBottom: 8 }}>
-                    Simulation model (underlying truth &amp; per-run noise)
-                  </div>
-                  <div className="form-row">{SIM_FIELDS.slice(0, 2).map(advField)}</div>
-                  <div className="form-row">{SIM_FIELDS.slice(2, 4).map(advField)}</div>
-                </>
+          <table style={{
+            width: '100%', borderCollapse: 'collapse',
+            fontSize: 13, tableLayout: 'fixed',
+          }}>
+            <colgroup>
+              <col style={{ width: '32%' }} />
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '40%' }} />
+            </colgroup>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #cbd5e1' }}>
+                <th style={TH}>Variable</th>
+                <th style={TH}>Default</th>
+                <th style={TH}>Range</th>
+                <th style={TH}>Explanation</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, i) =>
+                row.kind === 'section' ? (
+                  <SectionRow key={`s-${i}`} label={row.label} />
+                ) : (
+                  <ParamRow key={row.source ?? (row.sources || []).join('-')}
+                            row={row} getVal={getVal} setVal={setVal}
+                            blurVal={blurVal} />
+                )
               )}
-
-              {is2D && (
-                <>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b',
-                                textTransform: 'uppercase', letterSpacing: 0.6,
-                                marginTop: 16, marginBottom: 8 }}>
-                    Market rates &amp; calendar
-                  </div>
-                  <div className="form-row">{MARKET_FIELDS_2D.slice(0, 2).map(advField)}</div>
-                  <div className="form-row">{MARKET_FIELDS_2D.slice(2, 3).map(advField)}</div>
-
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b',
-                                textTransform: 'uppercase', letterSpacing: 0.6,
-                                marginTop: 16, marginBottom: 8 }}>
-                    Individual investors — GBM on aum_ind (small, frequent)
-                  </div>
-                  <div className="form-row">{IND_FIELDS_2D.slice(0, 2).map(advField)}</div>
-                  <div className="form-row">{IND_FIELDS_2D.slice(2, 3).map(advField)}</div>
-
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b',
-                                textTransform: 'uppercase', letterSpacing: 0.6,
-                                marginTop: 16, marginBottom: 8 }}>
-                    Institutional investors — Poisson × lognormal on aum_inst (rare, large)
-                  </div>
-                  <div className="form-row">{INST_FIELDS_2D.slice(0, 2).map(advField)}</div>
-                  <div className="form-row">{INST_FIELDS_2D.slice(2, 4).map(advField)}</div>
-                </>
-              )}
-
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b',
-                            textTransform: 'uppercase', letterSpacing: 0.6,
-                            marginTop: 16, marginBottom: 8 }}>
-                θ search-box bounds
-              </div>
-              {is2D ? (
-                <>
-                  <div className="form-row">{RANGE_FIELDS_2D.slice(0, 2).map(advField)}</div>
-                  <div className="form-row">{RANGE_FIELDS_2D.slice(2, 4).map(advField)}</div>
-                </>
-              ) : (
-                <div className="form-row">{RANGE_FIELDS_1D.map(advField)}</div>
-              )}
-
-              <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 12, marginBottom: 0 }}>
-                Simulation parameters change what F(θ) actually looks like and how noisy
-                a single 26-week run is. Belief parameters are what the GP algorithms
-                <em> assume</em> — mismatch between the two is itself a pedagogically
-                interesting condition. Widening the θ box explores a larger region;
-                make sure the length scale ℓ isn't tiny compared to the new range.
-              </p>
-            </div>
-          </details>
+            </tbody>
+          </table>
 
           {error && (
-            <p style={{ color: '#dc2626', fontSize: 13, marginBottom: 12 }}>{error}</p>
+            <p style={{ color: '#dc2626', fontSize: 13, margin: '16px 0 0 0' }}>{error}</p>
           )}
 
-          <button type="submit" className="btn btn-primary" disabled={loading}
-            style={{ width: '100%', padding: '11px', fontSize: '0.95rem' }}>
-            Save and exit
-          </button>
-          <p style={{ fontSize: 11, color: '#94a3b8', margin: '8px 0 0 0', textAlign: 'center' }}>
-            Saves your settings and returns to the landing page. Hit
-            <b> Play the game</b> there to launch with these values.
-          </p>
+          <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+            <button type="submit" className="btn btn-primary" disabled={loading}
+              style={{ padding: '10px 32px', fontSize: '0.95rem' }}>
+              Save and exit
+            </button>
+            <p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>
+              Saves your settings and returns to the landing page. Hit
+              <b> Play the game</b> there to launch with these values.
+            </p>
+          </div>
         </form>
       </div>
     </div>
   );
 }
+
+// ── Table sub-components ────────────────────────────────────────────────
+
+const TH = {
+  padding: '8px 10px', textAlign: 'left', fontSize: 12, fontWeight: 700,
+  color: '#334155', letterSpacing: 0.3, background: '#f8fafc',
+};
+const TD = { padding: '8px 10px', verticalAlign: 'top', borderBottom: '1px solid #e2e8f0' };
+const TD_EDIT = { ...TD, background: '#fefce8' };  // highlight editable cells
+const TD_DESC = { ...TD, color: '#64748b', fontSize: 12, lineHeight: 1.5 };
+
+function SectionRow({ label }) {
+  return (
+    <tr>
+      <td colSpan={4} style={{
+        padding: '10px 10px 6px 10px',
+        fontSize: 12, fontWeight: 700, color: '#0f172a',
+        textTransform: 'uppercase', letterSpacing: 0.6,
+        background: '#f1f5f9', borderBottom: '1px solid #cbd5e1',
+      }}>
+        {label}
+      </td>
+    </tr>
+  );
+}
+
+function ParamRow({ row, getVal, setVal, blurVal }) {
+  return (
+    <tr>
+      <td style={{ ...TD, fontWeight: 500, color: '#0f172a' }}>{row.label}</td>
+      <td style={TD_EDIT}>
+        {row.kind === 'select' ? (
+          <select value={getVal(row.source)}
+                  onChange={e => setVal(row.source, e.target.value)}
+                  style={SELECT_STYLE}>
+            {row.options.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        ) : row.kind === 'pair' ? (
+          <div style={{ display: 'flex', gap: 6 }}>
+            {row.sources.map((s, i) => (
+              <input key={i} type="number"
+                     value={getVal(s)}
+                     min={row.min} step={row.step ?? 'any'}
+                     onChange={e => setVal(s, e.target.value)}
+                     onBlur={() => blurVal(s)}
+                     style={INPUT_STYLE_SMALL} />
+            ))}
+          </div>
+        ) : (
+          <input type="number"
+                 value={getVal(row.source)}
+                 min={row.min} max={row.max}
+                 step={row.kind === 'int' ? 1 : (row.step ?? 'any')}
+                 onChange={e => setVal(row.source, e.target.value)}
+                 onBlur={() => blurVal(row.source)}
+                 style={INPUT_STYLE} />
+        )}
+      </td>
+      <td style={{ ...TD, color: '#64748b', fontSize: 12, fontFamily: 'ui-monospace, monospace' }}>
+        {row.range}
+      </td>
+      <td style={TD_DESC}>{row.desc}</td>
+    </tr>
+  );
+}
+
+const INPUT_STYLE = {
+  width: '100%', boxSizing: 'border-box',
+  padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: 4,
+  fontSize: 13, background: '#fff',
+};
+const INPUT_STYLE_SMALL = { ...INPUT_STYLE, width: '48%' };
+const SELECT_STYLE = {
+  width: '100%', boxSizing: 'border-box',
+  padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: 4,
+  fontSize: 13, background: '#fff',
+};
