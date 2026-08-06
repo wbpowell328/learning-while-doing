@@ -480,7 +480,15 @@ export default function SessionForm({
   function handleSaveAndExit(e) {
     if (e && e.preventDefault) e.preventDefault();
     persistAdvanced();
-    window.location.href = LANDING_URL;
+    // Pass the current app back so the landing page's picker doesn't
+    // silently revert to its default (Warren-noted 2026-08).
+    try {
+      const url = new URL(LANDING_URL);
+      url.searchParams.set('app', appName);
+      window.location.href = url.toString();
+    } catch {
+      window.location.href = LANDING_URL;
+    }
   }
 
   // Auto-submit on mount when the landing page's Play button was hit
