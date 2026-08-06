@@ -728,6 +728,11 @@ def reveal(sid: str, grid_size: int = 30, n_reps: int = 12) -> RevealResponse:
     cfg = session._sim_config
     sc = session._sc
     base_seed = session._session_seed + 999_000
+    # Match the batch length the user is currently running so the true
+    # F(θ) values on this graph line up with the score boxes, GP
+    # posterior, and observation dots. Falls back to the session
+    # horizon if no batch has been run yet.
+    n_days_ref = _display_n_days(session)
 
     grid = np.linspace(cfg.impparam_min, cfg.impparam_max, grid_size)
     mean_rewards: list[float] = []
@@ -740,6 +745,7 @@ def reveal(sid: str, grid_size: int = 30, n_reps: int = 12) -> RevealResponse:
                 horizon_weeks=sc.horizon_weeks,
                 session_seed=base_seed,
                 experiment_index=i,
+                n_days=n_days_ref,
             )
             for i in range(n_reps)
         ]
@@ -758,6 +764,7 @@ def reveal(sid: str, grid_size: int = 30, n_reps: int = 12) -> RevealResponse:
             horizon_weeks=sc.horizon_weeks,
             session_seed=base_seed,
             experiment_index=i,
+            n_days=n_days_ref,
         )
         for i in range(n_reps)
     ]
