@@ -682,36 +682,25 @@ export default function App() {
     await fetchReveal(session.id);
   }, [session, revealLoading, fetchReveal]);
 
-  // ── New session ───────────────────────────────────────────────────────────
+  // ── Return to game page ──────────────────────────────────────────────────
 
-  const handleNew = useCallback(async () => {
+  // Clean up the backend session and navigate back to the CASTLE
+  // landing page. If the game was opened in a new tab (via the
+  // landing page's target="_blank" link), try to close the tab so
+  // the user returns to the original one; browsers often block
+  // scripted close for non-script-opened tabs, so fall back to a
+  // same-tab navigation which always works.
+  const handleReturnToLanding = useCallback(async () => {
     stopRef.current = true;
-    if (session) await deleteSession(session.id).catch(() => {});
-    setSession(null);
-    setPosterior(null);
-    setPosterior2D(null);
-    setKg2D(null);
-    setFlowSample(null);
-    setKgComparison(null);
-    setKgVsM(null);
-    setKgVsMSigmaEps(null);
-    setKgVsMMMax(50);
-    setKgVsMTheta(null);
-    setKgVsMTheta2(null);
-    setHistory([]);
-    setEnrichedRows([]);
-    setNSteps(0);
-    setBestImpparam(null);
-    setLastResult(null);
-    setLatestScore(null);
-    setCumulativeScore(null);
-    setTotalDays(0);
-    setReveal(null);
-    setError(null);
-    // After the user hits "New session" they get the setup panel —
-    // don't auto-launch a second session using the URL flag.
-    setAutoCount(n => n + 1);
-  }, [session]);
+    if (session) {
+      try { await deleteSession(session.id); } catch { /* best-effort */ }
+    }
+    const app = session?.app_name ?? launchParams.initialAppName;
+    const url = `https://warrenpowell.org/learning-while-doing/?app=${encodeURIComponent(app)}`;
+    try { window.close(); } catch (_) { /* no-op */ }
+    // If close was blocked, we're still here — navigate.
+    setTimeout(() => { window.location.href = url; }, 50);
+  }, [session, launchParams]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -747,7 +736,7 @@ export default function App() {
         </span>
         <div className="session-meta">
           seed {seed}
-          <button className="btn btn-ghost" onClick={handleNew}>← New session</button>
+          <button className="btn btn-ghost" onClick={handleReturnToLanding}>← Return to game page</button>
         </div>
       </div>
 
