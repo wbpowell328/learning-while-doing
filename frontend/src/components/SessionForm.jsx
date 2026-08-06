@@ -24,6 +24,12 @@ const ADV_DEFAULTS = {
   initial_theta:     '0.10',
   initial_theta1:    '0.10',
   initial_theta2:    '0.10',
+  // Fund size ("AUM" = assets under management). Kept editable so
+  // users can shrink the fund without also having to rescale the
+  // dollar-denominated median jump — a smaller AUM at fixed jump-$
+  // makes each jump a larger fraction of AUM, which shifts θ*
+  // meaningfully upward.
+  initial_aum:       '1000000',
   // Simulation model (1-D app only) — the underlying truth F(θ) and its per-run noise.
   // Jump size is displayed in dollars for legibility; converted to
   // jump_mean_log = ln(median$ / initial_aum) on submit. initial_aum
@@ -57,11 +63,11 @@ const ADV_DEFAULTS = {
   r_borrow_inst_annual:     '0.02',   // 2% redemption fee on forced institutional liquidation
 };
 
-// AUM references for the median-dollars ↔ jump_mean_log conversion.
-// Must match apps/*/config.py — updating here without updating there
-// (or vice-versa) will misconvert jump sizes.
-const AUM_1D          = 1_000_000;   // apps/cash_balance/config.py initial_aum
-const AUM_INST_2D     = 500_000;     // apps/cash_balance_2d — 50% of $1M initial_aum
+// AUM used for the median-dollars ↔ jump_mean_log conversion is now
+// pulled from the editable adv:initial_aum field at submit time; see
+// _initial_aum below. (The hardcoded 1_000_000 / 500_000 constants
+// this file used to keep are gone — dynamic value is the source of
+// truth so a user's AUM edit propagates correctly.)
 
 // Field metadata for the advanced-parameters panel
 const BELIEF_FIELDS = [
@@ -197,6 +203,10 @@ const ROWS_1D = [
     desc: 'Noise on one day of simulated reward. Batch noise scales as √n_days — a 200-day run averages down to ≈ σ_n / √200 per day.' },
 
   { kind: 'section', label: 'Model of deposits and redemptions' },
+  { kind: 'number', label: 'Initial AUM ($)',
+    source: 'adv:initial_aum', step: 'any', min: 1000,
+    range: '$100k – $10M+',
+    desc: 'Starting size of the fund. Doesn\'t affect θ* directly, but a smaller AUM at a fixed median-jump-in-dollars makes each jump a larger fraction of AUM, so θ* shifts up. Convenient knob for shaping where the optimum sits.' },
   { kind: 'number', label: 'Std dev of daily deposits / redemptions',
     source: 'adv:sigma_net_annual', step: 'any', min: 0,
     range: '',
@@ -277,6 +287,10 @@ const ROWS_2D = [
     desc: 'Noise on one day of simulated reward. Batch noise scales as √n_days.' },
 
   { kind: 'section', label: 'Model of deposits and redemptions — individual investors' },
+  { kind: 'number', label: 'Initial AUM ($)',
+    source: 'adv:initial_aum', step: 'any', min: 1000,
+    range: '$100k – $10M+',
+    desc: 'Starting size of the fund. Split 50/50 between individual and institutional by default. Smaller AUM at fixed median-jump-in-dollars makes jumps a larger fraction of AUM, shifting θ* up.' },
   { kind: 'number', label: 'Annual net inflow',
     source: 'adv:mu_ind_annual', step: 'any',
     range: '',
@@ -451,9 +465,12 @@ export default function SessionForm({
     : numeric('theta1_max');
 
   // Convert user-visible median-jump-in-dollars back into the
-  // log-fraction the backend expects. Guards against ≤ 0 (Math.log
-  // would return -Infinity / NaN) by falling back to the ADV_DEFAULTS
-  // dollar value.
+  // log-fraction the backend expects. AUM comes from the editable
+  // Advanced-params row (falls back to the 1-D default). For 2-D
+  // the AUM base is institutional (initial_aum × 0.5 by default).
+  // Guards against ≤ 0 (Math.log = −Infinity / NaN) by falling back
+  // to defaults.
+  const _initial_aum = Math.max(1, numeric('initial_aum'));
   const _log_from_median = (key, aum) => {
     const raw = Number(adv[key]);
     const md  = (raw > 0) ? raw : Number(ADV_DEFAULTS[key]);
@@ -462,9 +479,15 @@ export default function SessionForm({
 
   // sim_config payload — field names are app-specific. Unknown fields are
   // dropped server-side; we just include everything the target app understands.
+  // Institutional AUM for 2-D — uses the default institutional
+  // fraction (0.5) applied to the editable total AUM. If the fraction
+  // ever becomes user-editable, thread it through here too.
+  const _aum_inst_2d = _initial_aum * 0.5;
+
   const simConfigPayload = is2D
     ? {
         stationary,
+        initial_aum:           _initial_aum,
         impparam_min: impparamMin,
         impparam_max: impparamMax,
         // Objective / market
@@ -477,14 +500,15 @@ export default function SessionForm({
         r_borrow_ind_annual:   numeric('r_borrow_ind_annual'),
         // Institutional investor process
         jump_rate_inst_annual: numeric('jump_rate_inst_annual'),
-        jump_mean_log_inst:    _log_from_median('jump_median_dollars_inst', AUM_INST_2D),
+        jump_mean_log_inst:    _log_from_median('jump_median_dollars_inst', _aum_inst_2d),
         jump_std_log_inst:     numeric('jump_std_log_inst'),
         r_borrow_inst_annual:  numeric('r_borrow_inst_annual'),
       }
     : {
         stationary,
+        initial_aum:      _initial_aum,
         jump_rate_annual: numeric('jump_rate_annual'),
-        jump_mean_log:    _log_from_median('jump_median_dollars', AUM_1D),
+        jump_mean_log:    _log_from_median('jump_median_dollars', _initial_aum),
         jump_std_log:     numeric('jump_std_log'),
         sigma_net_annual: numeric('sigma_net_annual'),
         r_borrow_annual:  numeric('r_borrow_annual'),
