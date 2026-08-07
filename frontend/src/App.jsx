@@ -813,13 +813,21 @@ export default function App() {
     // Prefer history.back() when the user arrived from the landing
     // page — the browser natively restores scroll position (and bfcache
     // preserves other page state) so they land back where they
-    // clicked "Play the game". Falls through to a fresh landing
-    // navigation if history isn't usable.
-    const cameFromLanding =
-      document.referrer && document.referrer.startsWith('https://warrenpowell.org/learning-while-doing/');
+    // clicked "Play the game".
+    //
+    // Referrer detection: default browser policy strips the URL down
+    // to origin cross-origin, so match by hostname rather than the
+    // full path.
+    //
+    // NO setTimeout safety net — it raced with the back navigation
+    // and sometimes forced a fresh full-page reload that reset scroll.
+    let cameFromLanding = false;
+    try {
+      cameFromLanding = document.referrer &&
+        new URL(document.referrer).hostname === 'warrenpowell.org';
+    } catch (_) { /* malformed referrer — treat as "no" */ }
     if (cameFromLanding && window.history.length > 1) {
       window.history.back();
-      setTimeout(() => { window.location.href = url; }, 500);
     } else {
       window.location.href = url;
     }

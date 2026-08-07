@@ -601,26 +601,33 @@ export default function SessionForm({
   function handleSaveAndExit(e) {
     if (e && e.preventDefault) e.preventDefault();
     persistAdvanced();
-    // Prefer window.history.back() when the user arrived from the
-    // landing page — the browser restores scroll position (and any
-    // JS state, via bfcache when available) natively. That way the
-    // user lands right back where they clicked Advanced parameters,
-    // instead of at the top of the landing page. Fallback URL keeps
-    // the ?app= trick so, if we do fall through to a fresh navigation,
-    // the picker restores.
+    // Prefer window.history.back() when we can — the browser restores
+    // scroll position (and any JS state, via bfcache when available)
+    // natively, dropping the user right back where they clicked
+    // "Game parameters".
+    //
+    // Referrer detection: browsers default to "strict-origin-when-
+    // cross-origin", so cross-origin referrer is only the origin
+    // (https://warrenpowell.org/), not the full landing URL. Match by
+    // hostname, not by the full path.
+    //
+    // NO setTimeout safety net — it raced with the back navigation and
+    // sometimes forced a fresh full-page load that reset scroll. If
+    // history.back() silently no-ops (very rare), the user can hit
+    // the browser back button.
     let url;
     try {
       url = new URL(LANDING_URL);
       url.searchParams.set('app', appName);
       url = url.toString();
     } catch { url = LANDING_URL; }
-    const cameFromLanding = document.referrer && document.referrer.startsWith(LANDING_URL);
+    let cameFromLanding = false;
+    try {
+      cameFromLanding = document.referrer &&
+        new URL(document.referrer).hostname === 'warrenpowell.org';
+    } catch (_) { /* malformed referrer — treat as "no" */ }
     if (cameFromLanding && window.history.length > 1) {
       window.history.back();
-      // Safety net: if back() didn't actually pop us off this page
-      // (bfcache miss + weird browser quirk), fall through to a
-      // fresh landing navigation after a beat.
-      setTimeout(() => { window.location.href = url; }, 500);
     } else {
       window.location.href = url;
     }
