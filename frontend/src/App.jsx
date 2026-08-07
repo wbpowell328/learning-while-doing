@@ -908,9 +908,13 @@ export default function App() {
         revealShown={reveal != null}
         onOpenGameParams={() => {
           // Navigate the same tab to the game origin with just ?app=X
-          // (no auto=1) so SessionForm renders. Save-and-exit from
-          // there falls through to its normal history.back flow.
+          // (no auto=1) so SessionForm renders. Set a sessionStorage
+          // flag so SessionForm's Save-and-exit knows the user came
+          // from within the game (not the landing page) and should
+          // return to a fresh game session with the new params —
+          // streamlines "tweak → replay" iteration.
           const app = session.app_name;
+          try { sessionStorage.setItem('lwd_from_game', '1'); } catch (_) {}
           window.location.href = `${window.location.origin}/?app=${encodeURIComponent(app)}`;
         }}
       />

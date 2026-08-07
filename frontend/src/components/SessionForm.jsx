@@ -601,31 +601,42 @@ export default function SessionForm({
   function handleSaveAndExit(e) {
     if (e && e.preventDefault) e.preventDefault();
     persistAdvanced();
-    // Prefer window.history.back() when we can — the browser restores
-    // scroll position (and any JS state, via bfcache when available)
-    // natively, dropping the user right back where they clicked
-    // "Game parameters".
-    //
+
+    // Three exit paths, in order of preference:
+    //   1. If we came from the game itself (in-game "Game parameters"
+    //      button set a sessionStorage flag), spawn a fresh game with
+    //      the new params. Streamlines Warren's "tweak → replay" loop.
+    //   2. If the referrer is the landing page, history.back() —
+    //      browser natively restores scroll position.
+    //   3. Otherwise fall through to a fresh landing navigation.
+    let fromGame = false;
+    try {
+      fromGame = sessionStorage.getItem('lwd_from_game') === '1';
+      if (fromGame) sessionStorage.removeItem('lwd_from_game');
+    } catch (_) { /* private mode — treat as false */ }
+    if (fromGame) {
+      // Fresh game session with the new params (auto=1 spawns it).
+      const gameUrl = `${window.location.origin}/?app=${encodeURIComponent(appName)}&auto=1`;
+      window.location.href = gameUrl;
+      return;
+    }
+
     // Referrer detection: browsers default to "strict-origin-when-
     // cross-origin", so cross-origin referrer is only the origin
-    // (https://warrenpowell.org/), not the full landing URL. Match by
-    // hostname, not by the full path.
-    //
-    // NO setTimeout safety net — it raced with the back navigation and
-    // sometimes forced a fresh full-page load that reset scroll. If
-    // history.back() silently no-ops (very rare), the user can hit
-    // the browser back button.
+    // (https://warrenpowell.org/), not the full landing URL. Match
+    // by hostname, not by the full path.
+    let cameFromLanding = false;
+    try {
+      cameFromLanding = document.referrer &&
+        new URL(document.referrer).hostname === 'warrenpowell.org';
+    } catch (_) { /* malformed referrer — treat as "no" */ }
+
     let url;
     try {
       url = new URL(LANDING_URL);
       url.searchParams.set('app', appName);
       url = url.toString();
     } catch { url = LANDING_URL; }
-    let cameFromLanding = false;
-    try {
-      cameFromLanding = document.referrer &&
-        new URL(document.referrer).hostname === 'warrenpowell.org';
-    } catch (_) { /* malformed referrer — treat as "no" */ }
     if (cameFromLanding && window.history.length > 1) {
       window.history.back();
     } else {
