@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, getKGvsM, setMStar, setZAlpha, setSigmaGreedy, setLengthScale, getObservationsEnriched, getFlowSample, runExperiment, runOneMore, resetSession, deleteSession } from './api';
+import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, getKGvsM, setMStar, setZAlpha, setSigmaGreedy, setLengthScale, getObservationsEnriched, getFlowSample, getNextTheta, runExperiment, runOneMore, resetSession, deleteSession } from './api';
 import SessionForm from './components/SessionForm';
 import PosteriorChart from './components/PosteriorChart';
 import Belief3DChart from './components/Belief3DChart';
@@ -216,6 +216,10 @@ export default function App() {
   const [posterior2D,   setPosterior2D]   = useState(null);   // 2-D belief surface
   const [kg2D,          setKg2D]          = useState(null);   // 2-D KG surface
   const [flowSample,    setFlowSample]    = useState(null);   // deposits/redemptions sample path
+  // The θ the policy would pick next, previewed without executing.
+  // Null when there's no meaningful preview (fresh session, Human/
+  // Manual policy). ExperimentBar mirrors it into its Test-point box.
+  const [nextTheta,     setNextTheta]     = useState(null);
   const stopRef = useRef(false);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -360,6 +364,18 @@ export default function App() {
     await Promise.all(refetches);
   }, [session, refreshEnriched, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2]);
 
+  // Ask the backend what θ the current policy would pick next
+  // (without executing) so the ExperimentBar can show it in the
+  // Test-point box. Null response = no policy prediction available
+  // (Manual policy, fresh session), and the box keeps its own value.
+  const refreshNextTheta = useCallback(async () => {
+    if (!session) return;
+    try {
+      const resp = await getNextTheta(session.id);
+      setNextTheta(resp?.theta ?? null);
+    } catch (_) { /* non-fatal — box just keeps last value */ }
+  }, [session]);
+
   // Refetch the deposits/redemptions sample with a specific θ so the
   // cash-balance line on that chart reflects whatever the user just
   // ran with. Backend default (0.10) is used when theta is null (fresh
@@ -395,12 +411,14 @@ export default function App() {
       } else if (t != null) {
         await refreshFlowSample(Number(t));
       }
+      // Preview the next θ the policy would pick, for the Test-point box.
+      await refreshNextTheta();
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
-  }, [session, applyExperimentResponse, refreshFlowSample]);
+  }, [session, applyExperimentResponse, refreshFlowSample, refreshNextTheta]);
 
   // Restart: reset the backend session to initial conditions (empty
   // belief, empty history, re-seeded RNG) and zero all UI counters —
@@ -455,6 +473,9 @@ export default function App() {
       } else {
         await refreshFlowSample(Number(init ?? 0.1));
       }
+      // Restart clears history — no next-θ preview (Test-point box
+      // falls back to the initial-θ from Advanced parameters).
+      setNextTheta(null);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -486,12 +507,13 @@ export default function App() {
           await refreshFlowSample(Number(t));
         }
       }
+      await refreshNextTheta();
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
-  }, [session, nSteps, applyExperimentResponse, refreshFlowSample]);
+  }, [session, nSteps, applyExperimentResponse, refreshFlowSample, refreshNextTheta]);
 
   // GP length_scale (bandwidth) editor: POST refits the belief with the
   // new value replaying the session's history through it, then refetch
@@ -625,6 +647,7 @@ export default function App() {
     setPosterior2D(null);
     setKg2D(null);
     setFlowSample(null);
+    setNextTheta(null);
     const horizon = Math.max(1, Math.min(5000, Math.round(Number(flow_horizon) || 200)));
     // Initial cash-line θ — same value that pre-fills the ExperimentBar's
     // Starting-point box. Falls back to 0.1 if nothing was supplied.
@@ -692,6 +715,9 @@ export default function App() {
       } else if (impparam != null) {
         await refreshFlowSample(Number(impparam));
       }
+      // Manual: no policy preview. Clear nextTheta so ExperimentBar's
+      // useEffect keeps the user's last typed θ in the box.
+      setNextTheta(null);
       if (session.budget && result.n_steps >= session.budget) {
         await fetchReveal(session.id);
       }
@@ -892,6 +918,7 @@ export default function App() {
         onRestart={handleRestart}
         onManualEvaluate={handleEvaluate}
         initialTheta={session.initial_theta}
+        nextTheta={nextTheta}
         canOneMore={nSteps > 0}
         latestScore={latestScore}
         cumulativeScore={cumulativeScore}

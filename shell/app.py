@@ -485,6 +485,39 @@ def reset_session(sid: str) -> ExperimentResponse:
     )
 
 
+@app.get("/sessions/{sid}/next_theta")
+def next_theta(sid: str) -> dict:
+    """
+    Preview the θ the current policy would pick next, without
+    consuming session RNG state or advancing history. Used by the
+    ExperimentBar's "Test point" box so the user can see the θ
+    about to be tested (as opposed to the last θ already tested,
+    which is visible on the charts below).
+
+    Uses a dedicated RNG seed so previewing doesn't shift what a
+    subsequent step() would draw. Non-deterministic policies
+    (Random, RandomizedGreedy with σ>0) preview a *representative*
+    next pick rather than the exact one; deterministic policies
+    (KG family, IE) preview exactly. Human / Manual returns None
+    because the user picks each θ themselves.
+    """
+    session = _get_or_404(sid)
+    policy_cls = session._policy.__class__.__name__
+    # Manual / Human doesn't propose — caller falls back to whatever
+    # the user has typed in the θ box.
+    if policy_cls == "RandomPolicy" and session.n_steps == 0:
+        # RandomPolicy is also used as the "Manual" backing at
+        # session-create; without any history we can't tell them apart
+        # cleanly. Return None so the frontend keeps its own default.
+        return {"theta": None, "dim": session.dim}
+    try:
+        tmp_rng = np.random.default_rng(int(session._session_seed) + 987_654_321)
+        theta = session._policy.propose(session.belief, tmp_rng)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"policy.propose failed: {e}")
+    return {"theta": _theta_out(theta, session.dim), "dim": session.dim}
+
+
 @app.get("/sessions/{sid}/flow_sample")
 def flow_sample(sid: str, horizon: int = 200,
                 theta: float | None = None,

@@ -126,7 +126,12 @@ export default function ExperimentBar({
   onOneMore,         // async (spec) => void — one more iteration, no reset
   onRestart,         // async () => void — reset to initial conditions, do NOT run
   onManualEvaluate,  // async (theta, n_days) => void — Manual-policy single eval
-  initialTheta,      // scalar (1-D) or [t1, t2] (2-D) — pre-fill for Starting-point
+  initialTheta,      // scalar (1-D) or [t1, t2] (2-D) — pre-fill for Test-point
+  nextTheta,         // scalar (1-D) or [t1, t2] (2-D) — policy's preview of what
+                     // it would pick next. When set, the Test-point box shows
+                     // this instead of the last-tested θ. Null for Manual
+                     // policy or fresh session, in which case we fall back to
+                     // lastTheta / initialTheta as before.
   canOneMore = false, // enable "One more" only after at least one Run
   latestScore = null,     // total reward from the last batch (Restart or One more)
   cumulativeScore = null, // running total since the last Restart
@@ -162,24 +167,32 @@ export default function ExperimentBar({
   // When history clears (Restart), lastTheta goes null and we snap
   // back to the pre-fill 0.1 so the box always reads well.
   useEffect(() => {
-    if (lastTheta == null) {
-      // No history yet (fresh session or Restart) — snap back to the
-      // Advanced-parameters initial θ.
+    // Priority: nextTheta (policy's preview of what it would pick next)
+    // → lastTheta (last tested, fallback for Manual since it has no
+    //   policy preview)
+    // → initial θ from Advanced parameters (fresh session / Restart)
+    const source = nextTheta != null ? nextTheta
+                 : lastTheta != null ? lastTheta
+                 : null;
+    if (source == null) {
       setTheta1(String(Number.isFinite(_init1) ? _init1 : 0.1));
       setTheta2(String(Number.isFinite(_init2) ? _init2 : 0.1));
-    } else if (dim === 2 && Array.isArray(lastTheta)) {
-      setTheta1(String(lastTheta[0]));
-      setTheta2(String(lastTheta[1]));
+    } else if (dim === 2 && Array.isArray(source)) {
+      setTheta1(String(source[0]));
+      setTheta2(String(source[1]));
     } else {
-      setTheta1(String(lastTheta));
+      setTheta1(String(source));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastTheta, dim, _init1, _init2]);
+  }, [nextTheta, lastTheta, dim, _init1, _init2]);
 
   // Label follows history: on a fresh / just-Restarted session the box
   // is the user's starting point; once anything has run, it's the
   // last-tested θ, so the label reads "Current point".
-  const thetaLabel = lastTheta == null ? 'Starting point' : 'Current point';
+  // Always "Test point" — the θ that will be tested next when the
+  // user hits Run (whether user-typed on first run / Manual, or the
+  // policy's preview otherwise).
+  const thetaLabel = 'Test point';
   const policyOptions = dim === 2 ? POLICY_OPTIONS_2D : POLICY_OPTIONS_1D;
 
   // Resolve the tunable parameter for the current policy — or null if

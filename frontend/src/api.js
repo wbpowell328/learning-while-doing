@@ -129,6 +129,7 @@ export const setLengthScale = (sid, lengthScale) =>
   });
 export const getObservationsEnriched = (sid) =>
   call(`/sessions/${sid}/observations_enriched`);
+export const getNextTheta = (sid) => call(`/sessions/${sid}/next_theta`);
 export const getFlowSample = (sid, horizon = 200, theta = null, theta2 = null) => {
   const qs = [`horizon=${horizon}`];
   if (theta  != null) qs.push(`theta=${theta}`);
