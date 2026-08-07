@@ -145,6 +145,10 @@ export default function ExperimentBar({
   onMStarChange,          // async (n) => void
   onZAlphaChange,         // async (x) => void
   onSigmaGreedyChange,    // async (x) => void
+  onReveal,               // async () => void; null hides the Reveal button
+  revealLoading = false,
+  revealShown = false,    // true → Reveal already computed this session
+  onOpenGameParams,       // () => void; null hides the button
 }) {
   // Pre-fill θ from the Advanced-parameters "Initial value" field
   // (or 0.10 if the user didn't set one). 2-D case takes both dims.
@@ -357,17 +361,37 @@ export default function ExperimentBar({
       {paramMeta && <PolicyParamInput meta={paramMeta} />}
     </div>
 
-    {/* Score-boxes row. Latest = total reward from the last button
-        press (Restart batch or One more single step). Cumulative =
-        running total since the last Restart. Restart pins both to the
-        same value; each One more adds to Cumulative only. */}
-    <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
+    {/* Second row: score readouts on the left, action buttons pushed
+        to the right. Reveal truth and Game parameters live here (moved
+        out of the deleted Stats card at Warren's request 2026-08). */}
+    <div style={{ display: 'flex', gap: 12, alignItems: 'stretch', flexWrap: 'wrap' }}>
       <ScoreBox label="Total days"       value={totalDays} format="days"
                 hint="Simulated days behind the cumulative score. Resets on Restart." />
       <ScoreBox label="Latest score"     value={latestScore}
                 hint="Total reward from the last Restart or One more" />
       <ScoreBox label="Cumulative score" value={cumulativeScore}
                 hint="Running total across all steps since the last Restart" />
+      <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+        {onReveal && (
+          <button type="button" onClick={onReveal}
+                  disabled={running || revealLoading || revealShown}
+                  className="btn btn-outline"
+                  title={revealShown
+                    ? 'Ground-truth reward curve already shown below'
+                    : 'Plot the true underlying reward curve F(θ) to compare with your beliefs'}
+                  style={{ padding: '6px 16px', fontSize: 13 }}>
+            {revealLoading ? 'Computing…' : revealShown ? 'Truth revealed' : 'Reveal truth'}
+          </button>
+        )}
+        {onOpenGameParams && (
+          <button type="button" onClick={onOpenGameParams}
+                  className="btn btn-outline"
+                  title="Open the Game-parameters panel to change sim / belief settings. Save-and-exit returns you to the landing page."
+                  style={{ padding: '6px 16px', fontSize: 13 }}>
+            Game parameters
+          </button>
+        )}
+      </div>
     </div>
     </div>
   );

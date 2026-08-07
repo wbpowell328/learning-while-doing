@@ -871,46 +871,11 @@ export default function App() {
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="card">
-        <div style={{ display: 'flex', gap: 32, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          <div className="stats">
-            <div className="stat">
-              <span className="stat-label">Steps</span>
-              <span className="stat-value">{nSteps}</span>
-            </div>
-            <div className="stat">
-              <span className="stat-label">Best θ</span>
-              <span className="stat-value">
-                {bestImpparam == null
-                  ? '—'
-                  : Array.isArray(bestImpparam)
-                    ? `(${bestImpparam.map(v => v.toFixed(3)).join(', ')})`
-                    : Number(bestImpparam).toFixed(4)}
-              </span>
-            </div>
-          </div>
-
-          {/* Reveal truth stays here — it's a session-scoped diagnostic,
-              not an experiment control. Auto-run / Run-step buttons
-              were replaced by the ExperimentBar below the Stats card. */}
-          {session.dim === 1 && (
-            <div className="controls" style={{ marginLeft: 'auto' }}>
-              <button className="btn btn-outline" onClick={handleReveal}
-                disabled={loading || revealLoading || reveal != null}
-                title={reveal != null
-                  ? 'Ground-truth reward curve already shown below'
-                  : 'Plot the true underlying reward curve F(θ) to compare with your beliefs'}>
-                {revealLoading ? 'Computing…' : reveal != null ? 'Truth revealed' : 'Reveal truth'}
-              </button>
-            </div>
-          )}
+      {error && (
+        <div className="card" style={{ padding: '8px 12px' }}>
+          <p style={{ color: '#dc2626', fontSize: 13, margin: 0 }}>{error}</p>
         </div>
-
-        {error && (
-          <p style={{ color: '#dc2626', fontSize: 13, marginTop: 12 }}>{error}</p>
-        )}
-      </div>
+      )}
 
       {/* Experiment control bar — the ONE way to run policies now.
           Each Run resets the session belief + history and executes
@@ -938,6 +903,16 @@ export default function App() {
         onMStarChange={handleMStarChange}
         onZAlphaChange={handleZAlphaChange}
         onSigmaGreedyChange={handleSigmaGreedyChange}
+        onReveal={session.dim === 1 ? handleReveal : null}
+        revealLoading={revealLoading}
+        revealShown={reveal != null}
+        onOpenGameParams={() => {
+          // Navigate the same tab to the game origin with just ?app=X
+          // (no auto=1) so SessionForm renders. Save-and-exit from
+          // there falls through to its normal history.back flow.
+          const app = session.app_name;
+          window.location.href = `${window.location.origin}/?app=${encodeURIComponent(app)}`;
+        }}
       />
 
       {/* Budget bar (human only) — informational, tracks n_steps vs the
