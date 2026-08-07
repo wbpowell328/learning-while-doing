@@ -601,15 +601,21 @@ export default function SessionForm({
   function handleSaveAndExit(e) {
     if (e && e.preventDefault) e.preventDefault();
     persistAdvanced();
-    // Pass the current app back so the landing page's picker doesn't
-    // silently revert to its default (Warren-noted 2026-08).
+    // Try to close this tab first — mirrors "Return to game page" in
+    // the game (the landing page opens Advanced in a new tab via
+    // target="_blank", so closing brings the user back to their
+    // original tab, which still remembers whether 1-D or 2-D was
+    // selected). If close is blocked by the browser, fall back to a
+    // same-tab navigation with ?app=<current> so the landing page's
+    // dropdown restores the correct value.
+    let url;
     try {
-      const url = new URL(LANDING_URL);
+      url = new URL(LANDING_URL);
       url.searchParams.set('app', appName);
-      window.location.href = url.toString();
-    } catch {
-      window.location.href = LANDING_URL;
-    }
+      url = url.toString();
+    } catch { url = LANDING_URL; }
+    try { window.close(); } catch (_) { /* no-op */ }
+    setTimeout(() => { window.location.href = url; }, 50);
   }
 
   // Auto-submit on mount when the landing page's Play button was hit
