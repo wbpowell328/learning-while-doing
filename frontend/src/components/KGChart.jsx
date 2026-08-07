@@ -9,7 +9,7 @@ import { useState, useEffect } from 'react';
 //   Correlated (MC)        — dashed violet
 //   Independent            — solid amber
 //
-// Right axis (online KG, Ryzhov: mu_n(x) - (N-n) * offline_KG(x)):
+// Right axis (online KG, Warren-2026: mu_n(x) + offline_KG(x; ρ^lkhd)):
 //   Online (correlated)    — thin green
 //   Online (independent)   — thin amber
 //
@@ -110,15 +110,17 @@ export default function KGChart({ kg, sessionMStar = 1, onMStarChange }) {
     );
   }
 
-  const { impparams, mc_samples, budget, steps_used } = kg;
-  const remaining = Math.max(0, budget - steps_used);
+  // budget / steps_used / remaining are legacy from the Ryzhov
+  // (N-n)·KG form — no longer used to compute online-KG. Kept in the
+  // payload for backward compat but not displayed.
+  const { impparams, mc_samples } = kg;
 
   // "Next θ" per policy — the app is now a MAXIMISATION problem so every
   // curve is picked by argmax:
   //   * offline KG curves: argmax (KG is info value; more is better)
   //   * online KG curves: backend returns them in reward frame,
-  //     display_OKG(x) = μ_reward(x) + (N−n)·offline_KG(x), which the
-  //     policy also maximises. Same argmax convention everywhere.
+  //     display_OKG(x) = μ_reward(x) + offline_KG(x; ρ^lkhd), which
+  //     the policy also maximises. Same argmax convention everywhere.
   const nextByKey = {
     analytic_correlated: argExtremum(impparams, kg.analytic_correlated, 'max'),
     mc_correlated:       argExtremum(impparams, kg.mc_correlated,       'max'),
@@ -271,7 +273,7 @@ export default function KGChart({ kg, sessionMStar = 1, onMStarChange }) {
       <text
         transform={`translate(${W - PAD.right + 56},${PAD.top + IH / 2}) rotate(-90)`}
         textAnchor="middle" fontSize={12} fill="#64748b">
-        Online KG(x) = μ_reward(x) + (N−n)·offline KG
+        Online KG(x) = μ_reward(x) + offline KG(x; ρˡᵏʰᵈ)
       </text>
 
       {/* Legend — two horizontal rows ABOVE the plot area so it never
@@ -295,9 +297,6 @@ export default function KGChart({ kg, sessionMStar = 1, onMStarChange }) {
               <text x={28} y={9} fontSize={10} fill="#374151">{label}</text>
             </g>
           ))}
-          <text x={400} y={9} fontSize={10} fill="#64748b" fontStyle="italic">
-            N={budget}, n={steps_used}, N−n={remaining}
-          </text>
         </g>
       </g>
     </svg>

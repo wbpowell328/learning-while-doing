@@ -1051,17 +1051,17 @@ def kg_comparison(
     # Posterior mean at the probe points — needed for the online KG composite.
     mu_probes, _ = session.belief.posterior(probes)
 
-    # Online KG. Internally (min-cost form) Ryzhov gives
-    #     online_KG(x) = μ_n(x) − (N − n) · offline_KG(x)
-    # and picks argmin. For a maximise app we display
-    #     display_online_KG(x) = μ_reward(x) + (N − n) · offline_KG(x)
-    #                          = −μ_cost(x) + (N − n) · offline_KG(x)
-    # which the user maximises — consistent with the offline KG chart above.
-    # Offline KG(x) is always ≥ 0 (info value) and is unchanged by direction.
+    # Online KG (Warren-2026 formulation):
+    #     online_KG_internal(x) = μ_n(x) − offline_KG(x; ρ^lkhd)
+    #     display_online_KG(x)  = μ_reward(x) + offline_KG(x; ρ^lkhd)
+    # The offline KG values (ana / ind) are already computed at the
+    # current ρ^lkhd = m_star above, so no extra multiplier is needed
+    # here. Dropped the legacy Ryzhov (N-n) multiplier — the policy
+    # classes (OKGCorrelatedPolicy, OKGIndependentPolicy) stopped
+    # using it a while back; this brings the chart display in line.
     steps_used = int(session.n_steps)
-    remaining = max(0, int(budget) - steps_used)
-    online_ana_internal = mu_probes - remaining * ana
-    online_ind_internal = mu_probes - remaining * ind
+    online_ana_internal = mu_probes - ana
+    online_ind_internal = mu_probes - ind
     # Scale from per-day to per-batch dollars for the chart. Both μ and
     # KG are linear in the target function, so both get × n_days.
     n = _display_n_days(session)
