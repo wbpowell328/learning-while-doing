@@ -601,21 +601,29 @@ export default function SessionForm({
   function handleSaveAndExit(e) {
     if (e && e.preventDefault) e.preventDefault();
     persistAdvanced();
-    // Try to close this tab first — mirrors "Return to game page" in
-    // the game (the landing page opens Advanced in a new tab via
-    // target="_blank", so closing brings the user back to their
-    // original tab, which still remembers whether 1-D or 2-D was
-    // selected). If close is blocked by the browser, fall back to a
-    // same-tab navigation with ?app=<current> so the landing page's
-    // dropdown restores the correct value.
+    // Prefer window.history.back() when the user arrived from the
+    // landing page — the browser restores scroll position (and any
+    // JS state, via bfcache when available) natively. That way the
+    // user lands right back where they clicked Advanced parameters,
+    // instead of at the top of the landing page. Fallback URL keeps
+    // the ?app= trick so, if we do fall through to a fresh navigation,
+    // the picker restores.
     let url;
     try {
       url = new URL(LANDING_URL);
       url.searchParams.set('app', appName);
       url = url.toString();
     } catch { url = LANDING_URL; }
-    try { window.close(); } catch (_) { /* no-op */ }
-    setTimeout(() => { window.location.href = url; }, 50);
+    const cameFromLanding = document.referrer && document.referrer.startsWith(LANDING_URL);
+    if (cameFromLanding && window.history.length > 1) {
+      window.history.back();
+      // Safety net: if back() didn't actually pop us off this page
+      // (bfcache miss + weird browser quirk), fall through to a
+      // fresh landing navigation after a beat.
+      setTimeout(() => { window.location.href = url; }, 500);
+    } else {
+      window.location.href = url;
+    }
   }
 
   // Auto-submit on mount when the landing page's Play button was hit

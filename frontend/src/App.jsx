@@ -784,9 +784,19 @@ export default function App() {
     }
     const app = session?.app_name ?? launchParams.initialAppName;
     const url = `https://warrenpowell.org/learning-while-doing/?app=${encodeURIComponent(app)}`;
-    try { window.close(); } catch (_) { /* no-op */ }
-    // If close was blocked, we're still here — navigate.
-    setTimeout(() => { window.location.href = url; }, 50);
+    // Prefer history.back() when the user arrived from the landing
+    // page — the browser natively restores scroll position (and bfcache
+    // preserves other page state) so they land back where they
+    // clicked "Play the game". Falls through to a fresh landing
+    // navigation if history isn't usable.
+    const cameFromLanding =
+      document.referrer && document.referrer.startsWith('https://warrenpowell.org/learning-while-doing/');
+    if (cameFromLanding && window.history.length > 1) {
+      window.history.back();
+      setTimeout(() => { window.location.href = url; }, 500);
+    } else {
+      window.location.href = url;
+    }
   }, [session, launchParams]);
 
   // ── Render ────────────────────────────────────────────────────────────────
