@@ -31,7 +31,7 @@ from .acquire import AcquisitionConfig, AcquisitionPolicy, _make_grid
 
 @dataclass(frozen=True)
 class SessionConfig:
-    horizon_weeks: int = 26         # length of each simulated experiment
+    horizon_weeks: int = 10         # length of each simulated experiment (50 trading days — matches the ExperimentBar's default N)
     best_impparam_grid: int = 200   # per-dim grid resolution for best_impparam()
 
 

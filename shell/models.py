@@ -66,7 +66,7 @@ class AcqConfigIn(BaseModel):
 
 
 class SessionConfigIn(BaseModel):
-    horizon_weeks: int = 26
+    horizon_weeks: int = 10   # 50 trading days — matches ExperimentBar's default N
     best_impparam_grid: int = 200
 
 

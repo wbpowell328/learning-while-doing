@@ -417,7 +417,7 @@ export default function SessionForm({
   // SessionConfig has a value, but the user never sees it.
   const [seed, setSeed]             = useState(savedAdv.seed ?? 42);
   const [stationary, setStationary] = useState(savedAdv.stationary ?? true);
-  const horizon = 26;   // backend default; overridden per-iteration by ExperimentBar
+  const horizon = 10;   // 50 trading days — matches ExperimentBar's default N so pre-run chart scaling is right
 
   // Policy parameter (single field, meaning depends on the policy):
   //   KG variants → m* (days) — how many repeat experiments the policy
