@@ -194,6 +194,24 @@ export default function App() {
   const [loading,       setLoading]       = useState(false);
   const [autoCount,     setAutoCount]     = useState(0);
   const [error,         setError]         = useState(null);
+  // Render's free tier sleeps the backend after ~15 min idle; when it
+  // wakes, in-memory sessions are gone and any next API call returns
+  // 404 "session 'xxx' not found". Instead of showing that as a raw
+  // error, auto-relaunch: reload the landing page with the current
+  // app + auto=1 so a fresh session is created (using the user's
+  // saved Advanced-params from localStorage). Small delay so the
+  // error banner is visible for a beat before the redirect.
+  useEffect(() => {
+    if (!error) return;
+    if (/\b404\b.*session.*not found/i.test(String(error))) {
+      const app = session?.app_name ?? launchParams.initialAppName;
+      const url = `https://warrenpowell.org/learning-while-doing/?app=${encodeURIComponent(app)}&auto=1`;
+      setError('Session expired (backend was asleep) — starting a new one…');
+      const t = setTimeout(() => { window.location.href = url; }, 800);
+      return () => clearTimeout(t);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [error]);
   const [impparam,         setImpparam]         = useState(0.10);
   const [posterior2D,   setPosterior2D]   = useState(null);   // 2-D belief surface
   const [kg2D,          setKg2D]          = useState(null);   // 2-D KG surface
