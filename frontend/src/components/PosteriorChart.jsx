@@ -1,5 +1,9 @@
-const W = 680, H = 320;
-const PAD = { top: 24, right: 24, bottom: 52, left: 72 };
+// Viewport + padding chosen to match KGChart's plot-area geometry so
+// vertical marks at the same θ line up between the two charts stacked
+// on top of each other (Warren's ask 2026-08). If you change KGChart's
+// W / PAD.left / PAD.right, mirror it here.
+const W = 720, H = 320;
+const PAD = { top: 24, right: 96, bottom: 52, left: 72 };
 const IW = W - PAD.left - PAD.right;
 const IH = H - PAD.top - PAD.bottom;
 
