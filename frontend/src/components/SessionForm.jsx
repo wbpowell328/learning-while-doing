@@ -719,7 +719,7 @@ export default function SessionForm({
   return (
     <div className="setup-wrap" style={{ alignItems: 'flex-start', paddingTop: 24 }}>
       <div className="card" style={{ maxWidth: 1100, width: '100%' }}>
-        <h1 className="form-title">Advanced parameters</h1>
+        <h1 className="form-title">Game parameters</h1>
         <p className="form-subtitle">
           Edit any value in the <b>Default</b> column. Save and exit
           returns you to the landing page — the parameter-adjustment
