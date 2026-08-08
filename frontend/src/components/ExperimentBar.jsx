@@ -268,15 +268,15 @@ export default function ExperimentBar({
       <span style={labelStyle}>{thetaLabel}</span>
       {dim === 2 ? (
         <>
-          <input type="number" step="any" value={theta1}
+          <input type="number" step={0.01} min={0} value={theta1}
                  placeholder="θ₁" style={numStyle}
                  onChange={e => setTheta1(e.target.value)} />
-          <input type="number" step="any" value={theta2}
+          <input type="number" step={0.01} min={0} value={theta2}
                  placeholder="θ₂" style={numStyle}
                  onChange={e => setTheta2(e.target.value)} />
         </>
       ) : (
-        <input type="number" step="any" value={theta1}
+        <input type="number" step={0.01} min={0} value={theta1}
                placeholder="θ" style={numStyle}
                onChange={e => setTheta1(e.target.value)} />
       )}
