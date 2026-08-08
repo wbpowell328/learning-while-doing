@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { createSession, getReveal, deleteSession } from '../api';
 
 // Defaults must match backend Pydantic defaults (shell/models.py) so the
 // initial UI state is consistent with what the API would use for an empty
@@ -479,6 +480,10 @@ export default function SessionForm({
   const [appName]  = useState(initialAppName);
   const [policy]   = useState(initialPolicy);
   const [loading, setLoading] = useState(false);
+  // True while precomputing the reveal (true-reward curve) at save
+  // time. Used to disable the save buttons and show a "Computing…"
+  // hint so the user knows why the click is pausing for a few seconds.
+  const [precomputing, setPrecomputing] = useState(false);
 
   // Named-panels store: per-app dict of saved parameter sets
   // (Default + any user-created via "Save as new"). Loaded once on
@@ -685,11 +690,57 @@ export default function SessionForm({
     });
   }
 
+  // Warm the backend reveal cache for the current form values.
+  // Creates a temp session, calls /reveal (which is memoized on the
+  // backend by a hash of sim_config + seed + horizon + grid + n_reps),
+  // and deletes the temp session. Cost: a few seconds one-time. Payoff:
+  // when the user next hits Play, the auto-bg-fetch on session-create
+  // hits the warm cache, and the very first Reveal-truth click returns
+  // instantly instead of blocking on a n_reps=50 sweep. Silent on
+  // failure — the reveal is a nice-to-have, not required for the game
+  // to work.
+  async function precomputeReveal() {
+    // 2-D reveal isn't wired up (we render a KG heatmap instead), so
+    // don't waste cycles precomputing it.
+    if (is2D) return;
+    setPrecomputing(true);
+    let sid = null;
+    try {
+      const acqConfigPayload =
+        isIE               ? { z_alpha: zAlpha } :
+        isRandomizedGreedy ? { sigma_greedy: sigmaGreedy } :
+        {};
+      const resp = await createSession({
+        app_name: appName,
+        policy: effectivePolicy,
+        session_seed: seed,
+        sim_config: simConfigPayload,
+        belief_config: beliefConfigPayload,
+        acq_config: acqConfigPayload,
+        session_config: { horizon_weeks: horizon },
+        budget: Math.max(1, Math.round(numeric('ryzhov_budget'))),
+        m_star: isKGFamily ? mStar : 1,
+        report_level: reportLevel,
+        flow_horizon: flowHorizon,
+        initial_theta: is2D
+          ? [numeric('initial_theta1'), numeric('initial_theta2')]
+          : numeric('initial_theta'),
+      });
+      sid = resp?.session_id;
+      if (sid) await getReveal(sid);
+    } catch (err) {
+      console.warn('[precomputeReveal] skipped due to error', err);
+    } finally {
+      if (sid) { try { await deleteSession(sid); } catch (_) { /* ignore */ } }
+      setPrecomputing(false);
+    }
+  }
+
   // "Save as new" — prompt for a name, save the current form state
   // as a new panel under that name (or overwrite if the user confirms).
   // Stays on the form (unlike Save-and-exit) so the user can keep
   // tweaking.
-  function handleSaveAsNew() {
+  async function handleSaveAsNew() {
     const raw = window.prompt('Panel name?');
     if (raw == null) return;
     const name = raw.trim();
@@ -699,6 +750,7 @@ export default function SessionForm({
       return;
     }
     persistAdvanced(name);
+    await precomputeReveal();
   }
 
   // Rename the currently-active panel. Refuses to rename "Default"
@@ -800,9 +852,12 @@ export default function SessionForm({
   // Button-click path: this panel is an edit-and-exit report, not a
   // gateway into the game. Save the form values so a subsequent
   // Play-the-game click uses them, then return to the landing page.
-  function handleSaveAndExit(e) {
+  // Precomputes the true-reward curve on the way out so the first
+  // in-game "Reveal truth" click is instant.
+  async function handleSaveAndExit(e) {
     if (e && e.preventDefault) e.preventDefault();
     persistAdvanced();
+    await precomputeReveal();
 
     // Three exit paths, in order of preference:
     //   1. If we came from the game itself (in-game "Game parameters"
@@ -1043,22 +1098,25 @@ export default function SessionForm({
 
           <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
             <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-              <button type="submit" className="btn btn-primary" disabled={loading}
+              <button type="submit" className="btn btn-primary" disabled={loading || precomputing}
                 style={{ padding: '10px 32px', fontSize: '0.95rem' }}
                 title={`Save changes into the current panel "${activePanelName}" and exit.`}>
-                Save and exit
+                {precomputing ? 'Computing true curve…' : 'Save and exit'}
               </button>
               <button type="button" className="btn btn-outline"
                 onClick={handleSaveAsNew}
+                disabled={loading || precomputing}
                 style={{ padding: '10px 20px', fontSize: '0.95rem' }}
                 title="Save the current form values under a new panel name (leaves you on this page).">
-                Save as new…
+                {precomputing ? 'Computing…' : 'Save as new…'}
               </button>
             </div>
             <p style={{ fontSize: 11, color: '#94a3b8', margin: 0, maxWidth: 640, textAlign: 'center' }}>
               <b>Save and exit</b> writes to the current panel ("{activePanelName}") and
               returns you to the landing page. <b>Save as new</b> creates a
-              separate named panel you can switch back to later.
+              separate named panel you can switch back to later. Saving
+              precomputes the true-reward curve so the in-game <b>Reveal truth</b>
+              button returns instantly (adds a few seconds to save).
             </p>
           </div>
         </form>

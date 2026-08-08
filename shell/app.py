@@ -781,8 +781,32 @@ def kg_2d(sid: str, grid_size: int = 20) -> KG2DResponse:
     )
 
 
+# Reveal cache: keyed by a stable hash of the inputs. Same sim_config
+# + horizon_weeks + session_seed + grid_size + n_reps + n_days_ref
+# always produces the exact same result (simulator is fully seeded),
+# so we can safely memoize. Big win for the "save params → play →
+# click Reveal" loop: the first pass populates the cache, everything
+# after is instant. Cache is process-lifetime only — Render sleep
+# restarts wipe it, but the first request after wake re-warms it.
+_reveal_cache: dict[str, RevealResponse] = {}
+
+def _reveal_cache_key(cfg, sc, session_seed: int, grid_size: int,
+                       n_reps: int, n_days_ref: int) -> str:
+    from dataclasses import asdict
+    import hashlib
+    payload = {
+        "cfg": asdict(cfg),
+        "horizon_weeks": int(sc.horizon_weeks),
+        "session_seed": int(session_seed),
+        "grid_size": int(grid_size),
+        "n_reps": int(n_reps),
+        "n_days_ref": int(n_days_ref),
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
+
+
 @app.get("/sessions/{sid}/reveal")
-def reveal(sid: str, grid_size: int = 30, n_reps: int = 12) -> RevealResponse:
+def reveal(sid: str, grid_size: int = 30, n_reps: int = 50) -> RevealResponse:
     session = _get_or_404(sid)
     cfg = session._sim_config
     sc = session._sc
@@ -792,6 +816,13 @@ def reveal(sid: str, grid_size: int = 30, n_reps: int = 12) -> RevealResponse:
     # posterior, and observation dots. Falls back to the session
     # horizon if no batch has been run yet.
     n_days_ref = _display_n_days(session)
+
+    # Cache lookup — instant return if this exact (config + seed +
+    # grid + reps + horizon) has been computed before.
+    _cache_key = _reveal_cache_key(cfg, sc, session._session_seed, grid_size, n_reps, n_days_ref)
+    _hit = _reveal_cache.get(_cache_key)
+    if _hit is not None:
+        return _hit
 
     grid = np.linspace(cfg.impparam_min, cfg.impparam_max, grid_size)
     mean_rewards: list[float] = []
@@ -828,7 +859,7 @@ def reveal(sid: str, grid_size: int = 30, n_reps: int = 12) -> RevealResponse:
         for i in range(n_reps)
     ]
 
-    return RevealResponse(
+    resp = RevealResponse(
         impparams=grid.tolist(),
         mean_reward=mean_rewards,
         mean_cost=mean_costs,
@@ -846,6 +877,8 @@ def reveal(sid: str, grid_size: int = 30, n_reps: int = 12) -> RevealResponse:
         true_max_reward_per_day=float(mean_rewards[true_best_idx]) / max(1, int(n_days_ref)),
         n_days_used=int(n_days_ref),
     )
+    _reveal_cache[_cache_key] = resp
+    return resp
 
 
 @app.post("/sessions/batch")
