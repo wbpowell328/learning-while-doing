@@ -306,7 +306,15 @@ export default function ExperimentBar({
              title={isHuman
                ? 'Human policy runs one iteration at a time (K=0)'
                : 'Number of policy-driven repetitions (0–20)'}
-             onChange={e => setK(e.target.value)} />
+             onChange={e => setK(e.target.value)}
+             onBlur={e => {
+               // Snap the visible value into [0, 20] so a typo like
+               // 200 shows as 20 instead of hiding a two-digit number
+               // behind a narrow input. Backend was already clamping
+               // on submit; this makes the enforcement visible.
+               const v = Math.max(0, Math.min(20, Math.round(Number(e.target.value) || 0)));
+               setK(String(v));
+             }} />
       <span style={labelStyle}>times.</span>
 
       {/* Dual-mode button — three behaviours based on policy + history:
