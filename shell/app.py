@@ -840,6 +840,11 @@ def reveal(sid: str, grid_size: int = 30, n_reps: int = 12) -> RevealResponse:
         player_best_cost=mean_costs[player_idx],
         naive_reward=float(np.mean([r.total_reward for r in naive_results])),
         naive_cost=float(np.mean([r.total_cost   for r in naive_results])),
+        # Per-day rate at the true optimum so the frontend can multiply
+        # by any day count without needing to know what n_days this
+        # reveal ran at.
+        true_max_reward_per_day=float(mean_rewards[true_best_idx]) / max(1, int(n_days_ref)),
+        n_days_used=int(n_days_ref),
     )
 
 

@@ -220,6 +220,12 @@ export default function App() {
   // Null when there's no meaningful preview (fresh session, Human/
   // Manual policy). ExperimentBar mirrors it into its Test-point box.
   const [nextTheta,     setNextTheta]     = useState(null);
+  // True-optimum reward per day (from reveal). Multiplied by
+  // totalDays on the ExperimentBar to show "Optimal score", the
+  // best a perfect θ picker could have earned over the days
+  // simulated so far. Auto-fetched in the background after each
+  // session create.
+  const [optimalPerDay, setOptimalPerDay] = useState(null);
   const stopRef = useRef(false);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -602,6 +608,9 @@ export default function App() {
     try {
       const rev = await getReveal(sid);
       setReveal(rev);
+      if (rev && Number.isFinite(rev.true_max_reward_per_day)) {
+        setOptimalPerDay(rev.true_max_reward_per_day);
+      }
     } catch (e) {
       setError(String(e));
     } finally {
@@ -681,6 +690,9 @@ export default function App() {
     setKg2D(null);
     setFlowSample(null);
     setNextTheta(null);
+    // Wipe the previous session's true-optimum estimate before we
+    // fetch a new one for this session's sim_config.
+    setOptimalPerDay(null);
     const horizon = Math.max(1, Math.min(5000, Math.round(Number(flow_horizon) || 200)));
     // Initial cash-line θ — same value that pre-fills the ExperimentBar's
     // Starting-point box. Falls back to 0.1 if nothing was supplied.
@@ -712,6 +724,20 @@ export default function App() {
       setKgVsM(kgm);
       setBestImpparam(p2.best_impparam);
       setFlowSample(flow);
+    }
+    // Background: fetch the true-optimum reward-per-day so the
+    // Optimal-score box can show it. Doesn't block the UI — if it
+    // takes a few seconds the box just shows "—" until it lands.
+    // Note: this is only needed for 1-D; the reveal endpoint is
+    // 1-D-only today (uses cash_balance simulator directly).
+    if (dim === 1) {
+      getReveal(session_id)
+        .then(rv => {
+          if (rv && Number.isFinite(rv.true_max_reward_per_day)) {
+            setOptimalPerDay(rv.true_max_reward_per_day);
+          }
+        })
+        .catch(() => { /* non-fatal — box just stays "—" */ });
     }
   }, []);
 
@@ -966,6 +992,7 @@ export default function App() {
         initialTheta={session.initial_theta}
         thetaMin={session.impparam_min}
         thetaMax={session.impparam_max}
+        optimalPerDay={optimalPerDay}
         nextTheta={nextTheta}
         canOneMore={nSteps > 0}
         latestScore={latestScore}

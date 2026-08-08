@@ -291,6 +291,11 @@ class RevealResponse(BaseModel):
     true_max_reward: float = 0.0
     player_best_reward: float = 0.0
     naive_reward: float = 0.0
+    # Reward at the true optimum expressed per day, so callers can
+    # multiply by an arbitrary day count without knowing what n_days
+    # the reveal happened to run at.
+    true_max_reward_per_day: float = 0.0
+    n_days_used: int = 0
     # Legacy cost-frame — kept for backward compat with any older reader
     mean_cost: list[float]
     true_best_impparam: float

@@ -130,6 +130,10 @@ export default function ExperimentBar({
   initialTheta,      // scalar (1-D) or [t1, t2] (2-D) — pre-fill for Test-point
   thetaMin,          // scalar or list — θ search-box lower bound(s) for spinner clamp
   thetaMax,          // scalar or list — θ search-box upper bound(s)
+  optimalPerDay,     // number — true optimum reward per day (from reveal);
+                     // shown as "Optimal score" = this × totalDays. Null →
+                     // box shows "—" (background reveal still in flight, or
+                     // 2-D session where reveal isn't wired).
   nextTheta,         // scalar (1-D) or [t1, t2] (2-D) — policy's preview of what
                      // it would pick next. When set, the Test-point box shows
                      // this instead of the last-tested θ. Null for Manual
@@ -394,6 +398,9 @@ export default function ExperimentBar({
                 hint="Total reward from the last Restart or One more" />
       <ScoreBox label="Cumulative score" value={cumulativeScore}
                 hint="Running total across all steps since the last Restart" />
+      <ScoreBox label="Optimal score"
+                value={(optimalPerDay != null && totalDays > 0) ? optimalPerDay * totalDays : null}
+                hint="What a perfect θ picker would have earned over Total days — true-optimum reward per day × Total days. Null until the background reveal completes." />
       <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
         {onReveal && (
           <button type="button" onClick={onReveal}
