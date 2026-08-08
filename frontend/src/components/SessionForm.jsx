@@ -401,6 +401,71 @@ function writeSavedAdvanced(blob) {
   } catch { /* private mode / quota — silently accept the loss */ }
 }
 
+// ── Named-panels storage ──────────────────────────────────────────────────
+// Layered ABOVE the single-blob storage: each app_name keeps a set of
+// named panels + which one is currently active. Warren's 2026-08 ask.
+//
+// Structure:
+//   {
+//     "cash_balance":     { active: "Default", panels: { Default: <blob>, ... } },
+//     "cash_balance_2d":  { active: "My tuning", panels: { ... } },
+//     ...
+//   }
+// A <blob> here is the same shape writeSavedAdvanced used to persist
+// (seed, stationary, mStar, zAlpha, sigmaGreedy, flowHorizon,
+//  reportLevel, adv). Schema evolves by ADV_DEFAULTS merge on load, so
+// panels saved before a new field was added automatically pick up the
+// new field's default.
+const PANELS_STORAGE_KEY = 'lwd_panels_v1';
+const DEFAULT_PANEL_NAME = 'Default';
+
+function readPanelsStore() {
+  try {
+    const raw = window.localStorage.getItem(PANELS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return (parsed && typeof parsed === 'object') ? parsed : {};
+    }
+  } catch { /* fall through to migration */ }
+  return {};
+}
+
+function writePanelsStore(store) {
+  try {
+    window.localStorage.setItem(PANELS_STORAGE_KEY, JSON.stringify(store));
+  } catch { /* private mode / quota — silently accept */ }
+}
+
+// Read the panels store, migrating from the flat lwd_advanced_v2 blob
+// on first load. The old flat blob is preserved so a browser using the
+// old key doesn't lose data if the user rolls back the deploy.
+function initPanelsStore(appName) {
+  const store = readPanelsStore();
+  if (!store[appName]) {
+    // First-time visit for this app — seed with a Default panel from
+    // the legacy single-blob storage (if present) or empty (→ form
+    // will use ADV_DEFAULTS everywhere).
+    const legacy = readSavedAdvanced();
+    store[appName] = {
+      active: DEFAULT_PANEL_NAME,
+      panels: { [DEFAULT_PANEL_NAME]: legacy && Object.keys(legacy).length ? legacy : {} },
+    };
+    writePanelsStore(store);
+  }
+  return store;
+}
+
+// Sorted panel names for the dropdown: Default first, then the rest
+// in insertion order (Object.keys is insertion-preserving for string
+// keys in modern JS engines).
+function panelNameList(store, appName) {
+  const names = Object.keys(store?.[appName]?.panels ?? {});
+  const rest = names.filter(n => n !== DEFAULT_PANEL_NAME);
+  return names.includes(DEFAULT_PANEL_NAME)
+    ? [DEFAULT_PANEL_NAME, ...rest]
+    : rest;
+}
+
 export default function SessionForm({
   onCreate, error,
   initialAppName = 'cash_balance',
@@ -415,11 +480,13 @@ export default function SessionForm({
   const [policy]   = useState(initialPolicy);
   const [loading, setLoading] = useState(false);
 
-  // Load any previously-saved advanced values so this panel is a
-  // proper edit-and-exit surface: users get back exactly what they
-  // last set. Anything not present in the blob falls through to the
-  // built-in defaults below.
-  const savedAdv = readSavedAdvanced();
+  // Named-panels store: per-app dict of saved parameter sets
+  // (Default + any user-created via "Save as new"). Loaded once on
+  // mount; kept in React state so the selector re-renders when a
+  // panel is added / activated.
+  const [panelsStore, setPanelsStore] = useState(() => initPanelsStore(initialAppName));
+  const activePanelName = panelsStore?.[initialAppName]?.active ?? DEFAULT_PANEL_NAME;
+  const savedAdv        = panelsStore?.[initialAppName]?.panels?.[activePanelName] ?? {};
 
   // Random seed + stationary regime — moved into the Advanced Parameters
   // panel per Warren. Weeks per run is dropped entirely (ExperimentBar's
@@ -555,12 +622,69 @@ export default function SessionForm({
         prior_mean:   numeric('prior_mean'),
       };
 
-  // Serialise the current form state into the localStorage blob so
-  // "Save and exit" (and every session-create) round-trips edits.
-  function persistAdvanced() {
-    writeSavedAdvanced({
-      seed, stationary, mStar, zAlpha, sigmaGreedy, flowHorizon, reportLevel, adv,
+  // Serialise the current form state into a panel blob.
+  function currentFormBlob() {
+    return { seed, stationary, mStar, zAlpha, sigmaGreedy, flowHorizon, reportLevel, adv };
+  }
+
+  // Write the current form state into the ACTIVE panel of the store,
+  // persist to localStorage, and keep the legacy single-blob key in
+  // sync (used as auto-launch fallback if the panels store is ever
+  // wiped). Also updates React state so the selector reflects the
+  // save immediately.
+  function persistAdvanced(overrideActive) {
+    const activeName = overrideActive ?? activePanelName;
+    const blob = currentFormBlob();
+    setPanelsStore(prev => {
+      const nextForApp = {
+        active: activeName,
+        panels: { ...(prev?.[initialAppName]?.panels ?? {}), [activeName]: blob },
+      };
+      const nextStore = { ...prev, [initialAppName]: nextForApp };
+      writePanelsStore(nextStore);
+      return nextStore;
     });
+    writeSavedAdvanced(blob);   // legacy fallback
+  }
+
+  // Load a named panel: populate every form field from its saved
+  // values (falling back to ADV_DEFAULTS for anything missing so old
+  // panels get new fields automatically) and mark it active.
+  function loadPanel(name) {
+    const blob = panelsStore?.[initialAppName]?.panels?.[name];
+    if (!blob) return;
+    setSeed(blob.seed ?? 42);
+    setStationary(blob.stationary ?? true);
+    setMStarStr(blob.mStar       != null ? String(blob.mStar)       : '1');
+    setZAlphaStr(blob.zAlpha     != null ? String(blob.zAlpha)      : '0');
+    setSigmaGreedyStr(blob.sigmaGreedy != null ? String(blob.sigmaGreedy) : '0');
+    setFlowHorizonStr(blob.flowHorizon != null ? String(blob.flowHorizon) : '200');
+    setReportLevel(blob.reportLevel ?? 'basic');
+    setAdv({ ...ADV_DEFAULTS, ...(blob.adv ?? {}) });
+    setPanelsStore(prev => {
+      const nextStore = {
+        ...prev,
+        [initialAppName]: { ...prev[initialAppName], active: name },
+      };
+      writePanelsStore(nextStore);
+      return nextStore;
+    });
+  }
+
+  // "Save as new" — prompt for a name, save the current form state
+  // as a new panel under that name (or overwrite if the user confirms).
+  // Stays on the form (unlike Save-and-exit) so the user can keep
+  // tweaking.
+  function handleSaveAsNew() {
+    const raw = window.prompt('Panel name?');
+    if (raw == null) return;
+    const name = raw.trim();
+    if (!name) return;
+    const existing = panelsStore?.[initialAppName]?.panels ?? {};
+    if (existing[name] && !window.confirm(`Panel "${name}" already exists. Overwrite?`)) {
+      return;
+    }
+    persistAdvanced(name);
   }
 
   // Auto-launch path: called by the useEffect when the URL has
@@ -755,11 +879,31 @@ export default function SessionForm({
         </p>
 
         <form onSubmit={handleSaveAndExit}>
-          {/* App this panel is editing — read-only, carried from the landing page. */}
+          {/* App this panel is editing — read-only, carried from the
+              landing page. Panel selector sits next to it: user picks
+              a named parameter set (Default + any they've saved).
+              Panels are per-app, so 1-D and 2-D lists don't mix. */}
           <div style={{ padding: '10px 12px', background: '#f8fafc',
                         border: '1px solid #e2e8f0', borderRadius: 6,
-                        marginBottom: 16, fontSize: 13, color: '#374151' }}>
-            <span style={{ color: '#64748b' }}>Cash management policy:</span> <b>{appLabel}</b>
+                        marginBottom: 16, fontSize: 13, color: '#374151',
+                        display: 'flex', gap: 24, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span>
+              <span style={{ color: '#64748b' }}>Cash management policy:</span> <b>{appLabel}</b>
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ color: '#64748b' }}>Panel:</span>
+              <select value={activePanelName}
+                      onChange={e => loadPanel(e.target.value)}
+                      style={{ padding: '3px 6px', border: '1px solid #cbd5e1',
+                               borderRadius: 4, fontSize: 13, background: '#fff' }}>
+                {panelNameList(panelsStore, initialAppName).map(name => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+              <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: 12 }}>
+                pick to load its values into the form below
+              </span>
+            </span>
           </div>
 
           <table style={{
@@ -797,14 +941,24 @@ export default function SessionForm({
             <p style={{ color: '#dc2626', fontSize: 13, margin: '16px 0 0 0' }}>{error}</p>
           )}
 
-          <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-            <button type="submit" className="btn btn-primary" disabled={loading}
-              style={{ padding: '10px 32px', fontSize: '0.95rem' }}>
-              Save and exit
-            </button>
-            <p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>
-              Saves your settings and returns to the landing page. Hit
-              <b> Play the game</b> there to launch with these values.
+          <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <button type="submit" className="btn btn-primary" disabled={loading}
+                style={{ padding: '10px 32px', fontSize: '0.95rem' }}
+                title={`Save changes into the current panel "${activePanelName}" and exit.`}>
+                Save and exit
+              </button>
+              <button type="button" className="btn btn-outline"
+                onClick={handleSaveAsNew}
+                style={{ padding: '10px 20px', fontSize: '0.95rem' }}
+                title="Save the current form values under a new panel name (leaves you on this page).">
+                Save as new…
+              </button>
+            </div>
+            <p style={{ fontSize: 11, color: '#94a3b8', margin: 0, maxWidth: 640, textAlign: 'center' }}>
+              <b>Save and exit</b> writes to the current panel ("{activePanelName}") and
+              returns you to the landing page. <b>Save as new</b> creates a
+              separate named panel you can switch back to later.
             </p>
           </div>
         </form>
