@@ -640,6 +640,11 @@ export default function App() {
       seed: session_seed,
       budget: budget ?? null,
       m_star: created.m_star ?? 1,
+      // θ search-box bounds from the backend — used to clamp the
+      // ExperimentBar's Test-point spinner so up-arrow can't blow
+      // past the max and down-arrow can't dip below the min.
+      impparam_min: created.impparam_min,
+      impparam_max: created.impparam_max,
       flow_horizon: Math.max(1, Math.min(5000, Math.round(Number(flow_horizon) || 200))),
       // z_alpha / sigma_greedy default to 0 unless the SessionForm
       // sent them in acq_config. Mirroring them on session state lets
@@ -959,6 +964,8 @@ export default function App() {
         onRestart={handleRestart}
         onManualEvaluate={handleEvaluate}
         initialTheta={session.initial_theta}
+        thetaMin={session.impparam_min}
+        thetaMax={session.impparam_max}
         nextTheta={nextTheta}
         canOneMore={nSteps > 0}
         latestScore={latestScore}

@@ -128,6 +128,8 @@ export default function ExperimentBar({
   onRestart,         // async () => void — reset to initial conditions, do NOT run
   onManualEvaluate,  // async (theta, n_days) => void — Manual-policy single eval
   initialTheta,      // scalar (1-D) or [t1, t2] (2-D) — pre-fill for Test-point
+  thetaMin,          // scalar or list — θ search-box lower bound(s) for spinner clamp
+  thetaMax,          // scalar or list — θ search-box upper bound(s)
   nextTheta,         // scalar (1-D) or [t1, t2] (2-D) — policy's preview of what
                      // it would pick next. When set, the Test-point box shows
                      // this instead of the last-tested θ. Null for Manual
@@ -266,20 +268,32 @@ export default function ExperimentBar({
     }}>
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
       <span style={labelStyle}>{thetaLabel}</span>
-      {dim === 2 ? (
-        <>
-          <input type="number" step={0.01} min={0} value={theta1}
-                 placeholder="θ₁" style={numStyle}
+      {(() => {
+        // Backend returns impparam_min/max as a list (1-element for
+        // 1-D, 2-element for 2-D). Pull per-dim bounds; default to a
+        // wide safety range if the props haven't arrived yet.
+        const asList = v => (Array.isArray(v) ? v : (v != null ? [v] : []));
+        const lo = asList(thetaMin);
+        const hi = asList(thetaMax);
+        const min1 = Number.isFinite(lo[0]) ? lo[0] : 0;
+        const max1 = Number.isFinite(hi[0]) ? hi[0] : 1;
+        const min2 = Number.isFinite(lo[1]) ? lo[1] : (Number.isFinite(lo[0]) ? lo[0] : 0);
+        const max2 = Number.isFinite(hi[1]) ? hi[1] : (Number.isFinite(hi[0]) ? hi[0] : 1);
+        return dim === 2 ? (
+          <>
+            <input type="number" step={0.01} min={min1} max={max1} value={theta1}
+                   placeholder="θ₁" style={numStyle}
+                   onChange={e => setTheta1(e.target.value)} />
+            <input type="number" step={0.01} min={min2} max={max2} value={theta2}
+                   placeholder="θ₂" style={numStyle}
+                   onChange={e => setTheta2(e.target.value)} />
+          </>
+        ) : (
+          <input type="number" step={0.01} min={min1} max={max1} value={theta1}
+                 placeholder="θ" style={numStyle}
                  onChange={e => setTheta1(e.target.value)} />
-          <input type="number" step={0.01} min={0} value={theta2}
-                 placeholder="θ₂" style={numStyle}
-                 onChange={e => setTheta2(e.target.value)} />
-        </>
-      ) : (
-        <input type="number" step={0.01} min={0} value={theta1}
-               placeholder="θ" style={numStyle}
-               onChange={e => setTheta1(e.target.value)} />
-      )}
+        );
+      })()}
 
       <span style={labelStyle}>Run</span>
       <input type="number" min={1} step={1} value={nDays}
