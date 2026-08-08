@@ -687,6 +687,61 @@ export default function SessionForm({
     persistAdvanced(name);
   }
 
+  // Rename the currently-active panel. Refuses to rename "Default"
+  // (it's the always-present base) or to an existing name.
+  function handleRenamePanel() {
+    if (activePanelName === DEFAULT_PANEL_NAME) return;
+    const raw = window.prompt(`Rename "${activePanelName}" to:`, activePanelName);
+    if (raw == null) return;
+    const newName = raw.trim();
+    if (!newName || newName === activePanelName) return;
+    const existing = panelsStore?.[initialAppName]?.panels ?? {};
+    if (existing[newName]) {
+      window.alert(`Panel "${newName}" already exists. Pick a different name.`);
+      return;
+    }
+    setPanelsStore(prev => {
+      const oldPanels = prev?.[initialAppName]?.panels ?? {};
+      const nextPanels = {};
+      // Preserve insertion order but swap the key of the active panel.
+      for (const [k, v] of Object.entries(oldPanels)) {
+        nextPanels[k === activePanelName ? newName : k] = v;
+      }
+      const nextStore = {
+        ...prev,
+        [initialAppName]: { active: newName, panels: nextPanels },
+      };
+      writePanelsStore(nextStore);
+      return nextStore;
+    });
+  }
+
+  // Delete the currently-active panel and fall back to Default.
+  // Also refuses to delete Default.
+  function handleDeletePanel() {
+    if (activePanelName === DEFAULT_PANEL_NAME) return;
+    if (!window.confirm(`Delete panel "${activePanelName}"? This cannot be undone.`)) return;
+    setPanelsStore(prev => {
+      const { [activePanelName]: _dropped, ...remaining } = prev?.[initialAppName]?.panels ?? {};
+      const nextStore = {
+        ...prev,
+        [initialAppName]: { active: DEFAULT_PANEL_NAME, panels: remaining },
+      };
+      writePanelsStore(nextStore);
+      return nextStore;
+    });
+    // Load Default so the form re-syncs to its saved values.
+    const defaultBlob = panelsStore?.[initialAppName]?.panels?.[DEFAULT_PANEL_NAME] ?? {};
+    setSeed(defaultBlob.seed ?? 42);
+    setStationary(defaultBlob.stationary ?? true);
+    setMStarStr(defaultBlob.mStar       != null ? String(defaultBlob.mStar)       : '1');
+    setZAlphaStr(defaultBlob.zAlpha     != null ? String(defaultBlob.zAlpha)      : '0');
+    setSigmaGreedyStr(defaultBlob.sigmaGreedy != null ? String(defaultBlob.sigmaGreedy) : '0');
+    setFlowHorizonStr(defaultBlob.flowHorizon != null ? String(defaultBlob.flowHorizon) : '200');
+    setReportLevel(defaultBlob.reportLevel ?? 'basic');
+    setAdv({ ...ADV_DEFAULTS, ...(defaultBlob.adv ?? {}) });
+  }
+
   // Auto-launch path: called by the useEffect when the URL has
   // ?auto=1 (the landing page's Play button). Persists first so the
   // in-game session and the on-disk record stay in sync.
@@ -890,7 +945,7 @@ export default function SessionForm({
             <span>
               <span style={{ color: '#64748b' }}>Cash management policy:</span> <b>{appLabel}</b>
             </span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               <span style={{ color: '#64748b' }}>Panel:</span>
               <select value={activePanelName}
                       onChange={e => loadPanel(e.target.value)}
@@ -900,8 +955,31 @@ export default function SessionForm({
                   <option key={name} value={name}>{name}</option>
                 ))}
               </select>
+              <button type="button" onClick={handleRenamePanel}
+                      disabled={activePanelName === DEFAULT_PANEL_NAME}
+                      title={activePanelName === DEFAULT_PANEL_NAME
+                        ? 'The Default panel cannot be renamed'
+                        : `Rename "${activePanelName}"`}
+                      style={{ padding: '3px 10px', border: '1px solid #cbd5e1',
+                               borderRadius: 4, fontSize: 12, background: '#fff',
+                               cursor: activePanelName === DEFAULT_PANEL_NAME ? 'not-allowed' : 'pointer',
+                               opacity: activePanelName === DEFAULT_PANEL_NAME ? 0.5 : 1 }}>
+                Rename
+              </button>
+              <button type="button" onClick={handleDeletePanel}
+                      disabled={activePanelName === DEFAULT_PANEL_NAME}
+                      title={activePanelName === DEFAULT_PANEL_NAME
+                        ? 'The Default panel cannot be deleted'
+                        : `Delete "${activePanelName}"`}
+                      style={{ padding: '3px 10px', border: '1px solid #cbd5e1',
+                               borderRadius: 4, fontSize: 12, background: '#fff',
+                               color: '#b91c1c',
+                               cursor: activePanelName === DEFAULT_PANEL_NAME ? 'not-allowed' : 'pointer',
+                               opacity: activePanelName === DEFAULT_PANEL_NAME ? 0.5 : 1 }}>
+                Delete
+              </button>
               <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: 12 }}>
-                pick to load its values into the form below
+                pick to load; Rename / Delete apply to the current one
               </span>
             </span>
           </div>
