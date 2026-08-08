@@ -165,7 +165,7 @@ export default function ExperimentBar({
   const [theta2, setTheta2] = useState(String(Number.isFinite(_init2) ? _init2 : 0.1));
   const [nDays,  setNDays]  = useState('50');
   const [policy, setPolicy] = useState(defaultPolicy || 'kg');
-  const [K,      setK]      = useState('0');
+  const [K,      setK]      = useState('1');   // now "total iterations", min 1
 
   // Human forces K=0 (one iteration at a time). Handled at the source:
   // the policy dropdown's onChange snaps K to '0' when switching to
@@ -233,7 +233,10 @@ export default function ExperimentBar({
     const spec = {
       n_days: Math.max(1, Math.round(nNum)),
       policy,
-      K: isHuman ? 0 : Math.min(20, Math.max(0, Math.round(Number(K) || 0))),
+      // User-facing "Repeat" is the TOTAL iteration count they expect.
+      // Backend's K = extras after the first iteration, so we subtract 1.
+      // Repeat=20 → K=19 → backend runs iter1 + 19 more = 20 iterations.
+      K: isHuman ? 0 : Math.min(19, Math.max(0, Math.round(Number(K) || 1) - 1)),
       theta_init: dim === 2 ? [t1Num, t2Num] : t1Num,
     };
     // m_star / z_alpha are session-level (set in Advanced parameters);
@@ -251,7 +254,10 @@ export default function ExperimentBar({
     const spec = {
       n_days: Math.max(1, Math.round(nNum)),
       policy,   // let backend swap if it differs from current session policy
-      K: isHuman ? 0 : Math.min(20, Math.max(0, Math.round(Number(K) || 0))),
+      // User-facing "Repeat" is the TOTAL iteration count they expect.
+      // Backend's K = extras after the first iteration, so we subtract 1.
+      // Repeat=20 → K=19 → backend runs iter1 + 19 more = 20 iterations.
+      K: isHuman ? 0 : Math.min(19, Math.max(0, Math.round(Number(K) || 1) - 1)),
     };
     onOneMore(spec);
   }
@@ -299,7 +305,7 @@ export default function ExperimentBar({
         );
       })()}
 
-      <span style={labelStyle}>Run</span>
+      <span style={labelStyle}>Horizon</span>
       <input type="number" min={1} step={1} value={nDays}
              placeholder="N"
              style={{ ...numStyleShort, width: 65 }}
@@ -310,7 +316,8 @@ export default function ExperimentBar({
               onChange={e => {
                 const p = e.target.value;
                 setPolicy(p);
-                if (p === 'human') setK('0');
+                // Human/Manual policy runs exactly 1 iter at a time.
+                if (p === 'human') setK('1');
               }}>
         {policyOptions.map(o => (
           <option key={o.value} value={o.value}>{o.label}</option>
@@ -318,19 +325,19 @@ export default function ExperimentBar({
       </select>
 
       <span style={labelStyle}>. Repeat</span>
-      <input type="number" min={0} max={20} step={1} value={K}
+      <input type="number" min={1} max={20} step={1} value={K}
              placeholder="K" style={numStyleShort}
              disabled={isHuman}
              title={isHuman
-               ? 'Human policy runs one iteration at a time (K=0)'
-               : 'Number of policy-driven repetitions (0–20)'}
+               ? 'Human policy runs one iteration at a time'
+               : 'Number of iterations to run (1–20). Repeat=20 with Horizon=50 → 20 × 50 = 1000 simulated days.'}
              onChange={e => setK(e.target.value)}
              onBlur={e => {
-               // Snap the visible value into [0, 20] so a typo like
-               // 200 shows as 20 instead of hiding a two-digit number
-               // behind a narrow input. Backend was already clamping
-               // on submit; this makes the enforcement visible.
-               const v = Math.max(0, Math.min(20, Math.round(Number(e.target.value) || 0)));
+               // Snap the visible value into [1, 20] so a typo like
+               // 200 shows as 20. Backend contract: this is now the
+               // TOTAL iteration count (not K = extras after the
+               // first), so 1 is the smallest meaningful value.
+               const v = Math.max(1, Math.min(20, Math.round(Number(e.target.value) || 0)));
                setK(String(v));
              }} />
       <span style={labelStyle}>times.</span>
@@ -363,12 +370,12 @@ export default function ExperimentBar({
                   : canOneMore
                     ? (!nDaysValid
                         ? 'Enter a positive N (days per iteration)'
-                        : 'Repeat + 1 more iterations from the current state (no reset)')
+                        : 'Run Repeat more iterations from the current state (no reset)')
                     : (!thetaValid
                         ? 'Enter a starting θ'
                         : !nDaysValid
                           ? 'Enter a positive N (days per iteration)'
-                          : 'Run Repeat + 1 iterations from the starting θ')
+                          : 'Run Repeat iterations from the starting θ')
               }
               style={{ padding: '6px 16px', fontSize: 13 }}>
         {running ? 'running…' : (isHuman ? 'Run' : (canOneMore ? 'Repeat' : 'Run'))}
