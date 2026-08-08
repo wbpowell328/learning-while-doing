@@ -751,6 +751,37 @@ class OKGCorrelatedPolicy:
         return _grid_pick(self._grid, int(np.argmin(okg)))
 
 
+class OKGRyzhovCorrelatedPolicy:
+    """
+    Classical Ryzhov online KG (correlated beliefs) — with the
+    (N − n) multiplier in front of the offline KG term.
+
+        OKG_ryzhov(x) = μ_n(x) − (N − n) · offline_correlated_KG(x)   [cost frame]
+        argmax_x [ μ_reward(x) + (N − n) · offline_correlated_KG(x) ] [reward frame]
+
+    Sits alongside OKGCorrelatedPolicy (Warren-2026 formulation with
+    m*/ρ^lkhd instead) so a user can compare the two exploration
+    schemes directly. N is the session's `budget`; n is the current
+    step count (from BeliefModel.n_observations at propose time).
+    """
+    def __init__(self, config: AcquisitionConfig,
+                 budget: int | None = 10, **_unused) -> None:
+        self.config = config
+        # Default N=10 if the caller didn't supply one — matches the
+        # legacy /kg endpoint's default_budget for display continuity.
+        self._N = max(1, int(budget)) if budget is not None else 10
+        cfg = self.config
+        self._grid = _make_grid(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
+
+    def propose(self, model: BeliefModel, rng: np.random.Generator):
+        mu, _ = model.posterior(self._grid)
+        kg = kg_analytic_correlated_at(model, self._grid, self._grid)
+        n = int(model.n_observations)
+        remaining = max(0, self._N - n)
+        okg = mu - remaining * kg
+        return _grid_pick(self._grid, int(np.argmin(okg)))
+
+
 class OKGIndependentPolicy:
     """
     Online KG using independent-beliefs offline KG as the info-value

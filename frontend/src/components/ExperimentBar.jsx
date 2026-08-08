@@ -21,8 +21,9 @@ import { useState, useEffect } from 'react';
 const POLICY_OPTIONS_1D = [
   { value: 'kg',                label: 'KG offline correlated (analytic)' },
   { value: 'kg_indep',          label: 'KG offline independent' },
-  { value: 'okg',               label: 'KG online correlated' },
+  { value: 'okg',               label: 'KG online correlated (μ + KG(ρˡᵏʰᵈ))' },
   { value: 'okg_indep',         label: 'KG online independent' },
+  { value: 'okg_ryzhov',        label: 'KG online correlated — Ryzhov (μ + (N−n)·KG)' },
   { value: 'ie',                label: 'IE' },
   { value: 'randomized_greedy', label: 'Randomized greedy' },
   { value: 'random',            label: 'Random' },

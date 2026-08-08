@@ -84,6 +84,7 @@ class CreateSessionRequest(BaseModel):
         "kg_indep",   # offline independent
         "okg",        # online correlated (Ryzhov)
         "okg_indep",  # online independent
+        "okg_ryzhov", # classical Ryzhov online correlated: μ − (N-n)·KG
         "randomized_greedy",  # argmin(mu) + N(0, σ_greedy)
         "human",
     ] = "human"

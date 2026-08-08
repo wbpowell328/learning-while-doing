@@ -15,6 +15,7 @@ from policy import (
     BeliefConfig, AcquisitionConfig, SessionConfig,
     RandomPolicy, IEPolicy, KGPolicy, Session,
     KGMCPolicy, KGIndependentPolicy, OKGCorrelatedPolicy, OKGIndependentPolicy,
+    OKGRyzhovCorrelatedPolicy,
     RandomizedGreedyPolicy,
     kg_analytic_correlated_at, kg_mc_correlated_at, kg_independent_at,
     kg_vs_batch_size, kg_indep_scalar_vs_batch_size, kg_indep_beliefs_vs_batch_size,
@@ -131,9 +132,8 @@ def _make_step_response(result, session: Session) -> StepResponse:
 
 
 def _make_policy(name: str, acq_cfg: AcquisitionConfig, budget: int | None):
-    # `budget` retained in the signature for backward-compat with the
-    # batch endpoint; the online-KG variants no longer use it (m* took
-    # its place per the Warren-2026 formulation).
+    # `budget` is used by OKGRyzhovCorrelatedPolicy (classical (N-n)·KG)
+    # and ignored by all others.
     if name == "ie":
         return IEPolicy(acq_cfg)
     if name == "kg":
@@ -141,9 +141,11 @@ def _make_policy(name: str, acq_cfg: AcquisitionConfig, budget: int | None):
     if name == "kg_indep":
         return KGIndependentPolicy(acq_cfg)     # offline independent
     if name == "okg":
-        return OKGCorrelatedPolicy(acq_cfg)     # online correlated (μ + KG(m*))
+        return OKGCorrelatedPolicy(acq_cfg)     # online correlated Warren-2026 (μ + KG(m*))
     if name == "okg_indep":
         return OKGIndependentPolicy(acq_cfg)    # online independent
+    if name == "okg_ryzhov":
+        return OKGRyzhovCorrelatedPolicy(acq_cfg, budget=budget)   # μ − (N-n)·KG
     if name == "randomized_greedy":
         return RandomizedGreedyPolicy(acq_cfg)  # argmin(mu) + N(0, σ_greedy)
     return RandomPolicy(acq_cfg)  # "random" and "human" both use RandomPolicy
@@ -219,6 +221,7 @@ def create_session(req: CreateSessionRequest) -> CreateSessionResponse:
         simulate_fn=app_mod.simulate,
         minimize=bool(app_mod.MINIMIZE),
         m_star=max(1, int(req.m_star or 1)),
+        budget=req.budget,          # Ryzhov N; used only by OKGRyzhov policies
     )
     sid = str(uuid4())
     _sessions[sid] = session
@@ -263,7 +266,7 @@ def set_z_alpha(sid: str, body: SetZAlphaRequest) -> SetZAlphaResponse:
     # policies this is a harmless re-create with the same class.
     session.set_policy(_make_policy(
         _policy_name_from_class(session._policy),
-        session._acq_config, budget=None,
+        session._acq_config, budget=session._budget,
     ))
     return SetZAlphaResponse(z_alpha=float(session._acq_config.z_alpha))
 
@@ -282,7 +285,7 @@ def set_sigma_greedy(sid: str, body: SetSigmaGreedyRequest) -> SetSigmaGreedyRes
                                    sigma_greedy=max(0.0, float(body.sigma_greedy)))
     session.set_policy(_make_policy(
         _policy_name_from_class(session._policy),
-        session._acq_config, budget=None,
+        session._acq_config, budget=session._budget,
     ))
     return SetSigmaGreedyResponse(sigma_greedy=float(session._acq_config.sigma_greedy))
 
@@ -296,6 +299,7 @@ def _policy_name_from_class(policy) -> str:
         "KGIndependentPolicy": "kg_indep",
         "OKGCorrelatedPolicy": "okg",
         "OKGIndependentPolicy": "okg_indep",
+        "OKGRyzhovCorrelatedPolicy": "okg_ryzhov",
         "RandomizedGreedyPolicy": "randomized_greedy",
         "RandomPolicy": "random",
     }.get(cls, "random")
@@ -360,7 +364,7 @@ def experiment(sid: str, body: ExperimentRequest) -> ExperimentResponse:
     # so the new policy inherits it via set_policy.
     if body.m_star is not None:
         session.set_m_star(int(body.m_star))
-    new_policy = _make_policy(body.policy, session._acq_config, budget=None)
+    new_policy = _make_policy(body.policy, session._acq_config, budget=session._budget)
     session.set_policy(new_policy)
     # z_alpha lives on the AcquisitionConfig. For IE, mutate it in place
     # so the IE policy picks it up on its next propose(). AcquisitionConfig
@@ -369,13 +373,13 @@ def experiment(sid: str, body: ExperimentRequest) -> ExperimentResponse:
         from dataclasses import replace as _replace
         session._acq_config = _replace(session._acq_config, z_alpha=float(body.z_alpha))
         # Rebuild the policy so it captures the new config.
-        session.set_policy(_make_policy(body.policy, session._acq_config, budget=None))
+        session.set_policy(_make_policy(body.policy, session._acq_config, budget=session._budget))
     # sigma_greedy analogously carries the RandomizedGreedy θ-noise std.
     if body.sigma_greedy is not None and body.policy == "randomized_greedy":
         from dataclasses import replace as _replace
         session._acq_config = _replace(session._acq_config,
                                        sigma_greedy=float(body.sigma_greedy))
-        session.set_policy(_make_policy(body.policy, session._acq_config, budget=None))
+        session.set_policy(_make_policy(body.policy, session._acq_config, budget=session._budget))
 
     n_days = int(body.n_days)
     if n_days < 1:
@@ -446,7 +450,7 @@ def one_more(sid: str, body: OneMoreRequest) -> ExperimentResponse:
         session._acq_config = _replace(session._acq_config,
                                        sigma_greedy=float(body.sigma_greedy))
     if body.policy is not None:
-        session.set_policy(_make_policy(body.policy, session._acq_config, budget=None))
+        session.set_policy(_make_policy(body.policy, session._acq_config, budget=session._budget))
 
     # K+1 iterations from the current state (K=0 → one step).
     n_iters = max(0, int(body.K)) + 1

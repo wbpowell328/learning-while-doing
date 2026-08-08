@@ -68,6 +68,7 @@ class Session:
         simulate_fn: Callable | None = None,
         minimize: bool = True,
         m_star: int = 1,
+        budget: int | None = None,
     ) -> None:
         self._sim_config = sim_config
         self._acq_config = acq_config
@@ -77,6 +78,11 @@ class Session:
         self._simulate = simulate_fn if simulate_fn is not None else cash_balance_simulate
         self._minimize = bool(minimize)
         self._m_star = max(1, int(m_star))
+        # Ryzhov-style budget N — used by OKGRyzhov*Policy for the (N-n)
+        # exploration multiplier. Preserved on the Session so mid-session
+        # policy swaps can reconstruct the Ryzhov policy without losing
+        # N (create-time is the only place req.budget is available).
+        self._budget = budget
         # Push m_star into the policy if it supports it (all KG variants do).
         if hasattr(policy, "set_m_star"):
             policy.set_m_star(self._m_star)
@@ -283,6 +289,11 @@ class Session:
     def m_star(self) -> int:
         """Batch-size trick multiplier used by KG-family policies."""
         return self._m_star
+
+    @property
+    def budget(self) -> int | None:
+        """Ryzhov-style N — used by OKGRyzhov policies for (N-n)·KG."""
+        return self._budget
 
     def set_m_star(self, m_star: int) -> None:
         """

@@ -24,6 +24,9 @@ const ADV_DEFAULTS = {
   initial_theta:     '0.10',
   initial_theta1:    '0.10',
   initial_theta2:    '0.10',
+  // Ryzhov's N — total budget of experiments used by the classical
+  // online KG "μ − (N−n)·KG" policy. Ignored by every other policy.
+  ryzhov_budget:     '10',
   // Fund size ("AUM" = assets under management). Kept editable so
   // users can shrink the fund without also having to rescale the
   // dollar-denominated median jump — a smaller AUM at fixed jump-$
@@ -183,6 +186,10 @@ const ROWS_1D = [
     source: 'adv:initial_theta', step: 'any', min: 0,
     range: 'inside the θ box',
     desc: 'Starting cash-buffer fraction that pre-fills the "Starting point" box on the game\'s control bar. Also seeds the initial cash-balance sample-path chart.' },
+  { kind: 'int', label: 'Ryzhov budget N',
+    source: 'adv:ryzhov_budget', min: 1, max: 500,
+    range: '1 – 500',
+    desc: 'Total experiment budget used by the classical Ryzhov online-KG policy (μ − (N−n)·KG). The exploration bonus is largest at n=0 and decays to 0 as n approaches N. Ignored by every other policy.' },
 
   { kind: 'section', label: 'Parameters controlling belief about the profit function (all per day)' },
   { kind: 'number', label: 'Length scale (ℓ)',
@@ -275,6 +282,10 @@ const ROWS_2D = [
     source: 'adv:initial_theta2', step: 'any', min: 0,
     range: 'inside θ₂ box',
     desc: 'Starting institutional cash-buffer fraction. Pre-fills the θ₂ box on the control bar.' },
+  { kind: 'int', label: 'Ryzhov budget N',
+    source: 'adv:ryzhov_budget', min: 1, max: 500,
+    range: '1 – 500',
+    desc: 'Total experiment budget used by the classical Ryzhov online-KG policy (μ − (N−n)·KG). Ignored by every other policy.' },
 
   { kind: 'section', label: 'Parameters controlling belief about the profit function (all per day)' },
   { kind: 'number', label: 'Length scale (ℓ)',
@@ -450,7 +461,7 @@ export default function SessionForm({
 
   // Auto-flip incompatible policy selections when app changes.
   const policyAllowed = (p) => is2D
-    ? ['random', 'ie', 'kg', 'kg_indep', 'okg', 'okg_indep'].includes(p)
+    ? ['random', 'ie', 'kg', 'kg_indep', 'okg', 'okg_indep', 'okg_ryzhov'].includes(p)
     : true;
   const effectivePolicy = policyAllowed(policy) ? policy : 'kg';
 
@@ -574,11 +585,9 @@ export default function SessionForm({
         belief_config: beliefConfigPayload,
         acq_config: acqConfigPayload,
         session_config: { horizon_weeks: horizon },
-        // Adjustment-budget field was dropped from the UI (the
-        // ExperimentBar's Restart / One more controls make it moot);
-        // send null so the backend uses its own default if it ever
-        // needs one.
-        budget: null,
+        // Ryzhov N — used by OKGRyzhovCorrelatedPolicy; ignored by
+        // every other policy. Backend defaults to 10 if we send null.
+        budget: Math.max(1, Math.round(numeric('ryzhov_budget'))),
         // KG-family m* (θ^KGm*, in days). Ignored by non-KG policies.
         m_star: isKGFamily ? mStar : 1,
         report_level: reportLevel,
@@ -680,8 +689,9 @@ export default function SessionForm({
     randomized_greedy: 'Randomized greedy',
     kg: 'KG — offline correlated (analytic)',
     kg_indep: 'KG — offline independent',
-    okg: 'KG — online correlated',
+    okg: 'KG — online correlated (μ + KG(ρˡᵏʰᵈ))',
     okg_indep: 'KG — online independent',
+    okg_ryzhov: 'KG — online correlated (Ryzhov, μ + (N−n)·KG)',
     ie: 'IE',
     random: 'Random — baseline',
   })[effectivePolicy] ?? effectivePolicy;
