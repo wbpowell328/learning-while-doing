@@ -1,19 +1,18 @@
 import { useState, useEffect } from 'react';
 
-// Compare five KG-related quantities as functions of θ, on one plot with
-// dual y-axes (offline KG lives on cents-to-dollars scale, online KG lives
-// on the μ_n scale of thousands of dollars).
+// Five decision-value curves side by side, so the user can see how the
+// candidate policies pick their next θ:
 //
-// Left axis  (offline value-of-information):
-//   Correlated (analytic)  — solid green
-//   Correlated (MC)        — dashed violet
-//   Independent            — solid amber
+// Left axis  — offline value of information (per-batch dollars):
+//   analytic_correlated   — solid green — offline KG(x; ρˡᵏʰᵈ)
 //
-// Right axis (online KG, Warren-2026: mu_n(x) + offline_KG(x; ρ^lkhd)):
-//   Online (correlated)    — thin green
-//   Online (independent)   — thin amber
+// Right axis — reward-frame per-batch dollars (μ plus/minus a policy term):
+//   online_correlated     — solid dark green   — μ + KG              (Warren-2026)
+//   ryzhov                — solid orange       — μ + (N−n)·KG        (Ryzhov 2010)
+//   ie_0                  — dashed blue        — μ                   (IE, ρ^IE = 0)
+//   ie_1_5                — dashed navy        — μ + 1.5·σ           (IE, ρ^IE = 1.5)
 //
-// argmin of the online curves is the online-KG policy's next-measurement pick.
+// Every curve is maximised at its next-θ choice, so argmax is uniform.
 
 const W = 720, H = 370;
 // PAD.top reserves room for the two-row legend that sits above the plot area.
@@ -24,14 +23,14 @@ const IH = H - PAD.top - PAD.bottom;
 const X_MIN = 0.01, X_MAX = 0.20;
 
 const OFFLINE_SERIES = [
-  { key: 'analytic_correlated', label: 'Offline: correlated (analytic)', color: '#16a34a', dash: null,   width: 2.2 },
-  { key: 'mc_correlated',       label: 'Offline: correlated (MC)',       color: '#7c3aed', dash: '5,3',  width: 1.8 },
-  { key: 'independent',         label: 'Offline: independent',           color: '#f59e0b', dash: null,   width: 2.2 },
+  { key: 'analytic_correlated', label: 'Offline: KG(x)', color: '#16a34a', dash: null, width: 2.2 },
 ];
 
 const ONLINE_SERIES = [
-  { key: 'online_correlated',  label: 'Online: correlated',  color: '#14532d', dash: '2,3', width: 1.6 },
-  { key: 'online_independent', label: 'Online: independent', color: '#78350f', dash: '2,3', width: 1.6 },
+  { key: 'online_correlated', label: 'Online: μ + KG (Warren-2026)',    color: '#14532d', dash: null,   width: 1.8 },
+  { key: 'ryzhov',            label: 'Online: μ + (N−n)·KG (Ryzhov)',   color: '#c2410c', dash: null,   width: 1.8 },
+  { key: 'ie_0',              label: 'IE (ρ^IE = 0) = μ',               color: '#2563eb', dash: '4,3',  width: 1.6 },
+  { key: 'ie_1_5',            label: 'IE (ρ^IE = 1.5) = μ + 1.5·σ',     color: '#1e3a8a', dash: '4,3',  width: 1.6 },
 ];
 
 function fmt(v) {
@@ -110,24 +109,15 @@ export default function KGChart({ kg, sessionMStar = 1, onMStarChange }) {
     );
   }
 
-  // budget / steps_used / remaining are legacy from the Ryzhov
-  // (N-n)·KG form — no longer used to compute online-KG. Kept in the
-  // payload for backward compat but not displayed.
-  const { impparams, mc_samples } = kg;
+  const { impparams } = kg;
 
-  // "Next θ" per policy — the app is now a MAXIMISATION problem so every
-  // curve is picked by argmax:
-  //   * offline KG curves: argmax (KG is info value; more is better)
-  //   * online KG curves: backend returns them in reward frame,
-  //     display_OKG(x) = μ_reward(x) + offline_KG(x; ρ^lkhd), which
-  //     the policy also maximises. Same argmax convention everywhere.
-  const nextByKey = {
-    analytic_correlated: argExtremum(impparams, kg.analytic_correlated, 'max'),
-    mc_correlated:       argExtremum(impparams, kg.mc_correlated,       'max'),
-    independent:         argExtremum(impparams, kg.independent,         'max'),
-    online_correlated:   argExtremum(impparams, kg.online_correlated,   'max'),
-    online_independent:  argExtremum(impparams, kg.online_independent,  'max'),
-  };
+  // "Next θ" per policy — everything's a maximisation, so argmax across
+  // every curve.
+  const nextByKey = Object.fromEntries(
+    [...OFFLINE_SERIES, ...ONLINE_SERIES].map(s =>
+      [s.key, argExtremum(impparams, kg[s.key], 'max')]
+    )
+  );
   // The primary KG policy used by session.policy='kg' is offline analytic
   // correlated — its argmax is what a "next step" click would sample.
   const primaryNext = nextByKey.analytic_correlated;
@@ -273,26 +263,24 @@ export default function KGChart({ kg, sessionMStar = 1, onMStarChange }) {
       <text
         transform={`translate(${W - PAD.right + 56},${PAD.top + IH / 2}) rotate(-90)`}
         textAnchor="middle" fontSize={12} fill="#64748b">
-        Online KG(x) = μ_reward(x) + offline KG(x; ρˡᵏʰᵈ)
+        Policy value per batch (μ ± term)
       </text>
 
-      {/* Legend — two horizontal rows ABOVE the plot area so it never
-          overlaps the curves. Row 1 = offline series, row 2 = online
-          series + N info. Columns are fixed so labels line up. */}
+      {/* Legend — five entries laid out in two rows above the plot area:
+          row 1 = the one offline (left-axis) series, row 2 = the four
+          right-axis policy curves. Fixed columns keep labels aligned. */}
       <g transform={`translate(${PAD.left},8)`}>
         {OFFLINE_SERIES.map(({ label, color, dash }, i) => (
-          <g key={i} transform={`translate(${i * 200},0)`}>
+          <g key={`off-${i}`} transform={`translate(${i * 220},0)`}>
             <line x1={0} x2={22} y1={6} y2={6} stroke={color} strokeWidth={2}
                   strokeDasharray={dash ?? undefined} />
-            <text x={28} y={9} fontSize={10} fill="#374151">
-              {label}{label.includes('MC') ? `, n=${mc_samples}` : ''}
-            </text>
+            <text x={28} y={9} fontSize={10} fill="#374151">{label}</text>
           </g>
         ))}
         <g transform={`translate(0,20)`}>
           {ONLINE_SERIES.map(({ label, color, dash }, i) => (
-            <g key={`on-${i}`} transform={`translate(${i * 200},0)`}>
-              <line x1={0} x2={22} y1={6} y2={6} stroke={color} strokeWidth={1.6}
+            <g key={`on-${i}`} transform={`translate(${i * 145},0)`}>
+              <line x1={0} x2={22} y1={6} y2={6} stroke={color} strokeWidth={1.8}
                     strokeDasharray={dash ?? undefined} />
               <text x={28} y={9} fontSize={10} fill="#374151">{label}</text>
             </g>

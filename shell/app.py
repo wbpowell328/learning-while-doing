@@ -1042,21 +1042,24 @@ def _ground_truth(sim_cfg: SimConfig, ses_cfg: SessionConfig, acq_cfg: Acquisiti
 def kg_comparison(
     sid: str,
     spacing: float = 0.05,
-    mc_samples: int = 50,
-    mc_seed: int = 12345,
     budget: int = 10,
+    # Kept only so URLs from an older frontend build don't 422 mid-deploy.
+    # No longer used to compute anything.
+    mc_samples: int = 0,
+    mc_seed: int = 0,
 ) -> KGComparisonResponse:
     """
-    KG at a coarse probe grid (default 5% spacing across [impparam_min, impparam_max]).
+    Decision-value curves at a coarse probe grid, one per policy on the
+    KG chart:
+      Left axis   — offline KG(x; ρˡᵏʰᵈ) analytic, in per-batch dollars.
+      Right axis  — reward-frame curves in per-batch dollars:
+        online_correlated : μ_reward + KG            (Warren-2026)
+        ryzhov            : μ_reward + max(0, N−n)·KG (classical Ryzhov 2010)
+        ie_0              : μ_reward                 (IE with ρ^IE = 0)
+        ie_1_5            : μ_reward + 1.5·σ_reward  (IE with ρ^IE = 1.5)
 
-    Three offline KG series (value-of-information only):
-      - analytic_correlated: exact FPD closed form (the one the policy uses)
-      - mc_correlated:       Monte-Carlo estimate of the same quantity
-      - independent:         closed form assuming zero cross-covariance
-
-    Two online KG series (Ryzhov 2010, min-cost form):
-      online_KG(x) = mu_n(x) - (N - n) * offline_KG(x)
-    where N = `budget`, n = steps taken so far. Choose x* = argmin online_KG.
+    N comes from the session's Ryzhov budget (falls back to the `budget`
+    query param if the session didn't set one); n is `session.n_steps`.
     """
     session = _get_or_404(sid)
     cfg = session._acq_config
@@ -1072,60 +1075,55 @@ def kg_comparison(
     # Search grid: the same 100-point grid the KG policy uses.
     search_grid = np.linspace(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
 
-    # ρ^lkhd (a.k.a. m*): the lookahead parameter. It scales the effective
-    # precision of the hypothetical observation the KG integrates over, so
-    # the KG(x) curves the user sees must respect whatever the session's
-    # currently set to (default 1). The "noise factor" editor on the KG
-    # chart mutates this via /sessions/{sid}/m_star and re-fetches.
+    # ρ^lkhd (a.k.a. m*): scales the effective precision of the
+    # hypothetical observation KG integrates over. The "noise factor"
+    # editor on the chart mutates this via /sessions/{sid}/m_star.
     m_star = max(1, int(getattr(session, "_m_star", 1)))
     ana = kg_analytic_correlated_at(
         session.belief, search_grid, probes, m_star=m_star,
     )
-    mc = kg_mc_correlated_at(
-        session.belief, search_grid, probes,
-        n_mc=mc_samples, rng=np.random.default_rng(mc_seed),
-        m_star=m_star,
-    )
-    ind = kg_independent_at(
-        session.belief, search_grid, probes, m_star=m_star,
-    )
 
-    # Posterior mean at the probe points — needed for the online KG composite.
-    mu_probes, _ = session.belief.posterior(probes)
+    # μ and σ of the belief at the probe points (both in per-day frame).
+    mu_probes, sigma_probes = session.belief.posterior(probes)
 
-    # Online KG (Warren-2026 formulation):
-    #     online_KG_internal(x) = μ_n(x) − offline_KG(x; ρ^lkhd)
-    #     display_online_KG(x)  = μ_reward(x) + offline_KG(x; ρ^lkhd)
-    # The offline KG values (ana / ind) are already computed at the
-    # current ρ^lkhd = m_star above, so no extra multiplier is needed
-    # here. Dropped the legacy Ryzhov (N-n) multiplier — the policy
-    # classes (OKGCorrelatedPolicy, OKGIndependentPolicy) stopped
-    # using it a while back; this brings the chart display in line.
-    steps_used = int(session.n_steps)
-    online_ana_internal = mu_probes - ana
-    online_ind_internal = mu_probes - ind
-    # Scale from per-day to per-batch dollars for the chart. Both μ and
-    # KG are linear in the target function, so both get × n_days.
+    # Scale everything from per-day to per-batch dollars for the chart.
+    # Both μ and KG are linear in the target function, so × n_days;
+    # σ is a scale (nonneg, doesn't invert), also × n_days for the
+    # per-batch reward-scale variant IE uses on this chart.
     n = _display_n_days(session)
-    online_ana = (_to_display(session, online_ana_internal) * n).tolist()
-    online_ind = (_to_display(session, online_ind_internal) * n).tolist()
-    mu_display = (_to_display(session, mu_probes) * n).tolist()
-    ana_disp = (np.asarray(ana, dtype=float) * n).tolist()
-    mc_disp  = (np.asarray(mc,  dtype=float) * n).tolist()
-    ind_disp = (np.asarray(ind, dtype=float) * n).tolist()
+    mu_display    = _to_display(session, mu_probes) * n           # μ_reward per batch
+    sigma_display = np.asarray(sigma_probes, dtype=float) * n     # σ_reward per batch
+    ana_display   = np.asarray(ana, dtype=float) * n              # offline KG per batch
+
+    # Warren-2026 online KG in display frame: μ_reward + KG (both display-scaled).
+    online_ana = (mu_display + ana_display).tolist()
+
+    # Ryzhov: N = session.budget (fall back to query param), n = steps used.
+    # max(0, N-n) keeps the weight nonneg once the "measurement budget" is
+    # exhausted; past that point Ryzhov collapses to pure exploitation μ.
+    N = int(session.budget) if getattr(session, "budget", None) is not None else int(budget)
+    n_used = int(session.n_steps)
+    ryzhov_weight = max(0, N - n_used)
+    ryzhov = (mu_display + ryzhov_weight * ana_display).tolist()
+
+    # IE — sign matches the app's optimisation direction so the plotted
+    # curve is the one the IE policy would maximise (or minimise). Game
+    # runs in maximisation mode; sign = +1 there, −1 in min-mode.
+    sign_max = -1.0 if session.minimize else 1.0
+    ie_0   = mu_display.tolist()
+    ie_1_5 = (mu_display + sign_max * 1.5 * sigma_display).tolist()
 
     return KGComparisonResponse(
         impparams=probes.tolist(),
-        posterior_mean=mu_display,
-        analytic_correlated=ana_disp,
-        mc_correlated=mc_disp,
-        independent=ind_disp,
+        posterior_mean=mu_display.tolist(),
+        posterior_std=sigma_display.tolist(),
+        analytic_correlated=ana_display.tolist(),
         online_correlated=online_ana,
-        online_independent=online_ind,
-        budget=int(budget),
-        steps_used=steps_used,
-        mc_samples=mc_samples,
-        mc_seed=mc_seed,
+        ryzhov=ryzhov,
+        ie_0=ie_0,
+        ie_1_5=ie_1_5,
+        budget=N,
+        steps_used=n_used,
     )
 
 

@@ -349,24 +349,28 @@ class BatchResponse(BaseModel):
 
 class KGComparisonResponse(BaseModel):
     """
-    KG values at a coarse probe grid, computed three ways for pedagogical
-    comparison. All three offline series share the same underlying GP posterior.
-
-    Also returned: two "online KG" series (Ryzhov 2010, min-cost form)
-        online_KG(x) = mu_n(x) - (N - n) * offline_KG(x)
-    with N = budget (measurement horizon) and n = steps used so far.
+    Decision-value curves for five policies, evaluated at a coarse probe
+    grid so the user can see side-by-side how each policy would pick its
+    next θ. One offline KG curve on the left (cents-of-info axis) and
+    four right-axis curves in reward-frame dollars.
     """
     impparams: list[float]                    # probe grid
-    posterior_mean: list[float]             # mu_n(x) at each probe point
-    # Offline KG — value-of-information only
-    analytic_correlated: list[float]        # exact FPD closed form
-    mc_correlated: list[float]              # Monte-Carlo estimate of same quantity
-    independent: list[float]                # independent-beliefs closed form
-    # Online KG — expected-cost + info-value composite (Ryzhov)
-    online_correlated: list[float]          # mu - (N-n) * analytic_correlated
-    online_independent: list[float]         # mu - (N-n) * independent
-    # Metadata driving the online formula
-    budget: int                             # N
-    steps_used: int                         # n
-    mc_samples: int                         # sample count that produced mc_correlated
-    mc_seed: int                            # seed used for reproducibility
+    posterior_mean: list[float]              # μ_reward(x); == ie_0
+    posterior_std:  list[float]              # σ_reward(x); backs ie_1_5
+    # Left axis (value of information, per-batch dollars):
+    analytic_correlated: list[float]         # offline KG(x; ρˡᵏʰᵈ) — analytic
+    # Right axis (per-batch reward + info value):
+    online_correlated: list[float]           # μ + KG(x; ρˡᵏʰᵈ)  — Warren-2026
+    ryzhov: list[float]                      # μ + max(0, N−n) · KG(x; ρˡᵏʰᵈ)
+    ie_0: list[float]                        # μ                — IE, ρ^IE = 0
+    ie_1_5: list[float]                      # μ + 1.5·σ         — IE, ρ^IE = 1.5
+    # Ryzhov meta
+    budget: int                              # N
+    steps_used: int                          # n
+    # Legacy fields kept optional so an older frontend build doesn't
+    # crash mid-deploy. Safe to drop after one release cycle.
+    mc_correlated: list[float] = []
+    independent: list[float] = []
+    online_independent: list[float] = []
+    mc_samples: int = 0
+    mc_seed: int = 0
