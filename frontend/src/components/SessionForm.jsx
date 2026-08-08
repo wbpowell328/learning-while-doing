@@ -1011,55 +1011,83 @@ export default function SessionForm({
         </p>
 
         <form onSubmit={handleSaveAndExit}>
-          {/* App this panel is editing — read-only, carried from the
-              landing page. Panel selector sits next to it: user picks
-              a named parameter set (Default + any they've saved).
-              Panels are per-app, so 1-D and 2-D lists don't mix. */}
-          <div style={{ padding: '10px 12px', background: '#f8fafc',
+          {/* Admin bar — everything a user might want to click sits
+              here at the top: app label, panel picker + Rename/Delete,
+              and the primary Save actions. Puts all controls in one
+              place so a first-time visitor sees them immediately
+              instead of scrolling to the bottom of a long table. */}
+          <div style={{ padding: '12px 14px', background: '#f8fafc',
                         border: '1px solid #e2e8f0', borderRadius: 6,
-                        marginBottom: 16, fontSize: 13, color: '#374151',
-                        display: 'flex', gap: 24, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span>
-              <span style={{ color: '#64748b' }}>Cash management policy:</span> <b>{appLabel}</b>
-            </span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-              <span style={{ color: '#64748b' }}>Panel:</span>
-              <select value={activePanelName}
-                      onChange={e => loadPanel(e.target.value)}
-                      style={{ padding: '3px 6px', border: '1px solid #cbd5e1',
-                               borderRadius: 4, fontSize: 13, background: '#fff' }}>
-                {panelNameList(panelsStore, initialAppName).map(name => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </select>
-              <button type="button" onClick={handleRenamePanel}
-                      disabled={activePanelName === DEFAULT_PANEL_NAME}
-                      title={activePanelName === DEFAULT_PANEL_NAME
-                        ? 'The Default panel cannot be renamed'
-                        : `Rename "${activePanelName}"`}
-                      style={{ padding: '3px 10px', border: '1px solid #cbd5e1',
-                               borderRadius: 4, fontSize: 12, background: '#fff',
-                               cursor: activePanelName === DEFAULT_PANEL_NAME ? 'not-allowed' : 'pointer',
-                               opacity: activePanelName === DEFAULT_PANEL_NAME ? 0.5 : 1 }}>
-                Rename
-              </button>
-              <button type="button" onClick={handleDeletePanel}
-                      disabled={activePanelName === DEFAULT_PANEL_NAME}
-                      title={activePanelName === DEFAULT_PANEL_NAME
-                        ? 'The Default panel cannot be deleted'
-                        : `Delete "${activePanelName}"`}
-                      style={{ padding: '3px 10px', border: '1px solid #cbd5e1',
-                               borderRadius: 4, fontSize: 12, background: '#fff',
-                               color: '#b91c1c',
-                               cursor: activePanelName === DEFAULT_PANEL_NAME ? 'not-allowed' : 'pointer',
-                               opacity: activePanelName === DEFAULT_PANEL_NAME ? 0.5 : 1 }}>
-                Delete
-              </button>
-              <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: 12 }}>
-                pick to load; Rename / Delete apply to the current one
+                        marginBottom: 8, fontSize: 13, color: '#374151',
+                        display: 'flex', gap: 16, alignItems: 'center',
+                        flexWrap: 'wrap', justifyContent: 'space-between' }}>
+            {/* Left group — what you're editing */}
+            <div style={{ display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span>
+                <span style={{ color: '#64748b' }}>Cash management policy:</span> <b>{appLabel}</b>
               </span>
-            </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <span style={{ color: '#64748b' }}>Panel:</span>
+                <select value={activePanelName}
+                        onChange={e => loadPanel(e.target.value)}
+                        style={{ padding: '3px 6px', border: '1px solid #cbd5e1',
+                                 borderRadius: 4, fontSize: 13, background: '#fff' }}>
+                  {panelNameList(panelsStore, initialAppName).map(name => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
+                <button type="button" onClick={handleRenamePanel}
+                        disabled={activePanelName === DEFAULT_PANEL_NAME}
+                        title={activePanelName === DEFAULT_PANEL_NAME
+                          ? 'The Default panel cannot be renamed'
+                          : `Rename "${activePanelName}"`}
+                        style={{ padding: '3px 10px', border: '1px solid #cbd5e1',
+                                 borderRadius: 4, fontSize: 12, background: '#fff',
+                                 cursor: activePanelName === DEFAULT_PANEL_NAME ? 'not-allowed' : 'pointer',
+                                 opacity: activePanelName === DEFAULT_PANEL_NAME ? 0.5 : 1 }}>
+                  Rename
+                </button>
+                <button type="button" onClick={handleDeletePanel}
+                        disabled={activePanelName === DEFAULT_PANEL_NAME}
+                        title={activePanelName === DEFAULT_PANEL_NAME
+                          ? 'The Default panel cannot be deleted'
+                          : `Delete "${activePanelName}"`}
+                        style={{ padding: '3px 10px', border: '1px solid #cbd5e1',
+                                 borderRadius: 4, fontSize: 12, background: '#fff',
+                                 color: '#b91c1c',
+                                 cursor: activePanelName === DEFAULT_PANEL_NAME ? 'not-allowed' : 'pointer',
+                                 opacity: activePanelName === DEFAULT_PANEL_NAME ? 0.5 : 1 }}>
+                  Delete
+                </button>
+              </span>
+            </div>
+            {/* Right group — save actions */}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button type="submit" className="btn btn-primary"
+                      disabled={loading || precomputing}
+                      style={{ padding: '7px 18px', fontSize: 13 }}
+                      title={`Save changes into the current panel "${activePanelName}" and exit.`}>
+                {precomputing ? 'Computing true curve…' : 'Save and exit'}
+              </button>
+              <button type="button" className="btn btn-outline"
+                      onClick={handleSaveAsNew}
+                      disabled={loading || precomputing}
+                      style={{ padding: '7px 14px', fontSize: 13 }}
+                      title="Save the current form values under a new panel name (leaves you on this page).">
+                {precomputing ? 'Computing…' : 'Save as new…'}
+              </button>
+            </div>
           </div>
+          {/* One-line legend under the admin bar so newcomers can
+              tell the four buttons apart without hovering. */}
+          <p style={{ fontSize: 11, color: '#94a3b8', margin: '0 0 16px 2px' }}>
+            <b>Save and exit</b> writes to "{activePanelName}" and returns
+            to the landing page (precomputes the true-reward curve so the
+            in-game <b>Reveal truth</b> click is instant — adds a few seconds).
+            &nbsp;·&nbsp; <b>Save as new</b> creates a separate named panel.
+            &nbsp;·&nbsp; <b>Rename</b>/<b>Delete</b> act on the panel currently
+            in the dropdown (Default is protected).
+          </p>
 
           <table style={{
             width: '100%', borderCollapse: 'collapse',
@@ -1095,30 +1123,6 @@ export default function SessionForm({
           {error && (
             <p style={{ color: '#dc2626', fontSize: 13, margin: '16px 0 0 0' }}>{error}</p>
           )}
-
-          <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-              <button type="submit" className="btn btn-primary" disabled={loading || precomputing}
-                style={{ padding: '10px 32px', fontSize: '0.95rem' }}
-                title={`Save changes into the current panel "${activePanelName}" and exit.`}>
-                {precomputing ? 'Computing true curve…' : 'Save and exit'}
-              </button>
-              <button type="button" className="btn btn-outline"
-                onClick={handleSaveAsNew}
-                disabled={loading || precomputing}
-                style={{ padding: '10px 20px', fontSize: '0.95rem' }}
-                title="Save the current form values under a new panel name (leaves you on this page).">
-                {precomputing ? 'Computing…' : 'Save as new…'}
-              </button>
-            </div>
-            <p style={{ fontSize: 11, color: '#94a3b8', margin: 0, maxWidth: 640, textAlign: 'center' }}>
-              <b>Save and exit</b> writes to the current panel ("{activePanelName}") and
-              returns you to the landing page. <b>Save as new</b> creates a
-              separate named panel you can switch back to later. Saving
-              precomputes the true-reward curve so the in-game <b>Reveal truth</b>
-              button returns instantly (adds a few seconds to save).
-            </p>
-          </div>
         </form>
       </div>
     </div>
