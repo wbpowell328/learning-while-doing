@@ -466,7 +466,7 @@ export default function SessionForm({
   const effectivePolicy = policyAllowed(policy) ? policy : 'kg';
 
   const isHuman = effectivePolicy === 'human';
-  const isKGFamily = ['kg', 'kg_indep', 'okg', 'okg_indep'].includes(effectivePolicy);
+  const isKGFamily = ['kg', 'kg_indep', 'okg', 'okg_indep', 'okg_ryzhov'].includes(effectivePolicy);
   const isIE = effectivePolicy === 'ie';
   const isRandomizedGreedy = effectivePolicy === 'randomized_greedy';
 
@@ -691,7 +691,7 @@ export default function SessionForm({
     kg_indep: 'KG — offline independent',
     okg: 'KG — online correlated (μ + KG(ρˡᵏʰᵈ))',
     okg_indep: 'KG — online independent',
-    okg_ryzhov: 'KG — online correlated (Ryzhov, μ + (N−n)·KG)',
+    okg_ryzhov: 'KG — online correlated (Ryzhov, μ + (N−n)·KG(ρˡᵏʰᵈ))',
     ie: 'IE',
     random: 'Random — baseline',
   })[effectivePolicy] ?? effectivePolicy;

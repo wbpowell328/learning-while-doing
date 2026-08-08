@@ -753,29 +753,37 @@ class OKGCorrelatedPolicy:
 
 class OKGRyzhovCorrelatedPolicy:
     """
-    Classical Ryzhov online KG (correlated beliefs) — with the
-    (N − n) multiplier in front of the offline KG term.
+    Ryzhov-style online KG (correlated beliefs) with the (N − n)
+    multiplier AND the ρ^lkhd lookahead scaling on the offline term:
 
-        OKG_ryzhov(x) = μ_n(x) − (N − n) · offline_correlated_KG(x)   [cost frame]
-        argmax_x [ μ_reward(x) + (N − n) · offline_correlated_KG(x) ] [reward frame]
+        OKG_ryzhov(x) = μ_n(x) − (N − n) · offline_correlated_KG(x; ρ^lkhd)  [cost frame]
+        argmax_x [ μ_reward(x) + (N − n) · offline_correlated_KG(x; ρ^lkhd) ] [reward frame]
 
-    Sits alongside OKGCorrelatedPolicy (Warren-2026 formulation with
-    m*/ρ^lkhd instead) so a user can compare the two exploration
-    schemes directly. N is the session's `budget`; n is the current
-    step count (from BeliefModel.n_observations at propose time).
+    ρ^lkhd = 1 recovers the pure classical Ryzhov formula (offline KG
+    at the classical single-shot precision). Larger ρ^lkhd inflates
+    the KG term the same way it does in OKGCorrelatedPolicy — Warren
+    wants both schemes independently tunable, and this policy lets
+    him crank both knobs at once.
+
+    N is the session's `budget`; n comes from BeliefModel.n_observations
+    at propose time.
     """
     def __init__(self, config: AcquisitionConfig,
-                 budget: int | None = 10, **_unused) -> None:
+                 budget: int | None = 10, m_star: int = 1, **_unused) -> None:
         self.config = config
         # Default N=10 if the caller didn't supply one — matches the
         # legacy /kg endpoint's default_budget for display continuity.
         self._N = max(1, int(budget)) if budget is not None else 10
+        self._m_star = max(1, int(m_star))
         cfg = self.config
         self._grid = _make_grid(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
 
+    def set_m_star(self, m_star: int) -> None:
+        self._m_star = max(1, int(m_star))
+
     def propose(self, model: BeliefModel, rng: np.random.Generator):
         mu, _ = model.posterior(self._grid)
-        kg = kg_analytic_correlated_at(model, self._grid, self._grid)
+        kg = kg_analytic_correlated_at(model, self._grid, self._grid, m_star=self._m_star)
         n = int(model.n_observations)
         remaining = max(0, self._N - n)
         okg = mu - remaining * kg

@@ -23,7 +23,7 @@ const POLICY_OPTIONS_1D = [
   { value: 'kg_indep',          label: 'KG offline independent' },
   { value: 'okg',               label: 'KG online correlated (μ + KG(ρˡᵏʰᵈ))' },
   { value: 'okg_indep',         label: 'KG online independent' },
-  { value: 'okg_ryzhov',        label: 'KG online correlated — Ryzhov (μ + (N−n)·KG)' },
+  { value: 'okg_ryzhov',        label: 'KG online correlated — Ryzhov (μ + (N−n)·KG(ρˡᵏʰᵈ))' },
   { value: 'ie',                label: 'IE' },
   { value: 'randomized_greedy', label: 'Randomized greedy' },
   { value: 'random',            label: 'Random' },
@@ -54,7 +54,7 @@ const labelStyle = { color: '#475569', fontSize: 13 };
 function policyParamMeta(policy, values, handlers) {
   const { sessionMStar, sessionZAlpha, sessionSigmaGreedy } = values;
   const { onMStarChange, onZAlphaChange, onSigmaGreedyChange } = handlers;
-  if (policy === 'okg' || policy === 'okg_indep') {
+  if (policy === 'okg' || policy === 'okg_indep' || policy === 'okg_ryzhov') {
     return {
       label: 'ρˡᵏʰᵈ',
       title: 'Lookahead parameter — multiplies the precision of the KG measurement noise',
