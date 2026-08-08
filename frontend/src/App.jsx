@@ -885,6 +885,34 @@ export default function App() {
   const { policy, seed, budget } = session;
   const isHuman = policy === 'human';
 
+  // Panels list for the top-box selector. Read directly from
+  // localStorage each render — the panels store is game-origin-local
+  // and only mutated via SessionForm (which we navigate away to and
+  // back from, so a fresh App mount always picks up the latest).
+  const _panels = (() => {
+    try {
+      const raw = window.localStorage.getItem('lwd_panels_v1');
+      const store = raw ? JSON.parse(raw) : {};
+      const entry = store[session.app_name];
+      if (!entry) return { active: 'Default', names: ['Default'] };
+      const names = Object.keys(entry.panels ?? {});
+      const rest = names.filter(n => n !== 'Default');
+      const sorted = names.includes('Default') ? ['Default', ...rest] : rest;
+      return { active: entry.active ?? sorted[0] ?? 'Default', names: sorted };
+    } catch { return { active: 'Default', names: ['Default'] }; }
+  })();
+  const switchPanel = (newName) => {
+    if (newName === _panels.active) return;
+    // Switching panels means fresh game with that panel's values —
+    // auto=1 spawns the session; ?panel= tells SessionForm which
+    // panel to activate first.
+    const url = `${window.location.origin}/?app=${encodeURIComponent(session.app_name)}`
+      + `&panel=${encodeURIComponent(newName)}&auto=1`;
+    // Best-effort cleanup of the current session before leaving.
+    if (session) deleteSession(session.id).catch(() => {});
+    window.location.href = url;
+  };
+
   return (
     <div className="app app-wide">
       {/* Header */}
@@ -893,8 +921,20 @@ export default function App() {
         <span className={`badge badge-${POLICY_BADGE_KIND[policy] ?? policy}`}>
           {POLICY_LABEL[policy] ?? policy}
         </span>
-        <div className="session-meta">
-          seed {seed}
+        <div className="session-meta" style={{ gap: 12 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+            <span style={{ color: '#64748b' }}>Panel:</span>
+            <select value={_panels.active}
+                    onChange={e => switchPanel(e.target.value)}
+                    style={{ padding: '2px 6px', border: '1px solid #cbd5e1',
+                             borderRadius: 4, fontSize: 13, background: '#fff' }}
+                    title="Switch parameter panel. Selecting a different panel restarts the game with those values.">
+              {_panels.names.map(n => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+          </span>
+          <span>seed {seed}</span>
           <button className="btn btn-ghost" onClick={handleReturnToLanding}>← Return to game page</button>
         </div>
       </div>

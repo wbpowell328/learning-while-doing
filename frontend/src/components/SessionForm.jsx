@@ -484,7 +484,21 @@ export default function SessionForm({
   // (Default + any user-created via "Save as new"). Loaded once on
   // mount; kept in React state so the selector re-renders when a
   // panel is added / activated.
-  const [panelsStore, setPanelsStore] = useState(() => initPanelsStore(initialAppName));
+  const [panelsStore, setPanelsStore] = useState(() => {
+    const store = initPanelsStore(initialAppName);
+    // Landing page can pass ?panel=<name> to force a specific panel
+    // active on entry. Also honored by the in-game "top-box" panel
+    // selector, which navigates here with the same query when the
+    // user switches panels mid-play.
+    try {
+      const wanted = new URLSearchParams(window.location.search).get('panel');
+      if (wanted && store[initialAppName]?.panels?.[wanted]) {
+        store[initialAppName].active = wanted;
+        writePanelsStore(store);
+      }
+    } catch (_) { /* no-op */ }
+    return store;
+  });
   const activePanelName = panelsStore?.[initialAppName]?.active ?? DEFAULT_PANEL_NAME;
   const savedAdv        = panelsStore?.[initialAppName]?.panels?.[activePanelName] ?? {};
 
@@ -819,10 +833,18 @@ export default function SessionForm({
         new URL(document.referrer).hostname === 'warrenpowell.org';
     } catch (_) { /* malformed referrer — treat as "no" */ }
 
+    // Build the landing URL — carries the app choice, the list of
+    // saved panel names for that app, and the currently-active panel
+    // name, so the landing page's picker can mirror our state. Only
+    // used on the fresh-navigation branch; history.back doesn't
+    // refresh landing (it re-uses landing's own localStorage instead).
     let url;
     try {
       url = new URL(LANDING_URL);
       url.searchParams.set('app', appName);
+      const names = Object.keys(panelsStore?.[initialAppName]?.panels ?? {});
+      if (names.length > 0) url.searchParams.set('panels', names.join(','));
+      if (activePanelName) url.searchParams.set('active', activePanelName);
       url = url.toString();
     } catch { url = LANDING_URL; }
     if (cameFromLanding && window.history.length > 1) {
