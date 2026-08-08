@@ -524,6 +524,34 @@ export default function App() {
     try {
       const resp = await setLengthScale(session.id, newLS);
       setSession(prev => prev ? { ...prev, length_scale: resp.length_scale } : prev);
+      // Persist the new length_scale into the ACTIVE Game-parameters
+      // panel so Save-and-exit isn't the only way to make the change
+      // stick. Only handles the 1-D scalar form — 2-D length_scale
+      // is a per-dim array which the form stores as a scalar-broadcast,
+      // and the round-trip is more complex than a one-line write.
+      if (session.dim === 1 && typeof resp.length_scale === 'number') {
+        try {
+          const rawStore = window.localStorage.getItem('lwd_panels_v1');
+          if (rawStore) {
+            const store = JSON.parse(rawStore);
+            const entry = store[session.app_name];
+            const activeName = entry?.active;
+            const panel = entry?.panels?.[activeName];
+            if (panel) {
+              panel.adv = { ...(panel.adv ?? {}), length_scale: String(resp.length_scale) };
+              window.localStorage.setItem('lwd_panels_v1', JSON.stringify(store));
+            }
+          }
+          // Mirror into the legacy single-blob key as well, so auto-
+          // launch fallback stays consistent.
+          const rawLegacy = window.localStorage.getItem('lwd_advanced_v2');
+          if (rawLegacy) {
+            const legacy = JSON.parse(rawLegacy);
+            legacy.adv = { ...(legacy.adv ?? {}), length_scale: String(resp.length_scale) };
+            window.localStorage.setItem('lwd_advanced_v2', JSON.stringify(legacy));
+          }
+        } catch (_) { /* private mode / quota — silently accept */ }
+      }
       // Refetch every view that depends on the posterior.
       if (session.dim === 1) {
         const [post, kg, kgm] = await Promise.all([
