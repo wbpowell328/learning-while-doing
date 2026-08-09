@@ -7,6 +7,7 @@ import KGChart from './components/KGChart';
 import KGvsMChart from './components/KGvsMChart';
 import ExperimentBar from './components/ExperimentBar';
 import SeedSweep from './components/SeedSweep';
+import RunHistory from './components/RunHistory';
 import ImpparamSlider from './components/ImpparamSlider';
 import HistoryTable from './components/HistoryTable';
 import HumanControls from './components/HumanControls';
@@ -233,6 +234,30 @@ export default function App() {
   // Passed down to sibling panels (SeedSweep) so their runs use the
   // same policy the user is looking at right now.
   const [currentPolicy, setCurrentPolicy] = useState(null);
+  // Run-history log — one entry per Run or One-more click, oldest at
+  // the tail. Persists to localStorage so Warren can review earlier
+  // sessions after a page reload. Cap at 200 rows.
+  const [historyLog, setHistoryLog] = useState(() => {
+    try {
+      const raw = localStorage.getItem('lwd_run_history_v1');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      }
+    } catch (_) { /* private mode / bad JSON — start fresh */ }
+    return [];
+  });
+  const logRunResult = useCallback((entry) => {
+    setHistoryLog(prev => {
+      const next = [entry, ...prev].slice(0, 200);
+      try { localStorage.setItem('lwd_run_history_v1', JSON.stringify(next)); } catch (_) { /* ignore */ }
+      return next;
+    });
+  }, []);
+  const clearHistoryLog = useCallback(() => {
+    setHistoryLog([]);
+    try { localStorage.removeItem('lwd_run_history_v1'); } catch (_) { /* ignore */ }
+  }, []);
   // True-optimum reward per day (from reveal). Multiplied by
   // totalDays on the ExperimentBar to show "Optimal score", the
   // best a perfect θ picker could have earned over the days
@@ -438,10 +463,29 @@ export default function App() {
       // freshly-generated batch's rewards.
       const rows = resp.history ?? [];
       const batchTotal = rows.reduce((s, row) => s + Number(row[1] ?? 0), 0);
+      const totalDaysAfter = rows.length * Number(spec.n_days ?? 0);
       setLatestScore(batchTotal);
       setCumulativeScore(batchTotal);
       // Total simulated days = iterations × n_days. Restart resets.
-      setTotalDays(rows.length * Number(spec.n_days ?? 0));
+      setTotalDays(totalDaysAfter);
+      // Log this click to the run-history table. Optimal score uses
+      // the current optimalPerDay if the background reveal has landed;
+      // otherwise it stays null and the entry shows "—" in that column.
+      logRunResult({
+        ts: new Date().toISOString(),
+        action: 'Run',
+        app: session.app_name,
+        policy: spec.policy,
+        horizon: Number(spec.n_days),
+        repeat: Number(spec.K ?? 0) + 1,
+        theta_init: spec.theta_init,
+        best_theta: resp.best_impparam,
+        latest: batchTotal,
+        cumulative: batchTotal,
+        total_days: totalDaysAfter,
+        optimal: (optimalPerDay != null && totalDaysAfter > 0)
+          ? optimalPerDay * totalDaysAfter : null,
+      });
       // Update the cash-balance sample-path chart to use the θ the
       // user just chose (spec.theta_init). Both 1-D and 2-D supported.
       const t = spec.theta_init;
@@ -457,7 +501,8 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [session, applyExperimentResponse, refreshFlowSample, refreshNextTheta]);
+  }, [session, applyExperimentResponse, refreshFlowSample, refreshNextTheta,
+      logRunResult, optimalPerDay]);
 
   // Restart: reset the backend session to initial conditions (empty
   // belief, empty history, re-seeded RNG) and zero all UI counters —
@@ -525,34 +570,60 @@ export default function App() {
   const handleOneMore = useCallback(async (spec) => {
     if (!session) return;
     // Capture how many steps existed BEFORE the call so we can slice
-    // the new-only rows out of the response afterwards.
+    // the new-only rows out of the response afterwards. Also snapshot
+    // the current cumulative + total-days values because the state
+    // setters below are async — we need pre-update values to compute
+    // the post-update totals for the run-history log.
     const priorNSteps = nSteps;
+    const priorCumul  = cumulativeScore ?? 0;
+    const priorDays   = totalDays;
     setLoading(true); setError(null);
     try {
       const resp = await runOneMore(session.id, spec);
       await applyExperimentResponse(resp, spec);
       const newRows = (resp.history ?? []).slice(priorNSteps);
       const batchTotal = newRows.reduce((s, row) => s + Number(row[1] ?? 0), 0);
+      const newCumulative = priorCumul + batchTotal;
+      const newTotalDays  = priorDays + newRows.length * Number(spec.n_days ?? 0);
       setLatestScore(batchTotal);
-      setCumulativeScore(prev => (prev ?? 0) + batchTotal);
-      setTotalDays(prev => prev + newRows.length * Number(spec.n_days ?? 0));
+      setCumulativeScore(newCumulative);
+      setTotalDays(newTotalDays);
       // Cash-balance chart follows the most recent θ (policy-picked here).
       const lastRow = (resp.history ?? []).at(-1);
+      const lastTheta = lastRow ? lastRow[0] : null;
       if (lastRow) {
-        const t = lastRow[0];
+        const t = lastTheta;
         if (Array.isArray(t) && t.length >= 2) {
           await refreshFlowSample(t[0], t[1]);
         } else if (t != null) {
           await refreshFlowSample(Number(t));
         }
       }
+      // Log this One-more click. "θ used" is the last iteration's θ
+      // (policy-picked, not user-typed).
+      logRunResult({
+        ts: new Date().toISOString(),
+        action: 'One more',
+        app: session.app_name,
+        policy: spec.policy,
+        horizon: Number(spec.n_days),
+        repeat: Number(spec.K ?? 0) + 1,
+        theta_init: lastTheta,
+        best_theta: resp.best_impparam,
+        latest: batchTotal,
+        cumulative: newCumulative,
+        total_days: newTotalDays,
+        optimal: (optimalPerDay != null && newTotalDays > 0)
+          ? optimalPerDay * newTotalDays : null,
+      });
       await refreshNextTheta();
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
-  }, [session, nSteps, applyExperimentResponse, refreshFlowSample, refreshNextTheta]);
+  }, [session, nSteps, cumulativeScore, totalDays, applyExperimentResponse,
+      refreshFlowSample, refreshNextTheta, logRunResult, optimalPerDay]);
 
   // GP length_scale (bandwidth) editor: POST refits the belief with the
   // new value replaying the session's history through it, then refetch
@@ -1076,6 +1147,11 @@ export default function App() {
           setError('404 session not found (backend was asleep)');
         }}
       />
+
+      {/* Run history — one row per Run / One-more click, persisted
+          across page reloads. Warren wanted a lightweight record
+          instead of screenshotting each score readout. */}
+      <RunHistory rows={historyLog} onClear={clearHistoryLog} />
 
       {/* Budget bar (human only) — informational, tracks n_steps vs the
           user-picked budget. Kept as a courtesy since Human policy uses
