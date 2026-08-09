@@ -20,12 +20,15 @@ export const createSession = (body) =>
 
 // Spawn a sibling session with the same config as `sid` but a
 // different random-number seed. Backend has the original request
-// stashed, so we just pass the new seed.
-export const cloneWithSeed = (sid, session_seed) =>
+// stashed, so we just pass the new seed. Optional AbortSignal so a
+// caller (e.g. SeedSweep's Stop button) can interrupt an in-flight
+// request.
+export const cloneWithSeed = (sid, session_seed, signal) =>
   call(`/sessions/${sid}/clone_with_seed`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ session_seed: Math.round(Number(session_seed)) }),
+    signal,
   });
 
 export const runStep     = (sid) => call(`/sessions/${sid}/step`, { method: 'POST' });
@@ -152,11 +155,12 @@ export const getFlowSample = (sid, horizon = 200, theta = null, theta2 = null) =
   if (theta2 != null) qs.push(`theta2=${theta2}`);
   return call(`/sessions/${sid}/flow_sample?${qs.join('&')}`);
 };
-export const runExperiment = (sid, spec) =>
+export const runExperiment = (sid, spec, signal) =>
   call(`/sessions/${sid}/experiment`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(spec),
+    signal,
   });
 export const runOneMore = (sid, spec) =>
   call(`/sessions/${sid}/one_more`, {

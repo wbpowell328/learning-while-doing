@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { cloneWithSeed, runExperiment, deleteSession } from '../api';
 
 // Small "seed variability" panel. The user picks how many independent
@@ -65,6 +65,12 @@ export default function SeedSweep({
   const [status, setStatus]     = useState(null); // in-progress human label
   const [running, setRunning]   = useState(false);
   const [error, setError]       = useState(null);
+  // Abort plumbing — a fresh controller per sweep; Stop calls
+  // .abort() so the in-flight fetch throws AbortError and we can
+  // break out of the loop without waiting for the current seed to
+  // finish. Ref (not state) because we read it from the click
+  // handler, don't need a re-render on change.
+  const abortRef = useRef(null);
 
   const parsedBase   = Number(baseSeed);
   const parsedNSeeds = Math.max(2, Math.min(20, Math.round(Number(nSeeds)  || 0)));
@@ -72,10 +78,10 @@ export default function SeedSweep({
   const parsedRep    = Math.max(1, Math.min(50, Math.round(Number(repeat) || 0)));
   const canRun = !running && !disabled && Number.isFinite(parsedBase);
 
-  async function runOneSeed(seedValue, initialTheta) {
+  async function runOneSeed(seedValue, initialTheta, signal) {
     let clonedId = null;
     try {
-      const resp = await cloneWithSeed(session.id, seedValue);
+      const resp = await cloneWithSeed(session.id, seedValue, signal);
       clonedId = resp?.session_id;
       if (!clonedId) throw new Error('clone_with_seed returned no session_id');
       // K = extras after iter 1 (backend contract); user-facing Repeat
@@ -86,7 +92,7 @@ export default function SeedSweep({
         K: Math.min(19, Math.max(0, parsedRep - 1)),
         theta_init: initialTheta,
       };
-      const runResp = await runExperiment(clonedId, spec);
+      const runResp = await runExperiment(clonedId, spec, signal);
       const history = runResp?.history ?? [];
       const totalProfit = history.reduce((s, row) => s + Number(row[1] ?? 0), 0);
       // best_impparam is what the policy would pick next given the
@@ -95,8 +101,15 @@ export default function SeedSweep({
       const optimalTheta = runResp?.best_impparam;
       return { seed: seedValue, optimalTheta, totalProfit };
     } finally {
+      // Always clean up the temp session even if we were aborted
+      // mid-flight. Not passing `signal` here so the DELETE goes
+      // through — otherwise the aborted controller would nuke it too.
       if (clonedId) { try { await deleteSession(clonedId); } catch (_) { /* ignore */ } }
     }
+  }
+
+  function isAbortError(err) {
+    return err && (err.name === 'AbortError' || /aborted/i.test(String(err.message ?? '')));
   }
 
   async function handleRunSweep() {
@@ -104,6 +117,8 @@ export default function SeedSweep({
     setRunning(true);
     setError(null);
     setRows([]);
+    const controller = new AbortController();
+    abortRef.current = controller;
     // Same starting θ every run — matches the ExperimentBar's normal
     // "Run" behaviour, so the sweep is truly measuring the same setup
     // under different noise.
@@ -113,18 +128,40 @@ export default function SeedSweep({
     try {
       const collected = [];
       for (let i = 0; i < parsedNSeeds; i++) {
+        if (controller.signal.aborted) break;
         const seed = Math.round(parsedBase) + i;
         setStatus(`Running ${i + 1} of ${parsedNSeeds} · seed = ${seed}`);
-        const row = await runOneSeed(seed, initialTheta);
-        collected.push(row);
-        setRows([...collected]);
+        try {
+          const row = await runOneSeed(seed, initialTheta, controller.signal);
+          collected.push(row);
+          setRows([...collected]);
+        } catch (err) {
+          if (isAbortError(err)) break;
+          throw err;
+        }
       }
-      setStatus(null);
+      const stopped = controller.signal.aborted;
+      setStatus(stopped
+        ? `Stopped after ${collected.length} of ${parsedNSeeds} · ${collected.length} results kept.`
+        : null);
     } catch (err) {
-      setError(String(err?.message ?? err));
-      setStatus(null);
+      if (isAbortError(err)) {
+        setStatus('Stopped.');
+      } else {
+        setError(String(err?.message ?? err));
+        setStatus(null);
+      }
     } finally {
+      abortRef.current = null;
       setRunning(false);
+    }
+  }
+
+  function handleStop() {
+    const c = abortRef.current;
+    if (c && !c.signal.aborted) {
+      setStatus('Stopping…');
+      c.abort();
     }
   }
 
@@ -182,6 +219,15 @@ export default function SeedSweep({
                 title="Run the current policy on each seed sequentially.">
           {running ? 'Running…' : 'Run seed sweep'}
         </button>
+        {running && (
+          <button className="btn btn-outline"
+                  onClick={handleStop}
+                  style={{ padding: '5px 14px', fontSize: 13,
+                           borderColor: '#b91c1c', color: '#b91c1c' }}
+                  title="Stop the sweep. Keeps whatever rows have already completed.">
+            Stop
+          </button>
+        )}
         {status && (
           <span style={{ fontSize: 12, color: '#0369a1' }}>{status}</span>
         )}
