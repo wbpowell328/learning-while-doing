@@ -53,7 +53,7 @@ export default function RevealPanel({ reveal }) {
           Session complete — true reward curve revealed
         </div>
         <div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>
-          Estimated from {impparams.length} grid points × 12 independent simulations (held-out seed)
+          Estimated from {impparams.length} grid points × 50 independent simulations (held-out seed)
         </div>
       </div>
 
