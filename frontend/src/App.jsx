@@ -6,6 +6,7 @@ import Belief3DChart from './components/Belief3DChart';
 import KGChart from './components/KGChart';
 import KGvsMChart from './components/KGvsMChart';
 import ExperimentBar from './components/ExperimentBar';
+import SeedSweep from './components/SeedSweep';
 import ImpparamSlider from './components/ImpparamSlider';
 import HistoryTable from './components/HistoryTable';
 import HumanControls from './components/HumanControls';
@@ -228,6 +229,10 @@ export default function App() {
   // Null when there's no meaningful preview (fresh session, Human/
   // Manual policy). ExperimentBar mirrors it into its Test-point box.
   const [nextTheta,     setNextTheta]     = useState(null);
+  // Mirror of the ExperimentBar's current policy dropdown value.
+  // Passed down to sibling panels (SeedSweep) so their runs use the
+  // same policy the user is looking at right now.
+  const [currentPolicy, setCurrentPolicy] = useState(null);
   // True-optimum reward per day (from reveal). Multiplied by
   // totalDays on the ExperimentBar to show "Optimal score", the
   // best a perfect θ picker could have earned over the days
@@ -654,7 +659,11 @@ export default function App() {
       dim,
       minimize: created.minimize,
       policy,
-      seed: session_seed,
+      // Backend echoes the seed it actually used; fall back to what
+      // we sent (in case an older backend build strips the field).
+      session_seed: Number.isFinite(created.session_seed) && created.session_seed !== 0
+        ? created.session_seed
+        : session_seed,
       budget: budget ?? null,
       m_star: created.m_star ?? 1,
       // θ search-box bounds from the backend — used to clamp the
@@ -1027,6 +1036,16 @@ export default function App() {
           try { sessionStorage.setItem('lwd_from_game', '1'); } catch (_) {}
           window.location.href = `${window.location.origin}/?app=${encodeURIComponent(app)}`;
         }}
+        onPolicyChange={setCurrentPolicy}
+      />
+
+      {/* Seed variability sweep — sequentially runs the current
+          policy N times on independent noise draws so the user can
+          see how much the outcome depends on the random seed. */}
+      <SeedSweep
+        session={session}
+        currentPolicy={currentPolicy ?? session.policy}
+        disabled={loading}
       />
 
       {/* Budget bar (human only) — informational, tracks n_steps vs the

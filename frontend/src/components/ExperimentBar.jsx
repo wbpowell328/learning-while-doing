@@ -160,6 +160,10 @@ export default function ExperimentBar({
   revealLoading = false,
   revealShown = false,    // true → Reveal already computed this session
   onOpenGameParams,       // () => void; null hides the button
+  onPolicyChange,         // (policyValue) => void — fired whenever the
+                          // dropdown selection changes, so peer panels
+                          // (SeedSweep) can read the CURRENT policy
+                          // without lifting ExperimentBar's state.
 }) {
   // Pre-fill θ from the Advanced-parameters "Initial value" field
   // (or 0.10 if the user didn't set one). 2-D case takes both dims.
@@ -184,6 +188,12 @@ export default function ExperimentBar({
   useEffect(() => {
     try { localStorage.setItem('lwd_repeat_v1', String(K)); } catch (_) { /* ignore */ }
   }, [K]);
+  // Publish the current policy value to the parent so sibling panels
+  // (SeedSweep) always see the same choice as the ExperimentBar.
+  useEffect(() => {
+    if (onPolicyChange) onPolicyChange(policy);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [policy]);
 
   // Human forces K=0 (one iteration at a time). Handled at the source:
   // the policy dropdown's onChange snaps K to '0' when switching to

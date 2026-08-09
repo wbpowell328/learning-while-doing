@@ -113,10 +113,16 @@ class CreateSessionResponse(BaseModel):
     impparam_min: list[float] # always returned as a list (length dim)
     impparam_max: list[float]
     m_star: int = 1           # batch-size-trick multiplier for KG-family policies
+    session_seed: int = 0     # base seed the session was created with (used by the seed-sweep panel)
 
 
 class SetMStarRequest(BaseModel):
     m_star: int
+
+
+class CloneWithSeedRequest(BaseModel):
+    """Body for POST /sessions/{sid}/clone_with_seed."""
+    session_seed: int
 
 
 class SetMStarResponse(BaseModel):

@@ -30,6 +30,7 @@ from .models import (
     RevealResponse, KGComparisonResponse,
     BatchRequest, BatchResponse, BatchPolicyResult,
     SetMStarRequest, SetMStarResponse,
+    CloneWithSeedRequest,
     SetZAlphaRequest, SetZAlphaResponse,
     SetSigmaGreedyRequest, SetSigmaGreedyResponse,
     SetLengthScaleRequest, SetLengthScaleResponse,
@@ -97,6 +98,12 @@ _sessions: dict[str, Session] = {}
 # module (sample_flows, etc.) can dispatch. The Session object itself
 # doesn't carry app_name — it only knows the simulate function.
 _session_app: dict[str, str] = {}
+# Parallel map: session_id → the original CreateSessionRequest. Used by
+# clone_with_seed so the seed-sweep panel can spin up sibling sessions
+# that share every knob except session_seed without the frontend having
+# to reconstruct the whole config from what CreateSessionResponse
+# exposes.
+_session_create_reqs: dict[str, "CreateSessionRequest"] = {}
 
 
 def _make_step_response(result, session: Session) -> StepResponse:
@@ -238,6 +245,7 @@ def create_session(req: CreateSessionRequest) -> CreateSessionResponse:
     sid = str(uuid4())
     _sessions[sid] = session
     _session_app[sid] = req.app_name
+    _session_create_reqs[sid] = req
 
     return CreateSessionResponse(
         session_id=sid,
@@ -248,7 +256,28 @@ def create_session(req: CreateSessionRequest) -> CreateSessionResponse:
         impparam_min=lo,
         impparam_max=hi,
         m_star=session.m_star,
+        session_seed=int(req.session_seed),
     )
+
+
+@app.post("/sessions/{sid}/clone_with_seed", status_code=201)
+def clone_with_seed(sid: str, body: CloneWithSeedRequest) -> CreateSessionResponse:
+    """
+    Spawn a fresh session that shares every config knob (sim, belief,
+    acquisition, session, policy, budget, m_star, initial θ …) with an
+    existing session but starts from a new random-number seed. Used by
+    the in-game seed-sweep panel to run N independent replications of
+    the same policy under different noise draws.
+    """
+    original = _session_create_reqs.get(sid)
+    if original is None:
+        raise HTTPException(
+            status_code=404,
+            detail=("Session not found, or its create-request was not stored "
+                    "(older process?). Refresh the game to rebuild it."),
+        )
+    cloned = original.model_copy(update={"session_seed": int(body.session_seed)})
+    return create_session(cloned)
 
 
 @app.post("/sessions/{sid}/m_star")
@@ -1340,6 +1369,7 @@ def delete_session(sid: str) -> None:
     _get_or_404(sid)
     del _sessions[sid]
     _session_app.pop(sid, None)
+    _session_create_reqs.pop(sid, None)
 
 
 # ---------------------------------------------------------------------------

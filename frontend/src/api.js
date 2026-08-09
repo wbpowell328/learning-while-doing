@@ -18,6 +18,16 @@ export const createSession = (body) =>
     body: JSON.stringify(body),
   });
 
+// Spawn a sibling session with the same config as `sid` but a
+// different random-number seed. Backend has the original request
+// stashed, so we just pass the new seed.
+export const cloneWithSeed = (sid, session_seed) =>
+  call(`/sessions/${sid}/clone_with_seed`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_seed: Math.round(Number(session_seed)) }),
+  });
+
 export const runStep     = (sid) => call(`/sessions/${sid}/step`, { method: 'POST' });
 export const evaluateC   = (sid, impparam, n_days = null) => call(`/sessions/${sid}/evaluate`, {
   method: 'POST',
