@@ -29,9 +29,20 @@ const OFFLINE_SERIES = [
 const ONLINE_SERIES = [
   { key: 'online_correlated', label: 'Online: μ + KG (Warren-2026)',    color: '#14532d', dash: null,   width: 1.8 },
   { key: 'ryzhov',            label: 'Online: μ + (N−n)·KG (Ryzhov)',   color: '#c2410c', dash: null,   width: 1.8 },
-  { key: 'ie_0',              label: 'IE (ρ^IE = 0) = μ',               color: '#2563eb', dash: '4,3',  width: 1.6 },
+  { key: 'ie_0',              label: 'Greedy',                          color: '#2563eb', dash: '4,3',  width: 1.6 },
   { key: 'ie_1_5',            label: 'IE (ρ^IE = 1.5) = μ + 1.5·σ',     color: '#1e3a8a', dash: '4,3',  width: 1.6 },
 ];
+
+// Explicit legend layout — decoupled from the OFFLINE/ONLINE split so
+// we can group five items into two visually balanced rows without
+// changing how the curves themselves are computed.
+const _SERIES_BY_KEY = Object.fromEntries(
+  [...OFFLINE_SERIES, ...ONLINE_SERIES].map(s => [s.key, s])
+);
+const LEGEND_ROWS = [
+  ['ryzhov', 'online_correlated', 'analytic_correlated'],
+  ['ie_1_5', 'ie_0'],
+].map(row => row.map(k => _SERIES_BY_KEY[k]));
 
 function fmt(v) {
   if (Math.abs(v) >= 1000) return `$${(v / 1000).toFixed(1)}k`;
@@ -266,26 +277,26 @@ export default function KGChart({ kg, sessionMStar = 1, onMStarChange }) {
         Policy value per batch (μ ± term)
       </text>
 
-      {/* Legend — five entries laid out in two rows above the plot area:
-          row 1 = the one offline (left-axis) series, row 2 = the four
-          right-axis policy curves. Fixed columns keep labels aligned. */}
+      {/* Legend — five entries in two rows above the plot area,
+          grouped by LEGEND_ROWS: row 1 has the three "big" curves
+          (Ryzhov, Warren, offline KG); row 2 has IE and Greedy. Column
+          width scales with row length so labels don't crowd. */}
       <g transform={`translate(${PAD.left},8)`}>
-        {OFFLINE_SERIES.map(({ label, color, dash }, i) => (
-          <g key={`off-${i}`} transform={`translate(${i * 220},0)`}>
-            <line x1={0} x2={22} y1={6} y2={6} stroke={color} strokeWidth={2}
-                  strokeDasharray={dash ?? undefined} />
-            <text x={28} y={9} fontSize={10} fill="#374151">{label}</text>
-          </g>
-        ))}
-        <g transform={`translate(0,20)`}>
-          {ONLINE_SERIES.map(({ label, color, dash }, i) => (
-            <g key={`on-${i}`} transform={`translate(${i * 145},0)`}>
-              <line x1={0} x2={22} y1={6} y2={6} stroke={color} strokeWidth={1.8}
-                    strokeDasharray={dash ?? undefined} />
-              <text x={28} y={9} fontSize={10} fill="#374151">{label}</text>
+        {LEGEND_ROWS.map((row, ri) => {
+          const col = Math.max(140, Math.floor(IW / row.length));
+          return (
+            <g key={`row-${ri}`} transform={`translate(0,${ri * 20})`}>
+              {row.map(({ key, label, color, dash, width }, ci) => (
+                <g key={key} transform={`translate(${ci * col},0)`}>
+                  <line x1={0} x2={22} y1={6} y2={6} stroke={color}
+                        strokeWidth={width ?? 1.8}
+                        strokeDasharray={dash ?? undefined} />
+                  <text x={28} y={9} fontSize={10} fill="#374151">{label}</text>
+                </g>
+              ))}
             </g>
-          ))}
-        </g>
+          );
+        })}
       </g>
     </svg>
     </>
