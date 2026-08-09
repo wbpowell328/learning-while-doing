@@ -169,7 +169,21 @@ export default function ExperimentBar({
   const [theta2, setTheta2] = useState(String(Number.isFinite(_init2) ? _init2 : 0.1));
   const [nDays,  setNDays]  = useState('50');
   const [policy, setPolicy] = useState(defaultPolicy || 'okg_ryzhov');
-  const [K,      setK]      = useState('1');   // now "total iterations", min 1
+  // Repeat count — remembered across page reloads via localStorage so
+  // the value survives the "Game parameters → Save-and-exit → fresh
+  // game" round-trip. First visit (nothing saved) defaults to 1;
+  // afterwards the box always shows the last value the user typed.
+  const [K, setK] = useState(() => {
+    try {
+      const raw = localStorage.getItem('lwd_repeat_v1');
+      const n = Number(raw);
+      if (Number.isFinite(n) && n >= 1 && n <= 20) return String(Math.round(n));
+    } catch (_) { /* private mode / quota — fall through to default */ }
+    return '1';
+  });
+  useEffect(() => {
+    try { localStorage.setItem('lwd_repeat_v1', String(K)); } catch (_) { /* ignore */ }
+  }, [K]);
 
   // Human forces K=0 (one iteration at a time). Handled at the source:
   // the policy dropdown's onChange snaps K to '0' when switching to
