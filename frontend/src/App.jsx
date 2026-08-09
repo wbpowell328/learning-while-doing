@@ -1068,6 +1068,13 @@ export default function App() {
         session={session}
         currentPolicy={currentPolicy ?? session.policy}
         disabled={loading}
+        onSessionLost={() => {
+          // Push a matching error string into App-level state so the
+          // existing 404-recovery useEffect (reload with ?auto=1)
+          // fires — same recovery path the main game uses when the
+          // backend has been asleep and forgotten the session.
+          setError('404 session not found (backend was asleep)');
+        }}
       />
 
       {/* Budget bar (human only) — informational, tracks n_steps vs the

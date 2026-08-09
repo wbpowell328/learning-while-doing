@@ -1,5 +1,24 @@
-import { useState, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { cloneWithSeed, runExperiment, deleteSession } from '../api';
+
+// localStorage keys for the four sweep inputs — persist across page
+// reloads so a Render sleep + 404 → auto-recovery reload doesn't
+// eat the user's just-typed sweep parameters.
+const LS_KEYS = {
+  baseSeed: 'lwd_sweep_base_seed_v1',
+  nSeeds:   'lwd_sweep_n_seeds_v1',
+  horizon:  'lwd_sweep_horizon_v1',
+  repeat:   'lwd_sweep_repeat_v1',
+};
+function readLS(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw != null ? raw : fallback;
+  } catch (_) { return fallback; }
+}
+function writeLS(key, value) {
+  try { localStorage.setItem(key, String(value)); } catch (_) { /* ignore */ }
+}
 
 // Small "seed variability" panel. The user picks how many independent
 // replications to run (each with a fresh session seeded base_seed + i,
@@ -53,13 +72,20 @@ export default function SeedSweep({
   session,          // { id, session_seed, initial_theta, dim, ... }
   currentPolicy,    // effective policy value in the ExperimentBar right now
   disabled = false, // parent should pass loading || !session
+  onSessionLost,    // () => void — called when the backend has forgotten
+                    //   the current session (Render sleep/restart) so the
+                    //   parent can trigger its 404-recovery flow.
 }) {
   const dim = session?.dim ?? 1;
-  const baseSeedDefault = Number(session?.session_seed ?? 42);
-  const [baseSeed,  setBaseSeed]  = useState(String(baseSeedDefault));
-  const [nSeeds,    setNSeeds]    = useState('5');
-  const [horizon,   setHorizon]   = useState('50');
-  const [repeat,    setRepeat]    = useState('20');
+  const baseSeedDefault = String(Number(session?.session_seed ?? 42));
+  const [baseSeed,  setBaseSeed]  = useState(() => readLS(LS_KEYS.baseSeed, baseSeedDefault));
+  const [nSeeds,    setNSeeds]    = useState(() => readLS(LS_KEYS.nSeeds,   '5'));
+  const [horizon,   setHorizon]   = useState(() => readLS(LS_KEYS.horizon,  '50'));
+  const [repeat,    setRepeat]    = useState(() => readLS(LS_KEYS.repeat,   '20'));
+  useEffect(() => { writeLS(LS_KEYS.baseSeed, baseSeed); }, [baseSeed]);
+  useEffect(() => { writeLS(LS_KEYS.nSeeds,   nSeeds);   }, [nSeeds]);
+  useEffect(() => { writeLS(LS_KEYS.horizon,  horizon);  }, [horizon]);
+  useEffect(() => { writeLS(LS_KEYS.repeat,   repeat);   }, [repeat]);
 
   const [rows, setRows]         = useState([]);   // {seed, optimalTheta, totalProfit}
   const [status, setStatus]     = useState(null); // in-progress human label
@@ -111,6 +137,12 @@ export default function SeedSweep({
   function isAbortError(err) {
     return err && (err.name === 'AbortError' || /aborted/i.test(String(err.message ?? '')));
   }
+  function isSessionLost(err) {
+    // Backend clone_with_seed returns 404 "Session not found" when the
+    // process has been restarted (Render free-tier sleep) and the
+    // in-memory session dict has been wiped.
+    return err && /\b404\b.*session.*not found/i.test(String(err.message ?? ''));
+  }
 
   async function handleRunSweep() {
     if (!canRun) return;
@@ -147,6 +179,13 @@ export default function SeedSweep({
     } catch (err) {
       if (isAbortError(err)) {
         setStatus('Stopped.');
+      } else if (isSessionLost(err) && onSessionLost) {
+        // Backend forgot the session (Render sleep). Hand off to the
+        // parent's 404-recovery flow (reload with ?auto=1 so a fresh
+        // session gets created). Our inputs are already persisted to
+        // localStorage, so the user's sweep params survive the reload.
+        setStatus('Session expired — starting a new one…');
+        onSessionLost();
       } else {
         setError(String(err?.message ?? err));
         setStatus(null);
