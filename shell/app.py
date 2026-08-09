@@ -134,18 +134,30 @@ def _make_step_response(result, session: Session) -> StepResponse:
 def _make_policy(name: str, acq_cfg: AcquisitionConfig, budget: int | None):
     # `budget` is used by OKGRyzhovCorrelatedPolicy (classical (N-n)·KG)
     # and ignored by all others.
+    from dataclasses import replace
     if name == "ie":
         return IEPolicy(acq_cfg)
+    if name == "ie_15":
+        # IE with ρ^IE hard-pinned to 1.5. Distinct dropdown entry so
+        # the user doesn't need to tune the exploration knob — the
+        # curve on the KG chart labeled "IE (ρ^IE = 1.5)" is exactly
+        # what this policy picks.
+        return IEPolicy(replace(acq_cfg, z_alpha=1.5))
+    if name == "greedy":
+        # Pure exploitation: IE with ρ^IE = 0 (argmax μ). Kept as its
+        # own dropdown entry because "Greedy" is what students know
+        # this policy as, not "IE(0)".
+        return IEPolicy(replace(acq_cfg, z_alpha=0.0))
     if name == "kg":
         return KGPolicy(acq_cfg)                # offline correlated (analytic)
     if name == "kg_indep":
         return KGIndependentPolicy(acq_cfg)     # offline independent
     if name == "okg":
-        return OKGCorrelatedPolicy(acq_cfg)     # online correlated Warren-2026 (μ + KG(m*))
+        return OKGCorrelatedPolicy(acq_cfg)     # online correlated (μ + KG(m*))
     if name == "okg_indep":
         return OKGIndependentPolicy(acq_cfg)    # online independent
     if name == "okg_ryzhov":
-        return OKGRyzhovCorrelatedPolicy(acq_cfg, budget=budget)   # μ − (N-n)·KG
+        return OKGRyzhovCorrelatedPolicy(acq_cfg, budget=budget)   # μ + (N-n)·KG
     if name == "randomized_greedy":
         return RandomizedGreedyPolicy(acq_cfg)  # argmin(mu) + N(0, σ_greedy)
     return RandomPolicy(acq_cfg)  # "random" and "human" both use RandomPolicy

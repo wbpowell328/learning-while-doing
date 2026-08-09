@@ -18,15 +18,19 @@
 
 import { useState, useEffect } from 'react';
 
+// Ordered per Warren-2026-08: Ryzhov first (and the default), then the
+// remaining online/offline KG variants, then IE, Greedy, Randomized
+// greedy, Manual. Other policies (kg_indep, okg_indep, ie, random)
+// still exist in the backend but are intentionally hidden from the
+// dropdown — kept in code so we can bring them back without a
+// backend redeploy.
 const POLICY_OPTIONS_1D = [
-  { value: 'kg',                label: 'KG offline correlated (analytic)' },
-  { value: 'kg_indep',          label: 'KG offline independent' },
-  { value: 'okg',               label: 'KG online correlated (μ + KG(ρˡᵏʰᵈ))' },
-  { value: 'okg_indep',         label: 'KG online independent' },
   { value: 'okg_ryzhov',        label: 'KG online correlated — Ryzhov (μ + (N−n)·KG(ρˡᵏʰᵈ))' },
-  { value: 'ie',                label: 'IE' },
+  { value: 'okg',               label: 'KG online correlated (μ + KG(ρˡᵏʰᵈ))' },
+  { value: 'kg',                label: 'Offline KG' },
+  { value: 'ie_15',             label: 'IE (ρ^IE = 1.5)' },
+  { value: 'greedy',            label: 'Greedy' },
   { value: 'randomized_greedy', label: 'Randomized greedy' },
-  { value: 'random',            label: 'Random' },
   { value: 'human',             label: 'Manual' },
 ];
 // Manual (human) is 1-D only for now.
@@ -164,7 +168,7 @@ export default function ExperimentBar({
   const [theta1, setTheta1] = useState(String(Number.isFinite(_init1) ? _init1 : 0.1));
   const [theta2, setTheta2] = useState(String(Number.isFinite(_init2) ? _init2 : 0.1));
   const [nDays,  setNDays]  = useState('50');
-  const [policy, setPolicy] = useState(defaultPolicy || 'kg');
+  const [policy, setPolicy] = useState(defaultPolicy || 'okg_ryzhov');
   const [K,      setK]      = useState('1');   // now "total iterations", min 1
 
   // Human forces K=0 (one iteration at a time). Handled at the source:

@@ -27,7 +27,7 @@ const OFFLINE_SERIES = [
 ];
 
 const ONLINE_SERIES = [
-  { key: 'online_correlated', label: 'Online: μ + KG (Warren-2026)',    color: '#14532d', dash: null,   width: 1.8 },
+  { key: 'online_correlated', label: 'Online: μ + KG',                  color: '#14532d', dash: null,   width: 1.8 },
   { key: 'ryzhov',            label: 'Online: μ + (N−n)·KG (Ryzhov)',   color: '#c2410c', dash: null,   width: 1.8 },
   { key: 'ie_0',              label: 'Greedy',                          color: '#2563eb', dash: '4,3',  width: 1.6 },
   { key: 'ie_1_5',            label: 'IE (ρ^IE = 1.5) = μ + 1.5·σ',     color: '#1e3a8a', dash: '4,3',  width: 1.6 },

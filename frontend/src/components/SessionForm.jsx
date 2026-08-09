@@ -470,7 +470,7 @@ function panelNameList(store, appName) {
 export default function SessionForm({
   onCreate, error,
   initialAppName = 'cash_balance',
-  initialPolicy  = 'kg',
+  initialPolicy  = 'okg_ryzhov',
   autoSubmit     = false,   // when true (URL ?auto=1), fire submit on mount
 }) {
   // App + policy come from the landing page via URL query params. The
@@ -545,11 +545,16 @@ export default function SessionForm({
   const appMeta = APPS.find(a => a.value === appName) ?? APPS[0];
   const is2D = appMeta.dim >= 2;
 
-  // Auto-flip incompatible policy selections when app changes.
+  // Auto-flip incompatible policy selections when app changes. 2-D
+  // supports everything IE-based (including the two fixed variants
+  // ie_15 and greedy) plus every KG variant plus randomized_greedy —
+  // just not Manual (human), which the 2-D dropdown filters out
+  // anyway.
   const policyAllowed = (p) => is2D
-    ? ['random', 'ie', 'kg', 'kg_indep', 'okg', 'okg_indep', 'okg_ryzhov'].includes(p)
+    ? ['random', 'ie', 'ie_15', 'greedy', 'kg', 'kg_indep',
+       'okg', 'okg_indep', 'okg_ryzhov', 'randomized_greedy'].includes(p)
     : true;
-  const effectivePolicy = policyAllowed(policy) ? policy : 'kg';
+  const effectivePolicy = policyAllowed(policy) ? policy : 'okg_ryzhov';
 
   const isHuman = effectivePolicy === 'human';
   const isKGFamily = ['kg', 'kg_indep', 'okg', 'okg_indep', 'okg_ryzhov'].includes(effectivePolicy);
@@ -943,12 +948,14 @@ export default function SessionForm({
   const policyLabel = ({
     human: 'Manual — I pick θ each round',
     randomized_greedy: 'Randomized greedy',
-    kg: 'KG — offline correlated (analytic)',
+    kg: 'Offline KG',
     kg_indep: 'KG — offline independent',
     okg: 'KG — online correlated (μ + KG(ρˡᵏʰᵈ))',
     okg_indep: 'KG — online independent',
-    okg_ryzhov: 'KG — online correlated (Ryzhov, μ + (N−n)·KG(ρˡᵏʰᵈ))',
+    okg_ryzhov: 'KG — online correlated — Ryzhov (μ + (N−n)·KG(ρˡᵏʰᵈ))',
     ie: 'IE',
+    ie_15: 'IE (ρ^IE = 1.5)',
+    greedy: 'Greedy',
     random: 'Random — baseline',
   })[effectivePolicy] ?? effectivePolicy;
 
