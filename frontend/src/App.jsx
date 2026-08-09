@@ -144,7 +144,15 @@ function argmaxOnGrid(values, axis1, axis2) {
 // invalid quietly falls back to defaults so a hand-typed URL can't
 // break the app.
 const VALID_APPS     = new Set(['cash_balance', 'cash_balance_2d']);
-const VALID_POLICIES = new Set(['kg', 'kg_indep', 'okg', 'okg_indep', 'ie', 'random', 'human']);
+// Every backend policy name that a URL param may legitimately carry —
+// includes the two "fixed IE variant" values (ie_15, greedy) and
+// randomized_greedy so old landing-page links keep working. Default
+// (when the query param is missing or unrecognised) is okg_ryzhov,
+// matching the dropdown ordering: Ryzhov is #1, so it's #1 by default.
+const VALID_POLICIES = new Set([
+  'kg', 'kg_indep', 'okg', 'okg_indep', 'okg_ryzhov',
+  'ie', 'ie_15', 'greedy', 'randomized_greedy', 'random', 'human',
+]);
 function parseLaunchParams() {
   try {
     const p = new URLSearchParams(window.location.search);
@@ -153,11 +161,11 @@ function parseLaunchParams() {
     const auto   = p.get('auto');
     return {
       initialAppName: VALID_APPS.has(app)         ? app    : 'cash_balance',
-      initialPolicy:  VALID_POLICIES.has(policy)  ? policy : 'kg',
+      initialPolicy:  VALID_POLICIES.has(policy)  ? policy : 'okg_ryzhov',
       autoSubmit:     auto === '1' || auto === 'true',
     };
   } catch {
-    return { initialAppName: 'cash_balance', initialPolicy: 'kg', autoSubmit: false };
+    return { initialAppName: 'cash_balance', initialPolicy: 'okg_ryzhov', autoSubmit: false };
   }
 }
 
