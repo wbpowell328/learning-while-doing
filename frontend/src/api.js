@@ -42,7 +42,7 @@ export const getPosterior2D = (sid, gridSize = 30) =>
   call(`/sessions/${sid}/posterior_2d?grid_size=${gridSize}`);
 export const getKG2D = (sid, gridSize = 20) =>
   call(`/sessions/${sid}/kg_2d?grid_size=${gridSize}`);
-export const getReveal     = (sid) => call(`/sessions/${sid}/reveal`);
+export const getReveal     = (sid, signal) => call(`/sessions/${sid}/reveal`, { signal });
 export const getKGComparison = (sid, spacing = 0.05, mcSamples = 500, budget = 10) =>
   call(`/sessions/${sid}/kg?spacing=${spacing}&mc_samples=${mcSamples}&budget=${budget}`);
 export const getKGvsM = (sid, mMax = 50, sigmaEps = null, theta = null, theta2 = null) => {

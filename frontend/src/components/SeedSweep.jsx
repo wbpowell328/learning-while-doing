@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { cloneWithSeed, runExperiment, deleteSession } from '../api';
+import { cloneWithSeed, runExperiment, getReveal, deleteSession } from '../api';
 
 // localStorage keys for the four sweep inputs — persist across page
 // reloads so a Render sleep + 404 → auto-recovery reload doesn't
@@ -124,8 +124,28 @@ export default function SeedSweep({
       // best_impparam is what the policy would pick next given the
       // belief after all iterations — the natural "where did it land"
       // summary for a converged run.
-      const optimalTheta = runResp?.best_impparam;
-      return { seed: seedValue, optimalTheta, totalProfit };
+      const policyTheta = runResp?.best_impparam;
+      // Per-seed reveal — n_reps=50 Monte-Carlo estimate of the true
+      // reward curve using THIS seed's noise draws. Different seeds
+      // give slightly different estimates of the same population
+      // optimum; showing them side by side makes the "policy beat the
+      // optimum on this seed" surprise visible as MC noise rather
+      // than a bug.
+      let trueOptTheta = NaN, trueOptProfit = NaN;
+      try {
+        const rev = await getReveal(clonedId, signal);
+        if (rev && Number.isFinite(rev.true_best_impparam)
+                && Number.isFinite(rev.true_max_reward_per_day)) {
+          trueOptTheta  = rev.true_best_impparam;
+          trueOptProfit = rev.true_max_reward_per_day * parsedHoriz * parsedRep;
+        }
+      } catch (err) {
+        if (isAbortError(err)) throw err;   // stop propagates up
+        // Any other reveal failure is non-fatal — leave the two
+        // columns as "—" so the sweep still yields the policy's
+        // achieved results.
+      }
+      return { seed: seedValue, policyTheta, totalProfit, trueOptTheta, trueOptProfit };
     } finally {
       // Always clean up the temp session even if we were aborted
       // mid-flight. Not passing `signal` here so the DELETE goes
@@ -204,14 +224,21 @@ export default function SeedSweep({
     }
   }
 
-  // Summary stats for the two output columns. 1-D only (2-D optimal
-  // theta is a vector, so a scalar mean/std would be misleading).
+  // Summary stats for the four numeric columns. 1-D only for θ (a
+  // 2-D optimum is a vector, mean/std across seeds isn't meaningful
+  // component-wise here); profits summarise in both dims.
   const canSummariseTheta = dim === 1 && rows.length >= 2;
-  const thetaStats  = canSummariseTheta
-    ? meanStd(rows.map(r => Number(r.optimalTheta)))
+  const policyThetaStats = canSummariseTheta
+    ? meanStd(rows.map(r => Number(r.policyTheta)))
     : null;
   const profitStats = rows.length >= 2
     ? meanStd(rows.map(r => Number(r.totalProfit)))
+    : null;
+  const trueThetaStats = canSummariseTheta
+    ? meanStd(rows.map(r => Number(r.trueOptTheta)))
+    : null;
+  const trueProfitStats = rows.length >= 2
+    ? meanStd(rows.map(r => Number(r.trueOptProfit)))
     : null;
 
   return (
@@ -224,8 +251,10 @@ export default function SeedSweep({
         <div style={{ fontSize: 11.5, color: '#64748b', maxWidth: 520 }}>
           Runs the current policy N times on independent noise draws
           (seed = base, base + 1, …), each starting from a fresh
-          belief and the same initial θ. Sequential — Render free-tier
-          is single-worker.
+          belief and the same initial θ, and reveals the per-seed
+          true-optimum estimate (n=50 replications) alongside what
+          the policy achieved. Sequential — Render free-tier is
+          single-worker.
         </div>
       </div>
 
@@ -281,12 +310,18 @@ export default function SeedSweep({
       {rows.length > 0 && (
         <div style={{ marginTop: 12, overflowX: 'auto' }}>
           <table style={{ borderCollapse: 'collapse', width: '100%',
-                          maxWidth: 480 }}>
+                          maxWidth: 720 }}>
             <thead>
               <tr>
                 <th style={thStyle}>Seed</th>
-                <th style={{ ...thStyle, textAlign: 'right' }}>Optimal θ</th>
-                <th style={{ ...thStyle, textAlign: 'right' }}>Total profit</th>
+                <th style={{ ...thStyle, textAlign: 'right' }}
+                    title="Where the policy ended up after all iterations.">Policy θ</th>
+                <th style={{ ...thStyle, textAlign: 'right' }}
+                    title="Cumulative profit the policy earned on this seed's noise draws.">Policy profit</th>
+                <th style={{ ...thStyle, textAlign: 'right' }}
+                    title="Monte-Carlo estimate of the true argmax, using n=50 replications seeded from this run.">True opt θ</th>
+                <th style={{ ...thStyle, textAlign: 'right' }}
+                    title="MC-estimated true reward per day × Horizon × Repeat. What a perfect θ picker would have earned in expectation.">True opt profit</th>
               </tr>
             </thead>
             <tbody>
@@ -295,25 +330,39 @@ export default function SeedSweep({
                   <td style={tdStyle}>{r.seed}</td>
                   <td style={tdNum}>
                     {dim === 1
-                      ? fmt(r.optimalTheta, 3)
-                      : Array.isArray(r.optimalTheta)
-                        ? `(${r.optimalTheta.map(x => fmt(x, 3)).join(', ')})`
+                      ? fmt(r.policyTheta, 3)
+                      : Array.isArray(r.policyTheta)
+                        ? `(${r.policyTheta.map(x => fmt(x, 3)).join(', ')})`
                         : '—'}
                   </td>
                   <td style={tdNum}>{fmtDollars(r.totalProfit)}</td>
+                  <td style={tdNum}>
+                    {dim === 1 ? fmt(r.trueOptTheta, 3) : '—'}
+                  </td>
+                  <td style={tdNum}>{fmtDollars(r.trueOptProfit)}</td>
                 </tr>
               ))}
-              {(thetaStats || profitStats) && (
+              {(policyThetaStats || profitStats || trueThetaStats || trueProfitStats) && (
                 <tr style={{ background: '#f8fafc' }}>
                   <td style={{ ...tdStyle, fontWeight: 600 }}>mean ± std</td>
                   <td style={{ ...tdNum, fontWeight: 600 }}>
-                    {thetaStats
-                      ? `${fmt(thetaStats.mean, 3)} ± ${fmt(thetaStats.std, 3)}`
+                    {policyThetaStats
+                      ? `${fmt(policyThetaStats.mean, 3)} ± ${fmt(policyThetaStats.std, 3)}`
                       : '—'}
                   </td>
                   <td style={{ ...tdNum, fontWeight: 600 }}>
                     {profitStats
                       ? `${fmtDollars(profitStats.mean)} ± ${fmtDollars(profitStats.std)}`
+                      : '—'}
+                  </td>
+                  <td style={{ ...tdNum, fontWeight: 600 }}>
+                    {trueThetaStats
+                      ? `${fmt(trueThetaStats.mean, 3)} ± ${fmt(trueThetaStats.std, 3)}`
+                      : '—'}
+                  </td>
+                  <td style={{ ...tdNum, fontWeight: 600 }}>
+                    {trueProfitStats
+                      ? `${fmtDollars(trueProfitStats.mean)} ± ${fmtDollars(trueProfitStats.std)}`
                       : '—'}
                   </td>
                 </tr>
