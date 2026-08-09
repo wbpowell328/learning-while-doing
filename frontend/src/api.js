@@ -131,6 +131,12 @@ export const setSigmaGreedy = (sid, sigmaGreedy) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sigma_greedy: Math.max(0, Number(sigmaGreedy)) }),
   });
+export const setBudget = (sid, budget) =>
+  call(`/sessions/${sid}/budget`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ budget: Math.max(1, Math.round(Number(budget))) }),
+  });
 export const setLengthScale = (sid, lengthScale) =>
   call(`/sessions/${sid}/length_scale`, {
     method: 'POST',

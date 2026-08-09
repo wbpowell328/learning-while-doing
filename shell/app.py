@@ -33,6 +33,7 @@ from .models import (
     CloneWithSeedRequest,
     SetZAlphaRequest, SetZAlphaResponse,
     SetSigmaGreedyRequest, SetSigmaGreedyResponse,
+    SetBudgetRequest, SetBudgetResponse,
     SetLengthScaleRequest, SetLengthScaleResponse,
     ExperimentRequest, ExperimentResponse,
     OneMoreRequest,
@@ -329,6 +330,25 @@ def set_sigma_greedy(sid: str, body: SetSigmaGreedyRequest) -> SetSigmaGreedyRes
         session._acq_config, budget=session._budget,
     ))
     return SetSigmaGreedyResponse(sigma_greedy=float(session._acq_config.sigma_greedy))
+
+
+@app.post("/sessions/{sid}/budget")
+def set_budget(sid: str, body: SetBudgetRequest) -> SetBudgetResponse:
+    """
+    Update Ryzhov's N (the (N-n) exploration weight OKGRyzhov uses)
+    for an existing session. Same pattern as /z_alpha and /sigma_greedy:
+    mutate the stored value and rebuild the policy so the change takes
+    effect on the next propose(). Harmless when the current policy is
+    not Ryzhov (the new N is remembered on the session and is used if
+    the user later switches back).
+    """
+    session = _get_or_404(sid)
+    session._budget = max(1, int(body.budget))
+    session.set_policy(_make_policy(
+        _policy_name_from_class(session._policy),
+        session._acq_config, budget=session._budget,
+    ))
+    return SetBudgetResponse(budget=int(session._budget))
 
 
 def _policy_name_from_class(policy) -> str:

@@ -51,41 +51,59 @@ const selectStyle = {
 };
 const labelStyle = { color: '#475569', fontSize: 13 };
 
-// Per-policy tunable-parameter descriptor. Returns null for policies
-// that have no parameter (input area stays blank in the UI). Labels
-// come from Warren's spec (2026-08); if a policy grows a second
-// parameter later this schema will need to broaden.
+// Per-policy tunable-parameter descriptors. Returns an array so a
+// policy can expose more than one knob on the control bar — Ryzhov
+// (okg_ryzhov) needs BOTH ρˡᵏʰᵈ and N; every other policy has at
+// most one.
 function policyParamMeta(policy, values, handlers) {
-  const { sessionMStar, sessionZAlpha, sessionSigmaGreedy } = values;
-  const { onMStarChange, onZAlphaChange, onSigmaGreedyChange } = handlers;
-  if (policy === 'okg' || policy === 'okg_indep' || policy === 'okg_ryzhov') {
-    return {
-      label: 'ρˡᵏʰᵈ',
-      title: 'Lookahead parameter — multiplies the precision of the KG measurement noise',
-      value: sessionMStar,
-      step: 1, min: 1, integer: true,
-      onCommit: onMStarChange,
-    };
+  const {
+    sessionMStar, sessionZAlpha, sessionSigmaGreedy, sessionBudget,
+  } = values;
+  const {
+    onMStarChange, onZAlphaChange, onSigmaGreedyChange, onBudgetChange,
+  } = handlers;
+  const rhoLkhd = {
+    label: 'ρˡᵏʰᵈ',
+    title: 'Lookahead parameter — multiplies the precision of the KG measurement noise',
+    value: sessionMStar,
+    step: 1, min: 1, integer: true,
+    onCommit: onMStarChange,
+  };
+  if (policy === 'okg' || policy === 'okg_indep') {
+    return [rhoLkhd];
+  }
+  if (policy === 'okg_ryzhov') {
+    // Ryzhov uses μ + (N−n)·KG(ρˡᵏʰᵈ), so both knobs matter.
+    return [
+      rhoLkhd,
+      {
+        label: 'N',
+        title: 'Ryzhov budget — the N in (N−n)·KG. Higher N → more exploration; drops to pure exploitation when n reaches N.',
+        value: sessionBudget,
+        step: 1, min: 1, integer: true,
+        onCommit: onBudgetChange,
+      },
+    ];
   }
   if (policy === 'ie') {
-    return {
+    return [{
       label: 'θᴵᴱ',
       title: 'IE score = μ_n(θ) + θ^IE · σ_n(θ). Multiplies the std dev of μ^n_θ.',
       value: sessionZAlpha,
       step: 'any', min: 0, integer: false,
       onCommit: onZAlphaChange,
-    };
+    }];
   }
   if (policy === 'randomized_greedy') {
-    return {
+    return [{
       label: 'ρˢᵗᵈᵈᵉᵛ',
       title: 'Std dev of Gaussian noise added to the greedy θ (same units as θ)',
       value: sessionSigmaGreedy,
       step: 'any', min: 0, integer: false,
       onCommit: onSigmaGreedyChange,
-    };
+    }];
   }
-  return null;   // kg, kg_indep, random, human — no parameter
+  return [];   // kg, kg_indep, random, human — no parameters
 }
 
 // Small controlled input for the current policy parameter. Commits on
@@ -153,9 +171,11 @@ export default function ExperimentBar({
   sessionMStar       = 1,
   sessionZAlpha      = 0,
   sessionSigmaGreedy = 0,
+  sessionBudget      = 10,   // Ryzhov N — appears only when okg_ryzhov is selected
   onMStarChange,          // async (n) => void
   onZAlphaChange,         // async (x) => void
   onSigmaGreedyChange,    // async (x) => void
+  onBudgetChange,         // async (n) => void
   onReveal,               // async () => void; null hides the Reveal button
   revealLoading = false,
   revealShown = false,    // true → Reveal already computed this session
@@ -234,13 +254,13 @@ export default function ExperimentBar({
   const thetaLabel = 'Test point';
   const policyOptions = dim === 2 ? POLICY_OPTIONS_2D : POLICY_OPTIONS_1D;
 
-  // Resolve the tunable parameter for the current policy — or null if
-  // this policy has none, in which case the slot to the right of Restart
-  // stays blank.
-  const paramMeta = policyParamMeta(
+  // Resolve the tunable parameters for the current policy — an empty
+  // array if this policy has none, one input for most, two for
+  // Ryzhov (ρˡᵏʰᵈ + N).
+  const paramMetas = policyParamMeta(
     policy,
-    { sessionMStar, sessionZAlpha, sessionSigmaGreedy },
-    { onMStarChange, onZAlphaChange, onSigmaGreedyChange },
+    { sessionMStar, sessionZAlpha, sessionSigmaGreedy, sessionBudget },
+    { onMStarChange, onZAlphaChange, onSigmaGreedyChange, onBudgetChange },
   );
 
   // Input validity — used to disable Run so the user can't fire off a
@@ -417,10 +437,13 @@ export default function ExperimentBar({
         {running ? 'running…' : 'Restart'}
       </button>
 
-      {/* Policy-parameter slot: label + editable value for the currently
-          selected policy, or nothing when the policy has no parameter.
-          Value lives on session state (mid-session edits propagate). */}
-      {paramMeta && <PolicyParamInput meta={paramMeta} />}
+      {/* Policy-parameter slot(s): one editable input per tunable knob
+          for the currently selected policy, or nothing when the policy
+          has none. Value lives on session state (mid-session edits
+          propagate). Ryzhov shows two — ρˡᵏʰᵈ then N. */}
+      {paramMetas.map((m) => (
+        <PolicyParamInput key={m.label} meta={m} />
+      ))}
     </div>
 
     {/* Second row: score readouts on the left, action buttons pushed

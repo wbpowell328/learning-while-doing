@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, getKGvsM, setMStar, setZAlpha, setSigmaGreedy, setLengthScale, getObservationsEnriched, getFlowSample, getNextTheta, runExperiment, runOneMore, resetSession, deleteSession } from './api';
+import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, getKGvsM, setMStar, setZAlpha, setSigmaGreedy, setBudget, setLengthScale, getObservationsEnriched, getFlowSample, getNextTheta, runExperiment, runOneMore, resetSession, deleteSession } from './api';
 import SessionForm from './components/SessionForm';
 import PosteriorChart from './components/PosteriorChart';
 import Belief3DChart from './components/Belief3DChart';
@@ -341,6 +341,26 @@ export default function App() {
     try {
       const resp = await setSigmaGreedy(session.id, newSigmaGreedy);
       setSession(prev => prev ? { ...prev, sigma_greedy: resp.sigma_greedy } : prev);
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [session]);
+
+  // Ryzhov N — mid-session tunable. Rebuilds the OKGRyzhov policy on
+  // the backend so the (N−n) weight for the next propose() reflects
+  // the new N. Also refreshes the KG(x) chart because the "ryzhov"
+  // curve depends on N.
+  const handleBudgetChange = useCallback(async (newBudget) => {
+    if (!session) return;
+    try {
+      const resp = await setBudget(session.id, newBudget);
+      setSession(prev => prev ? { ...prev, budget: resp.budget } : prev);
+      if (session.dim === 1) {
+        try {
+          const kg = await getKGComparison(session.id, 0.01, 50, resp.budget);
+          setKgComparison(kg);
+        } catch (_) { /* non-fatal — chart just keeps its prior view */ }
+      }
     } catch (e) {
       setError(String(e));
     }
@@ -1019,9 +1039,11 @@ export default function App() {
         sessionMStar={session.m_star ?? 1}
         sessionZAlpha={session.z_alpha ?? 0}
         sessionSigmaGreedy={session.sigma_greedy ?? 0}
+        sessionBudget={session.budget ?? 10}
         onMStarChange={handleMStarChange}
         onZAlphaChange={handleZAlphaChange}
         onSigmaGreedyChange={handleSigmaGreedyChange}
+        onBudgetChange={handleBudgetChange}
         onReveal={session.dim === 1 ? handleReveal : null}
         revealLoading={revealLoading}
         revealShown={reveal != null}

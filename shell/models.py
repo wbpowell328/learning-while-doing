@@ -145,6 +145,15 @@ class SetSigmaGreedyResponse(BaseModel):
     sigma_greedy: float
 
 
+class SetBudgetRequest(BaseModel):
+    # Ryzhov N — the (N-n) exploration weight the OKGRyzhov policy uses.
+    budget: int
+
+
+class SetBudgetResponse(BaseModel):
+    budget: int
+
+
 class SetLengthScaleRequest(BaseModel):
     # Scalar for 1-D or list-of-dim for 2-D (ARD).
     length_scale: Union[float, list[float]]
