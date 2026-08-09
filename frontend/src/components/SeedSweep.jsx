@@ -87,10 +87,14 @@ export default function SeedSweep({
   useEffect(() => { writeLS(LS_KEYS.horizon,  horizon);  }, [horizon]);
   useEffect(() => { writeLS(LS_KEYS.repeat,   repeat);   }, [repeat]);
 
-  const [rows, setRows]         = useState([]);   // {seed, optimalTheta, totalProfit}
+  const [rows, setRows]         = useState([]);   // {seed, ...} rows collected so far
   const [status, setStatus]     = useState(null); // in-progress human label
   const [running, setRunning]   = useState(false);
   const [error, setError]       = useState(null);
+  // Show / hide the results table. Warren can Close the report to
+  // clear visual space; the rows stay in state so Open restores the
+  // same table. A fresh sweep re-opens it automatically.
+  const [showReport, setShowReport] = useState(true);
   // Abort plumbing — a fresh controller per sweep; Stop calls
   // .abort() so the in-flight fetch throws AbortError and we can
   // break out of the loop without waiting for the current seed to
@@ -169,6 +173,7 @@ export default function SeedSweep({
     setRunning(true);
     setError(null);
     setRows([]);
+    setShowReport(true);   // new sweep → make sure the report is visible
     const controller = new AbortController();
     abortRef.current = controller;
     // Same starting θ every run — matches the ExperimentBar's normal
@@ -308,7 +313,26 @@ export default function SeedSweep({
       )}
 
       {rows.length > 0 && (
-        <div style={{ marginTop: 12, overflowX: 'auto' }}>
+        <div style={{ marginTop: 12,
+                      display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: '#334155' }}>
+            Results ({rows.length} {rows.length === 1 ? 'seed' : 'seeds'})
+          </span>
+          <button type="button"
+                  onClick={() => setShowReport(v => !v)}
+                  style={{ padding: '3px 10px', border: '1px solid #cbd5e1',
+                           borderRadius: 4, fontSize: 12, background: '#fff',
+                           cursor: 'pointer' }}
+                  title={showReport
+                    ? 'Hide the results table (rows stay saved)'
+                    : 'Show the results table again'}>
+            {showReport ? 'Close' : 'Open'}
+          </button>
+        </div>
+      )}
+
+      {rows.length > 0 && showReport && (
+        <div style={{ marginTop: 8, overflowX: 'auto' }}>
           <table style={{ borderCollapse: 'collapse', width: '100%',
                           maxWidth: 720 }}>
             <thead>
