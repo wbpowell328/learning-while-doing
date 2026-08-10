@@ -31,6 +31,7 @@ from .models import (
     BatchRequest, BatchResponse, BatchPolicyResult,
     SetMStarRequest, SetMStarResponse,
     CloneWithSeedRequest,
+    SetSessionSeedRequest, SetSessionSeedResponse,
     SetZAlphaRequest, SetZAlphaResponse,
     SetSigmaGreedyRequest, SetSigmaGreedyResponse,
     SetBudgetRequest, SetBudgetResponse,
@@ -279,6 +280,25 @@ def clone_with_seed(sid: str, body: CloneWithSeedRequest) -> CreateSessionRespon
         )
     cloned = original.model_copy(update={"session_seed": int(body.session_seed)})
     return create_session(cloned)
+
+
+@app.post("/sessions/{sid}/session_seed")
+def set_session_seed(sid: str, body: SetSessionSeedRequest) -> SetSessionSeedResponse:
+    """
+    Change the session's random-number seed in place. The stashed
+    CreateSessionRequest is kept in sync so clone_with_seed (the
+    seed-sweep panel) starts from the same base. Does NOT reset the
+    session — callers should follow with POST /sessions/{sid}/reset if
+    they want a clean slate under the new seed (the frontend does).
+    """
+    session = _get_or_404(sid)
+    new_seed = int(body.session_seed)
+    session._session_seed = new_seed
+    if sid in _session_create_reqs:
+        _session_create_reqs[sid] = _session_create_reqs[sid].model_copy(
+            update={"session_seed": new_seed}
+        )
+    return SetSessionSeedResponse(session_seed=new_seed)
 
 
 @app.post("/sessions/{sid}/m_star")

@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, getKGvsM, setMStar, setZAlpha, setSigmaGreedy, setBudget, setLengthScale, getObservationsEnriched, getFlowSample, getNextTheta, runExperiment, runOneMore, resetSession, deleteSession } from './api';
+import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, getKGvsM, setMStar, setZAlpha, setSigmaGreedy, setBudget, setSessionSeed, setLengthScale, getObservationsEnriched, getFlowSample, getNextTheta, runExperiment, runOneMore, resetSession, deleteSession } from './api';
 import SessionForm from './components/SessionForm';
 import PosteriorChart from './components/PosteriorChart';
 import Belief3DChart from './components/Belief3DChart';
@@ -580,6 +580,28 @@ export default function App() {
       setLoading(false);
     }
   }, [session, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2, refreshFlowSample]);
+
+  // Mid-session seed change from the sweep panel's Seed input. Mutates
+  // the backend session's seed AND triggers a full reset (via
+  // handleRestart) so the next Run starts fresh under the new seed.
+  // No-op if the value is unchanged so a keystroke that lands on the
+  // same number doesn't wipe an in-progress game.
+  const handleSessionSeedChange = useCallback(async (newSeed) => {
+    if (!session) return;
+    const n = Math.round(Number(newSeed));
+    if (!Number.isFinite(n)) return;
+    if (n === Number(session.session_seed)) return;
+    try {
+      const resp = await setSessionSeed(session.id, n);
+      setSession(prev => prev ? { ...prev, session_seed: resp.session_seed } : prev);
+      // The session's stored seed changed — kick a Restart so the RNG
+      // re-seeds from it and the UI (history, scores, belief-derived
+      // charts) starts clean under the new seed.
+      await handleRestart();
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [session, handleRestart]);
 
   const handleOneMore = useCallback(async (spec) => {
     if (!session) return;
@@ -1163,6 +1185,7 @@ export default function App() {
         currentHorizon={currentHorizon}
         currentRepeat={currentRepeat}
         disabled={loading}
+        onSessionSeedChange={handleSessionSeedChange}
         onSessionLost={() => {
           // Push a matching error string into App-level state so the
           // existing 404-recovery useEffect (reload with ?auto=1)

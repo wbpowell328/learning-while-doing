@@ -125,6 +125,15 @@ class CloneWithSeedRequest(BaseModel):
     session_seed: int
 
 
+class SetSessionSeedRequest(BaseModel):
+    """Body for POST /sessions/{sid}/session_seed."""
+    session_seed: int
+
+
+class SetSessionSeedResponse(BaseModel):
+    session_seed: int
+
+
 class SetMStarResponse(BaseModel):
     m_star: int
 

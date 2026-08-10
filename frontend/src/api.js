@@ -140,6 +140,12 @@ export const setBudget = (sid, budget) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ budget: Math.max(1, Math.round(Number(budget))) }),
   });
+export const setSessionSeed = (sid, session_seed) =>
+  call(`/sessions/${sid}/session_seed`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_seed: Math.round(Number(session_seed)) }),
+  });
 export const setLengthScale = (sid, lengthScale) =>
   call(`/sessions/${sid}/length_scale`, {
     method: 'POST',

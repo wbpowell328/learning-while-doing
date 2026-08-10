@@ -80,6 +80,11 @@ export default function SeedSweep({
   onLogEntry,       // (entry) => void — feed each finished sweep row
                     //   into the App-level Run history log so the user
                     //   sees the whole sweep alongside their manual runs.
+  onSessionSeedChange, // (newSeed) => void — this input doubles as the
+                       //   session's random-number seed control; the
+                       //   parent mutates the backend session's seed
+                       //   and triggers a Restart so the next Run
+                       //   starts clean under the new seed.
 }) {
   const dim = session?.dim ?? 1;
   const baseSeedDefault = String(Number(session?.session_seed ?? 42));
@@ -307,10 +312,27 @@ export default function SeedSweep({
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10,
                     flexWrap: 'wrap', marginTop: 10 }}>
-        <span style={labelStyle}>Base seed:</span>
+        <span style={labelStyle}
+              title="This is the session's random-number seed — the same seed the top bar uses for Run/Repeat and the seed the sweep counts up from. Changing it and pressing Enter (or clicking away) resets the game to a fresh start under the new seed.">
+          Seed:
+        </span>
         <input type="number" value={baseSeed}
                onChange={e => setBaseSeed(e.target.value)}
+               onBlur={() => {
+                 // Commit the typed value to the backend session's
+                 // seed. handleSessionSeedChange in App.jsx short-
+                 // circuits when the value hasn't actually changed,
+                 // so simply re-focusing the box is a no-op.
+                 if (onSessionSeedChange) onSessionSeedChange(baseSeed);
+               }}
+               onKeyDown={e => {
+                 if (e.key === 'Enter') {
+                   e.preventDefault();
+                   e.currentTarget.blur();   // triggers the commit above
+                 }
+               }}
                disabled={running}
+               title="Session seed. Enter or click away to apply — resets the game so the next Run starts fresh under the new seed."
                style={boxStyle} />
         <span style={labelStyle}>· Seeds to run:</span>
         <input type="number" value={nSeeds} min={2} max={20}
