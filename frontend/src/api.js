@@ -32,10 +32,11 @@ export const cloneWithSeed = (sid, session_seed, signal) =>
   });
 
 export const runStep     = (sid) => call(`/sessions/${sid}/step`, { method: 'POST' });
-export const evaluateC   = (sid, impparam, n_days = null) => call(`/sessions/${sid}/evaluate`, {
+export const evaluateC   = (sid, impparam, n_days = null, signal) => call(`/sessions/${sid}/evaluate`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(n_days == null ? { impparam } : { impparam, n_days }),
+  signal,
 });
 export const getPosterior  = (sid) => call(`/sessions/${sid}/posterior`);
 export const getPosterior2D = (sid, gridSize = 30) =>
@@ -168,11 +169,12 @@ export const runExperiment = (sid, spec, signal) =>
     body: JSON.stringify(spec),
     signal,
   });
-export const runOneMore = (sid, spec) =>
+export const runOneMore = (sid, spec, signal) =>
   call(`/sessions/${sid}/one_more`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(spec),
+    signal,
   });
 export const resetSession = (sid) =>
   call(`/sessions/${sid}/reset`, { method: 'POST' });

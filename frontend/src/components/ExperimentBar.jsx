@@ -188,6 +188,9 @@ export default function ExperimentBar({
                           // box, so SeedSweep can mirror it read-only
                           // instead of maintaining its own duplicate.
   onRepeatChange,         // (value) => void — same for the Repeat box.
+  onStop,                 // () => void — abort the in-flight Run /
+                          // Repeat / Manual evaluate. Shows a Stop
+                          // button in place of Restart while running.
 }) {
   // Pre-fill θ from the Advanced-parameters "Initial value" field
   // (or 0.10 if the user didn't set one). 2-D case takes both dims.
@@ -388,10 +391,18 @@ export default function ExperimentBar({
       })()}
 
       <span style={labelStyle}>Horizon</span>
-      <input type="number" min={1} step={1} value={nDays}
+      <input type="number" min={1} max={100} step={1} value={nDays}
              placeholder="N"
-             style={{ ...numStyleShort, width: 65 }}
-             onChange={e => setNDays(e.target.value)} />
+             style={{ ...numStyleShort, width: 55 }}
+             title="Days per iteration (1–100). Horizon=50 with Repeat=100 → 5000 simulated days per Run."
+             onChange={e => setNDays(e.target.value)}
+             onBlur={e => {
+               // Snap out-of-range typos into [1, 100] so a stray
+               // "500" doesn't push the top bar layout wider than
+               // it can hold on one line.
+               const v = Math.max(1, Math.min(100, Math.round(Number(e.target.value) || 0)));
+               setNDays(String(v));
+             }} />
       <span style={labelStyle}>days. Then update using policy</span>
 
       <select value={policy} style={selectStyle}
@@ -463,14 +474,26 @@ export default function ExperimentBar({
               style={{ padding: '6px 16px', fontSize: 13 }}>
         {running ? 'running…' : (isHuman ? 'Run' : (canOneMore ? 'Repeat' : 'Run'))}
       </button>
-      <button type="button"
-              onClick={() => { if (!running && onRestart) onRestart(); }}
-              disabled={running || !onRestart}
-              className="btn btn-primary"
-              title="Reset to initial conditions (no simulation). The Run button will start a fresh experiment."
-              style={{ padding: '6px 20px', fontSize: 13 }}>
-        {running ? 'running…' : 'Restart'}
-      </button>
+      {running ? (
+        <button type="button"
+                onClick={() => { if (onStop) onStop(); }}
+                disabled={!onStop}
+                className="btn btn-outline"
+                title="Abort the in-flight Run / Repeat. State stays where it was before the click."
+                style={{ padding: '6px 20px', fontSize: 13,
+                         borderColor: '#b91c1c', color: '#b91c1c' }}>
+          Stop
+        </button>
+      ) : (
+        <button type="button"
+                onClick={() => { if (onRestart) onRestart(); }}
+                disabled={!onRestart}
+                className="btn btn-primary"
+                title="Reset to initial conditions (no simulation). The Run button will start a fresh experiment."
+                style={{ padding: '6px 20px', fontSize: 13 }}>
+          Restart
+        </button>
+      )}
 
       {/* Policy-parameter slot(s): one editable input per tunable knob
           for the currently selected policy, or nothing when the policy

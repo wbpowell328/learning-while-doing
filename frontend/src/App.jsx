@@ -239,6 +239,18 @@ export default function App() {
   // maintaining its own duplicate inputs.
   const [currentHorizon, setCurrentHorizon] = useState('50');
   const [currentRepeat,  setCurrentRepeat]  = useState('1');
+  // AbortController for the CURRENT in-flight Run / Repeat / Manual
+  // evaluate call. Stop button aborts it. Ref (not state) so reading
+  // it from handleStop doesn't trigger a re-render, and so a stale
+  // closure can't hold onto an old controller.
+  const abortRunRef = useRef(null);
+  const isAbortError = (err) => err && (
+    err.name === 'AbortError' || /aborted/i.test(String(err.message ?? ''))
+  );
+  const handleStop = useCallback(() => {
+    const c = abortRunRef.current;
+    if (c && !c.signal.aborted) c.abort();
+  }, []);
   // Run-history log — one entry per Run or One-more click, oldest at
   // the tail. Persists to localStorage so Warren can review earlier
   // sessions after a page reload. Cap at 200 rows.
@@ -461,8 +473,10 @@ export default function App() {
   const handleRunExperiment = useCallback(async (spec) => {
     if (!session) return;
     setLoading(true); setError(null);
+    const controller = new AbortController();
+    abortRunRef.current = controller;
     try {
-      const resp = await runExperiment(session.id, spec);
+      const resp = await runExperiment(session.id, spec, controller.signal);
       await applyExperimentResponse(resp, spec);
       // Two different numbers with two different meanings:
       //   Latest     = reward from the SINGLE most recent iteration —
@@ -511,8 +525,10 @@ export default function App() {
       // Preview the next θ the policy would pick, for the Test-point box.
       await refreshNextTheta();
     } catch (e) {
-      setError(String(e));
+      // Aborted by the Stop button — leave state as-is, no error banner.
+      if (!isAbortError(e)) setError(String(e));
     } finally {
+      abortRunRef.current = null;
       setLoading(false);
     }
   }, [session, applyExperimentResponse, refreshFlowSample, refreshNextTheta,
@@ -641,8 +657,10 @@ export default function App() {
     const priorCumul  = cumulativeScore ?? 0;
     const priorDays   = totalDays;
     setLoading(true); setError(null);
+    const controller = new AbortController();
+    abortRunRef.current = controller;
     try {
-      const resp = await runOneMore(session.id, spec);
+      const resp = await runOneMore(session.id, spec, controller.signal);
       await applyExperimentResponse(resp, spec);
       const newRows = (resp.history ?? []).slice(priorNSteps);
       const batchAddition = newRows.reduce((s, row) => s + Number(row[1] ?? 0), 0);
@@ -687,8 +705,10 @@ export default function App() {
       });
       await refreshNextTheta();
     } catch (e) {
-      setError(String(e));
+      // Aborted by the Stop button — leave state as-is, no error banner.
+      if (!isAbortError(e)) setError(String(e));
     } finally {
+      abortRunRef.current = null;
       setLoading(false);
     }
   }, [session, nSteps, cumulativeScore, totalDays, applyExperimentResponse,
@@ -929,8 +949,10 @@ export default function App() {
     if (!session || loading) return;
     setLoading(true);
     setError(null);
+    const controller = new AbortController();
+    abortRunRef.current = controller;
     try {
-      const result = await evaluateC(session.id, impparam, n_days);
+      const result = await evaluateC(session.id, impparam, n_days, controller.signal);
       const [post, kg, kgm] = await Promise.all([
         getPosterior(session.id),
         getKGComparison(session.id, 0.01, 50, session.budget ?? 10),
@@ -958,8 +980,9 @@ export default function App() {
         await fetchReveal(session.id);
       }
     } catch (e) {
-      setError(String(e));
+      if (!isAbortError(e)) setError(String(e));
     } finally {
+      abortRunRef.current = null;
       setLoading(false);
     }
   }, [session, loading, applyResult, fetchReveal, refreshEnriched, refreshFlowSample, kgVsMSigmaEps, kgVsMMMax, kgVsMTheta, kgVsMTheta2]);
@@ -1201,6 +1224,7 @@ export default function App() {
         onPolicyChange={setCurrentPolicy}
         onHorizonChange={setCurrentHorizon}
         onRepeatChange={setCurrentRepeat}
+        onStop={handleStop}
       />
 
       {/* Seed variability sweep — sequentially runs the current
