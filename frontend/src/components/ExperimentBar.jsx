@@ -260,13 +260,12 @@ export default function ExperimentBar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nextTheta, lastTheta, dim, _init1, _init2]);
 
-  // Label follows history: on a fresh / just-Restarted session the box
-  // is the user's starting point; once anything has run, it's the
-  // last-tested θ, so the label reads "Current point".
-  // Always "Test point" — the θ that will be tested next when the
-  // user hits Run (whether user-typed on first run / Manual, or the
-  // policy's preview otherwise).
-  const thetaLabel = 'Test point';
+  // "Starting θ" — the θ that gets tested in iteration 1 when the
+  // button says "Run" (fresh / just-Restarted session). Once history
+  // exists the button flips to "Repeat" and the policy picks θ for
+  // every iteration, so this box becomes inert (we grey it out
+  // below to make that visually obvious).
+  const thetaLabel = 'Starting θ';
   const policyOptions = dim === 2 ? POLICY_OPTIONS_2D : POLICY_OPTIONS_1D;
 
   // Resolve the tunable parameters for the current policy — an empty
@@ -340,7 +339,13 @@ export default function ExperimentBar({
       padding: '12px 16px', marginBottom: 16,
     }}>
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-      <span style={labelStyle}>{thetaLabel}</span>
+      <span style={{ ...labelStyle,
+                     color: canOneMore && !isHuman ? '#94a3b8' : labelStyle.color }}
+            title={canOneMore && !isHuman
+              ? 'Inactive while the button says "Repeat": the policy picks θ every iteration. Hit Restart to reset — the button flips back to "Run" and this box is used again for iteration 1.'
+              : 'θ that gets tested in iteration 1 (before the policy takes over for iterations 2..Repeat).'}>
+        {thetaLabel}
+      </span>
       {(() => {
         // Backend returns impparam_min/max as a list (1-element for
         // 1-D, 2-element for 2-D). Pull per-dim bounds; default to a
@@ -352,18 +357,32 @@ export default function ExperimentBar({
         const max1 = Number.isFinite(hi[0]) ? hi[0] : 1;
         const min2 = Number.isFinite(lo[1]) ? lo[1] : (Number.isFinite(lo[0]) ? lo[0] : 0);
         const max2 = Number.isFinite(hi[1]) ? hi[1] : (Number.isFinite(hi[0]) ? hi[0] : 1);
+        // Grey out the θ input(s) while the button says "Repeat" —
+        // in that mode the policy picks θ every iteration and this
+        // value is ignored. Manual policy is exempt: the box is
+        // always live because Manual doesn't have a Repeat state.
+        const inert = canOneMore && !isHuman;
+        const inertStyle = inert
+          ? { background: '#f1f5f9', color: '#64748b', cursor: 'not-allowed' }
+          : {};
+        const inertTitle = inert
+          ? 'Inactive — the policy picks θ in Repeat mode. Hit Restart to use this box again.'
+          : undefined;
         return dim === 2 ? (
           <>
             <input type="number" step={0.01} min={min1} max={max1} value={theta1}
-                   placeholder="θ₁" style={numStyle}
+                   placeholder="θ₁" style={{ ...numStyle, ...inertStyle }}
+                   disabled={inert} title={inertTitle}
                    onChange={e => setTheta1(e.target.value)} />
             <input type="number" step={0.01} min={min2} max={max2} value={theta2}
-                   placeholder="θ₂" style={numStyle}
+                   placeholder="θ₂" style={{ ...numStyle, ...inertStyle }}
+                   disabled={inert} title={inertTitle}
                    onChange={e => setTheta2(e.target.value)} />
           </>
         ) : (
           <input type="number" step={0.01} min={min1} max={max1} value={theta1}
-                 placeholder="θ" style={numStyle}
+                 placeholder="θ" style={{ ...numStyle, ...inertStyle }}
+                 disabled={inert} title={inertTitle}
                  onChange={e => setTheta1(e.target.value)} />
         );
       })()}
