@@ -594,6 +594,33 @@ export default function App() {
     try {
       const resp = await setSessionSeed(session.id, n);
       setSession(prev => prev ? { ...prev, session_seed: resp.session_seed } : prev);
+      // Persist the new seed into the ACTIVE Game-parameters panel so
+      // the Game-parameters page shows the same value the front panel
+      // just committed. Same pattern as handleLengthScaleChange, but
+      // `seed` is a top-level field on the panel blob (not inside
+      // `adv`) — mirroring how currentFormBlob() in SessionForm
+      // serialises it.
+      try {
+        const rawStore = window.localStorage.getItem('lwd_panels_v1');
+        if (rawStore) {
+          const store = JSON.parse(rawStore);
+          const entry = store[session.app_name];
+          const activeName = entry?.active;
+          const panel = entry?.panels?.[activeName];
+          if (panel) {
+            panel.seed = resp.session_seed;
+            window.localStorage.setItem('lwd_panels_v1', JSON.stringify(store));
+          }
+        }
+        // Same for the legacy single-blob key that auto-launch falls
+        // back to when the panels store is missing.
+        const rawLegacy = window.localStorage.getItem('lwd_advanced_v2');
+        if (rawLegacy) {
+          const legacy = JSON.parse(rawLegacy);
+          legacy.seed = resp.session_seed;
+          window.localStorage.setItem('lwd_advanced_v2', JSON.stringify(legacy));
+        }
+      } catch (_) { /* private mode / bad JSON — non-fatal */ }
       // The session's stored seed changed — kick a Restart so the RNG
       // re-seeds from it and the UI (history, scores, belief-derived
       // charts) starts clean under the new seed.
