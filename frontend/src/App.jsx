@@ -464,13 +464,21 @@ export default function App() {
     try {
       const resp = await runExperiment(session.id, spec);
       await applyExperimentResponse(resp, spec);
-      // Restart wipes prior state, so latest = cumulative = sum of the
-      // freshly-generated batch's rewards.
+      // Two different numbers with two different meanings:
+      //   Latest     = reward from the SINGLE most recent iteration —
+      //                comparable batch-to-batch as the policy learns.
+      //   Cumulative = sum across every iteration since Restart —
+      //                comparable to Optimal (both cover TotalDays).
+      // Previously we set both to the whole-click sum, which made
+      // Latest == Cumulative on a fresh Run and confused Warren about
+      // which timescale each box was on.
       const rows = resp.history ?? [];
-      const batchTotal = rows.reduce((s, row) => s + Number(row[1] ?? 0), 0);
+      const wholeBatchTotal = rows.reduce((s, row) => s + Number(row[1] ?? 0), 0);
+      const lastIterReward = rows.length > 0
+        ? Number(rows[rows.length - 1][1] ?? 0) : 0;
       const totalDaysAfter = rows.length * Number(spec.n_days ?? 0);
-      setLatestScore(batchTotal);
-      setCumulativeScore(batchTotal);
+      setLatestScore(lastIterReward);
+      setCumulativeScore(wholeBatchTotal);
       // Total simulated days = iterations × n_days. Restart resets.
       setTotalDays(totalDaysAfter);
       // Log this click to the run-history table. Optimal score uses
@@ -486,8 +494,8 @@ export default function App() {
         repeat: Number(spec.K ?? 0) + 1,
         theta_init: spec.theta_init,
         best_theta: resp.best_impparam,
-        latest: batchTotal,
-        cumulative: batchTotal,
+        latest: lastIterReward,
+        cumulative: wholeBatchTotal,
         total_days: totalDaysAfter,
         optimal: (optimalPerDay != null && totalDaysAfter > 0)
           ? optimalPerDay * totalDaysAfter : null,
@@ -588,10 +596,15 @@ export default function App() {
       const resp = await runOneMore(session.id, spec);
       await applyExperimentResponse(resp, spec);
       const newRows = (resp.history ?? []).slice(priorNSteps);
-      const batchTotal = newRows.reduce((s, row) => s + Number(row[1] ?? 0), 0);
-      const newCumulative = priorCumul + batchTotal;
+      const batchAddition = newRows.reduce((s, row) => s + Number(row[1] ?? 0), 0);
+      // Same Latest / Cumulative split as handleRunExperiment: Latest
+      // shows the reward from just the final iteration in this click,
+      // Cumulative rolls up everything since the last Restart.
+      const lastIterReward = newRows.length > 0
+        ? Number(newRows[newRows.length - 1][1] ?? 0) : 0;
+      const newCumulative = priorCumul + batchAddition;
       const newTotalDays  = priorDays + newRows.length * Number(spec.n_days ?? 0);
-      setLatestScore(batchTotal);
+      setLatestScore(lastIterReward);
       setCumulativeScore(newCumulative);
       setTotalDays(newTotalDays);
       // Cash-balance chart follows the most recent θ (policy-picked here).
@@ -617,7 +630,7 @@ export default function App() {
         repeat: Number(spec.K ?? 0) + 1,
         theta_init: lastTheta,
         best_theta: resp.best_impparam,
-        latest: batchTotal,
+        latest: lastIterReward,
         cumulative: newCumulative,
         total_days: newTotalDays,
         optimal: (optimalPerDay != null && newTotalDays > 0)
