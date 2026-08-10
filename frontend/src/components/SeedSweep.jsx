@@ -75,6 +75,9 @@ export default function SeedSweep({
   onSessionLost,    // () => void — called when the backend has forgotten
                     //   the current session (Render sleep/restart) so the
                     //   parent can trigger its 404-recovery flow.
+  onLogEntry,       // (entry) => void — feed each finished sweep row
+                    //   into the App-level Run history log so the user
+                    //   sees the whole sweep alongside their manual runs.
 }) {
   const dim = session?.dim ?? 1;
   const baseSeedDefault = String(Number(session?.session_seed ?? 42));
@@ -192,6 +195,29 @@ export default function SeedSweep({
           const row = await runOneSeed(seed, initialTheta, controller.signal);
           collected.push(row);
           setRows([...collected]);
+          // Also feed this row into the shared Run history log so the
+          // user can review sweep entries alongside manual runs. Same
+          // shape as the App.jsx logRunResult() call in
+          // handleRunExperiment. Action "Sweep" plus the walking seed
+          // makes sweep entries easy to spot in the history table.
+          if (onLogEntry) {
+            const totalDays = parsedHoriz * parsedRep;
+            onLogEntry({
+              ts: new Date().toISOString(),
+              seed: Number(row.seed),
+              action: 'Sweep',
+              app: session.app_name,
+              policy: currentPolicy,
+              horizon: parsedHoriz,
+              repeat: parsedRep,
+              theta_init: initialTheta,
+              best_theta: row.policyTheta,
+              latest: row.totalProfit,
+              cumulative: row.totalProfit,
+              total_days: totalDays,
+              optimal: Number.isFinite(row.trueOptProfit) ? row.trueOptProfit : null,
+            });
+          }
         } catch (err) {
           if (isAbortError(err)) break;
           throw err;

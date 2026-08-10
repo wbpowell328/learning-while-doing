@@ -473,6 +473,7 @@ export default function App() {
       // otherwise it stays null and the entry shows "—" in that column.
       logRunResult({
         ts: new Date().toISOString(),
+        seed: Number(session.session_seed),
         action: 'Run',
         app: session.app_name,
         policy: spec.policy,
@@ -603,6 +604,7 @@ export default function App() {
       // (policy-picked, not user-typed).
       logRunResult({
         ts: new Date().toISOString(),
+        seed: Number(session.session_seed),
         action: 'One more',
         app: session.app_name,
         policy: spec.policy,
@@ -1146,6 +1148,7 @@ export default function App() {
           // backend has been asleep and forgotten the session.
           setError('404 session not found (backend was asleep)');
         }}
+        onLogEntry={logRunResult}
       />
 
       {/* Run history — one row per Run / One-more click, persisted

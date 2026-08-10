@@ -109,6 +109,7 @@ export default function RunHistory({ rows = [], onClear }) {
             <thead>
               <tr>
                 <th style={thStyle}>When</th>
+                <th style={{ ...thStyle, textAlign: 'right' }} title="Random-number seed for the session that generated this row. Seed-sweep entries walk this column by 1.">Seed</th>
                 <th style={thStyle}>App</th>
                 <th style={thStyle}>Policy</th>
                 <th style={thStyle}>Action</th>
@@ -126,6 +127,7 @@ export default function RunHistory({ rows = [], onClear }) {
               {rows.map((r, i) => (
                 <tr key={`${r.ts}-${i}`}>
                   <td style={tdStyle}>{fmtTime(r.ts)}</td>
+                  <td style={tdNum}>{Number.isFinite(r.seed) ? r.seed : '—'}</td>
                   <td style={tdStyle}>{APP_SHORT[r.app] ?? r.app ?? '—'}</td>
                   <td style={tdStyle}>{POLICY_SHORT[r.policy] ?? r.policy ?? '—'}</td>
                   <td style={tdStyle}>{r.action ?? '—'}</td>
