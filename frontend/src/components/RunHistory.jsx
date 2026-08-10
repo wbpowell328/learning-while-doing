@@ -105,7 +105,7 @@ export default function RunHistory({ rows = [], onClear }) {
 
       {open && rows.length > 0 && (
         <div style={{ marginTop: 10, overflowX: 'auto' }}>
-          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+          <table style={{ borderCollapse: 'collapse' }}>
             <thead>
               <tr>
                 <th style={thStyle}>When</th>
