@@ -468,9 +468,9 @@ export default function ExperimentBar({
       <ScoreBox label="Total days"       value={totalDays} format="days"
                 hint="Simulated days behind the cumulative score. Resets on Restart." />
       <ScoreBox label="Latest score"     value={latestScore}
-                hint="Total reward from the last Restart or One more" />
+                hint="Reward from the SINGLE most recent iteration (covers Horizon days, not Total days). Can swing widely on individual batches — that's the noise the policy has to learn through." />
       <ScoreBox label="Cumulative score" value={cumulativeScore}
-                hint="Running total across all steps since the last Restart" />
+                hint="Reward summed across every iteration since the last Restart (covers Total days). Directly comparable to Optimal score." />
       <ScoreBox label="Optimal score"
                 value={(optimalPerDay != null && totalDays > 0) ? optimalPerDay * totalDays : null}
                 hint="What a perfect θ picker would have earned over Total days — true-optimum reward per day × Total days. Null until the background reveal completes." />
