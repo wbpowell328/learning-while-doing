@@ -184,6 +184,10 @@ export default function ExperimentBar({
                           // dropdown selection changes, so peer panels
                           // (SeedSweep) can read the CURRENT policy
                           // without lifting ExperimentBar's state.
+  onHorizonChange,        // (value) => void — same idea for the Horizon
+                          // box, so SeedSweep can mirror it read-only
+                          // instead of maintaining its own duplicate.
+  onRepeatChange,         // (value) => void — same for the Repeat box.
 }) {
   // Pre-fill θ from the Advanced-parameters "Initial value" field
   // (or 0.10 if the user didn't set one). 2-D case takes both dims.
@@ -214,6 +218,17 @@ export default function ExperimentBar({
     if (onPolicyChange) onPolicyChange(policy);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [policy]);
+  // Same for Horizon and Repeat — SeedSweep mirrors these read-only
+  // so the sweep uses exactly the values the user has typed above,
+  // avoiding the confusion of two independent inputs.
+  useEffect(() => {
+    if (onHorizonChange) onHorizonChange(nDays);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nDays]);
+  useEffect(() => {
+    if (onRepeatChange) onRepeatChange(K);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [K]);
 
   // Human forces K=0 (one iteration at a time). Handled at the source:
   // the policy dropdown's onChange snaps K to '0' when switching to

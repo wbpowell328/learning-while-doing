@@ -1,14 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { cloneWithSeed, runExperiment, getReveal, deleteSession } from '../api';
 
-// localStorage keys for the four sweep inputs — persist across page
-// reloads so a Render sleep + 404 → auto-recovery reload doesn't
-// eat the user's just-typed sweep parameters.
+// localStorage keys for the two sweep-only inputs — persist across
+// page reloads so a Render sleep + 404 → auto-recovery reload
+// doesn't eat the user's just-typed sweep parameters. Horizon and
+// Repeat now mirror the ExperimentBar above (read-only display),
+// so their localStorage entries are no longer needed here.
 const LS_KEYS = {
   baseSeed: 'lwd_sweep_base_seed_v1',
   nSeeds:   'lwd_sweep_n_seeds_v1',
-  horizon:  'lwd_sweep_horizon_v1',
-  repeat:   'lwd_sweep_repeat_v1',
 };
 function readLS(key, fallback) {
   try {
@@ -71,6 +71,8 @@ function meanStd(xs) {
 export default function SeedSweep({
   session,          // { id, session_seed, initial_theta, dim, ... }
   currentPolicy,    // effective policy value in the ExperimentBar right now
+  currentHorizon,   // string — Horizon input value from the ExperimentBar
+  currentRepeat,    // string — Repeat input value from the ExperimentBar
   disabled = false, // parent should pass loading || !session
   onSessionLost,    // () => void — called when the backend has forgotten
                     //   the current session (Render sleep/restart) so the
@@ -83,12 +85,13 @@ export default function SeedSweep({
   const baseSeedDefault = String(Number(session?.session_seed ?? 42));
   const [baseSeed,  setBaseSeed]  = useState(() => readLS(LS_KEYS.baseSeed, baseSeedDefault));
   const [nSeeds,    setNSeeds]    = useState(() => readLS(LS_KEYS.nSeeds,   '5'));
-  const [horizon,   setHorizon]   = useState(() => readLS(LS_KEYS.horizon,  '50'));
-  const [repeat,    setRepeat]    = useState(() => readLS(LS_KEYS.repeat,   '20'));
   useEffect(() => { writeLS(LS_KEYS.baseSeed, baseSeed); }, [baseSeed]);
   useEffect(() => { writeLS(LS_KEYS.nSeeds,   nSeeds);   }, [nSeeds]);
-  useEffect(() => { writeLS(LS_KEYS.horizon,  horizon);  }, [horizon]);
-  useEffect(() => { writeLS(LS_KEYS.repeat,   repeat);   }, [repeat]);
+  // Horizon and Repeat are read-only mirrors of the ExperimentBar
+  // inputs above. Fall back to sensible defaults if the parent
+  // hasn't fed them yet (very first render).
+  const horizon = currentHorizon ?? '50';
+  const repeat  = currentRepeat  ?? '1';
 
   const [rows, setRows]         = useState([]);   // {seed, ...} rows collected so far
   const [status, setStatus]     = useState(null); // in-progress human label
@@ -301,16 +304,22 @@ export default function SeedSweep({
                onChange={e => setNSeeds(e.target.value)}
                disabled={running}
                style={{ ...boxStyle, width: 46 }} />
-        <span style={labelStyle}>· Horizon (days):</span>
-        <input type="number" value={horizon} min={1} max={500}
-               onChange={e => setHorizon(e.target.value)}
-               disabled={running}
-               style={{ ...boxStyle, width: 52 }} />
-        <span style={labelStyle}>· Repeat:</span>
-        <input type="number" value={repeat} min={1} max={50}
-               onChange={e => setRepeat(e.target.value)}
-               disabled={running}
-               style={{ ...boxStyle, width: 46 }} />
+        <span style={labelStyle} title="Read-only — mirrors the Horizon box above so the sweep uses the same batch length as your regular Run.">
+          · Horizon (days):
+        </span>
+        <input type="number" value={horizon} disabled readOnly
+               tabIndex={-1}
+               style={{ ...boxStyle, width: 52, background: '#f1f5f9',
+                        color: '#475569', cursor: 'not-allowed' }}
+               title="Set this via the Horizon input above the control bar." />
+        <span style={labelStyle} title="Read-only — mirrors the Repeat box above so the sweep runs the same number of iterations per seed as your regular Run.">
+          · Repeat:
+        </span>
+        <input type="number" value={repeat} disabled readOnly
+               tabIndex={-1}
+               style={{ ...boxStyle, width: 46, background: '#f1f5f9',
+                        color: '#475569', cursor: 'not-allowed' }}
+               title="Set this via the Repeat input above the control bar." />
         <button className="btn btn-primary"
                 onClick={handleRunSweep}
                 disabled={!canRun}

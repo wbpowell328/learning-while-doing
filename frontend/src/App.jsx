@@ -234,6 +234,11 @@ export default function App() {
   // Passed down to sibling panels (SeedSweep) so their runs use the
   // same policy the user is looking at right now.
   const [currentPolicy, setCurrentPolicy] = useState(null);
+  // Same mirror pattern for Horizon and Repeat — SeedSweep shows these
+  // read-only so it uses exactly what the user typed above rather than
+  // maintaining its own duplicate inputs.
+  const [currentHorizon, setCurrentHorizon] = useState('50');
+  const [currentRepeat,  setCurrentRepeat]  = useState('1');
   // Run-history log — one entry per Run or One-more click, oldest at
   // the tail. Persists to localStorage so Warren can review earlier
   // sessions after a page reload. Cap at 200 rows.
@@ -1132,6 +1137,8 @@ export default function App() {
           window.location.href = `${window.location.origin}/?app=${encodeURIComponent(app)}`;
         }}
         onPolicyChange={setCurrentPolicy}
+        onHorizonChange={setCurrentHorizon}
+        onRepeatChange={setCurrentRepeat}
       />
 
       {/* Seed variability sweep — sequentially runs the current
@@ -1140,6 +1147,8 @@ export default function App() {
       <SeedSweep
         session={session}
         currentPolicy={currentPolicy ?? session.policy}
+        currentHorizon={currentHorizon}
+        currentRepeat={currentRepeat}
         disabled={loading}
         onSessionLost={() => {
           // Push a matching error string into App-level state so the
