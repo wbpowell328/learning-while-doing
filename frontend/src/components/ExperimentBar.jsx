@@ -205,7 +205,7 @@ export default function ExperimentBar({
     try {
       const raw = localStorage.getItem('lwd_repeat_v1');
       const n = Number(raw);
-      if (Number.isFinite(n) && n >= 1 && n <= 20) return String(Math.round(n));
+      if (Number.isFinite(n) && n >= 1 && n <= 100) return String(Math.round(n));
     } catch (_) { /* private mode / quota — fall through to default */ }
     return '1';
   });
@@ -297,8 +297,8 @@ export default function ExperimentBar({
       policy,
       // User-facing "Repeat" is the TOTAL iteration count they expect.
       // Backend's K = extras after the first iteration, so we subtract 1.
-      // Repeat=20 → K=19 → backend runs iter1 + 19 more = 20 iterations.
-      K: isHuman ? 0 : Math.min(19, Math.max(0, Math.round(Number(K) || 1) - 1)),
+      // Repeat=100 → K=99 → backend runs iter1 + 99 more = 100 iterations.
+      K: isHuman ? 0 : Math.min(99, Math.max(0, Math.round(Number(K) || 1) - 1)),
       theta_init: dim === 2 ? [t1Num, t2Num] : t1Num,
     };
     // m_star / z_alpha are session-level (set in Advanced parameters);
@@ -318,8 +318,8 @@ export default function ExperimentBar({
       policy,   // let backend swap if it differs from current session policy
       // User-facing "Repeat" is the TOTAL iteration count they expect.
       // Backend's K = extras after the first iteration, so we subtract 1.
-      // Repeat=20 → K=19 → backend runs iter1 + 19 more = 20 iterations.
-      K: isHuman ? 0 : Math.min(19, Math.max(0, Math.round(Number(K) || 1) - 1)),
+      // Repeat=100 → K=99 → backend runs iter1 + 99 more = 100 iterations.
+      K: isHuman ? 0 : Math.min(99, Math.max(0, Math.round(Number(K) || 1) - 1)),
     };
     onOneMore(spec);
   }
@@ -407,19 +407,20 @@ export default function ExperimentBar({
       </select>
 
       <span style={labelStyle}>. Repeat</span>
-      <input type="number" min={1} max={20} step={1} value={K}
-             placeholder="K" style={numStyleShort}
+      <input type="number" min={1} max={100} step={1} value={K}
+             placeholder="K"
+             style={{ ...numStyleShort, width: 60 }}
              disabled={isHuman}
              title={isHuman
                ? 'Human policy runs one iteration at a time'
-               : 'Number of iterations to run (1–20). Repeat=20 with Horizon=50 → 20 × 50 = 1000 simulated days.'}
+               : 'Number of iterations to run (1–100). Repeat=100 with Horizon=50 → 100 × 50 = 5000 simulated days.'}
              onChange={e => setK(e.target.value)}
              onBlur={e => {
-               // Snap the visible value into [1, 20] so a typo like
-               // 200 shows as 20. Backend contract: this is now the
+               // Snap the visible value into [1, 100] so a typo like
+               // 500 shows as 100. Backend contract: this is now the
                // TOTAL iteration count (not K = extras after the
                // first), so 1 is the smallest meaningful value.
-               const v = Math.max(1, Math.min(20, Math.round(Number(e.target.value) || 0)));
+               const v = Math.max(1, Math.min(100, Math.round(Number(e.target.value) || 0)));
                setK(String(v));
              }} />
       <span style={labelStyle}>times.</span>

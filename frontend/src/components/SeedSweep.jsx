@@ -129,7 +129,7 @@ export default function SeedSweep({
   const parsedBase   = Number(baseSeed);
   const parsedNSeeds = Math.max(2, Math.min(20, Math.round(Number(nSeeds)  || 0)));
   const parsedHoriz  = Math.max(1, Math.min(500, Math.round(Number(horizon) || 0)));
-  const parsedRep    = Math.max(1, Math.min(50, Math.round(Number(repeat) || 0)));
+  const parsedRep    = Math.max(1, Math.min(100, Math.round(Number(repeat) || 0)));
   const canRun = !running && !disabled && Number.isFinite(parsedBase);
 
   async function runOneSeed(seedValue, initialTheta, signal) {
@@ -143,7 +143,7 @@ export default function SeedSweep({
       const spec = {
         n_days: parsedHoriz,
         policy: currentPolicy,
-        K: Math.min(19, Math.max(0, parsedRep - 1)),
+        K: Math.min(99, Math.max(0, parsedRep - 1)),
         theta_init: initialTheta,
       };
       const runResp = await runExperiment(clonedId, spec, signal);
