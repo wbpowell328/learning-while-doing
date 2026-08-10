@@ -87,6 +87,19 @@ export default function SeedSweep({
   const [nSeeds,    setNSeeds]    = useState(() => readLS(LS_KEYS.nSeeds,   '5'));
   useEffect(() => { writeLS(LS_KEYS.baseSeed, baseSeed); }, [baseSeed]);
   useEffect(() => { writeLS(LS_KEYS.nSeeds,   nSeeds);   }, [nSeeds]);
+  // Auto-sync the sweep's Base seed to the current session's seed
+  // whenever a fresh session is created (session.session_seed
+  // changes). Fixes the confusion where the top bar and the sweep
+  // ran on different seeds — the sweep's first row was never the
+  // same as a manual Run. Fires only on session-change, so any
+  // manual edits the user makes after that aren't clobbered by
+  // unrelated re-renders.
+  useEffect(() => {
+    const s = session?.session_seed;
+    if (s != null && Number.isFinite(Number(s))) {
+      setBaseSeed(String(Math.round(Number(s))));
+    }
+  }, [session?.session_seed]);
   // Horizon and Repeat are read-only mirrors of the ExperimentBar
   // inputs above. Fall back to sensible defaults if the parent
   // hasn't fed them yet (very first render).
