@@ -508,6 +508,14 @@ export default function App() {
         repeat: Number(spec.K ?? 0) + 1,
         theta_init: spec.theta_init,
         best_theta: resp.best_impparam,
+        // Policy parameters in play for this run. We log ALL of them on
+        // every row (plenty of storage) and let RunHistory blank out the
+        // ones the active policy doesn't use — e.g. Ryzhov shows ρˡᵏʰᵈ and
+        // N, everything else shows a dash in the columns it ignores.
+        mstar: session.m_star ?? null,
+        budget: session.budget ?? null,
+        zalpha: session.z_alpha ?? null,
+        sigma_greedy: session.sigma_greedy ?? null,
         latest: lastIterReward,
         cumulative: wholeBatchTotal,
         total_days: totalDaysAfter,
@@ -697,6 +705,12 @@ export default function App() {
         repeat: Number(spec.K ?? 0) + 1,
         theta_init: lastTheta,
         best_theta: resp.best_impparam,
+        // Same policy-parameter snapshot as the Run path — RunHistory
+        // decides which columns to fill vs dash based on the policy.
+        mstar: session.m_star ?? null,
+        budget: session.budget ?? null,
+        zalpha: session.z_alpha ?? null,
+        sigma_greedy: session.sigma_greedy ?? null,
         latest: lastIterReward,
         cumulative: newCumulative,
         total_days: newTotalDays,

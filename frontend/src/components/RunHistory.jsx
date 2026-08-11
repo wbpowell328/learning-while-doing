@@ -35,6 +35,40 @@ const tdStyle = {
 };
 const tdNum = { ...tdStyle, textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
 
+// Policy-parameter columns. We keep one column per distinct parameter
+// used anywhere across the policies; each row fills only the columns its
+// policy actually uses and shows a dash everywhere else. Keeps the table
+// self-documenting without a separate legend.
+//   ρˡᵏʰᵈ  — KG-family lookahead multiplier (m_star)
+//   N      — Ryzhov budget (only okg_ryzhov)
+//   ρᴵᴱ    — IE exploration coefficient (z_alpha); ie_15 pins it to 1.5
+//   ρˢᵗᵈᵈᵉᵛ — Randomized-greedy θ-noise std (sigma_greedy)
+const PARAM_COLS = [
+  { key: 'lkhd',   label: 'ρˡᵏʰᵈ',  title: 'KG lookahead multiplier ρˡᵏʰᵈ (m*) — KG-family policies only' },
+  { key: 'N',      label: 'N',       title: 'Ryzhov budget N in (N−n)·KG — Ryzhov only' },
+  { key: 'ie',     label: 'ρᴵᴱ',    title: 'IE exploration coefficient ρᴵᴱ (μ ± ρᴵᴱ·σ) — IE policies only' },
+  { key: 'stddev', label: 'ρˢᵗᵈᵈᵉᵛ', title: 'Randomized-greedy θ-noise std — Randomized greedy only' },
+];
+
+// Map each row to the parameter values its policy uses; unused params are
+// null so the column renders a dash. Mirrors the backend's _make_policy:
+// greedy/kg/random/human take no knob, ie_15 hard-pins ρᴵᴱ = 1.5.
+function paramValues(r) {
+  const p = r.policy;
+  const out = { lkhd: null, N: null, ie: null, stddev: null };
+  if (p === 'okg' || p === 'okg_indep' || p === 'okg_ryzhov') out.lkhd = r.mstar;
+  if (p === 'okg_ryzhov') out.N = r.budget;
+  if (p === 'ie') out.ie = r.zalpha;
+  if (p === 'ie_15') out.ie = 1.5;
+  if (p === 'randomized_greedy') out.stddev = r.sigma_greedy;
+  return out;
+}
+function fmtParam(v) {
+  if (v == null || !Number.isFinite(Number(v))) return '—';
+  const n = Number(v);
+  return Number.isInteger(n) ? String(n) : n.toFixed(3).replace(/\.?0+$/, '');
+}
+
 function fmtTheta(t) {
   if (t == null) return '—';
   if (Array.isArray(t)) return `(${t.map(x => Number(x).toFixed(3)).join(', ')})`;
@@ -112,6 +146,11 @@ export default function RunHistory({ rows = [], onClear }) {
                 <th style={{ ...thStyle, textAlign: 'right' }} title="Random-number seed for the session that generated this row. Seed-sweep entries walk this column by 1.">Seed</th>
                 <th style={thStyle}>App</th>
                 <th style={thStyle}>Policy</th>
+                {PARAM_COLS.map(c => (
+                  <th key={c.key} style={{ ...thStyle, textAlign: 'right' }} title={c.title}>
+                    {c.label}
+                  </th>
+                ))}
                 <th style={thStyle}>Action</th>
                 <th style={{ ...thStyle, textAlign: 'right' }} title="Days per iteration">Horiz</th>
                 <th style={{ ...thStyle, textAlign: 'right' }} title="Iterations in this click">Rep</th>
@@ -130,6 +169,12 @@ export default function RunHistory({ rows = [], onClear }) {
                   <td style={tdNum}>{Number.isFinite(r.seed) ? r.seed : '—'}</td>
                   <td style={tdStyle}>{APP_SHORT[r.app] ?? r.app ?? '—'}</td>
                   <td style={tdStyle}>{POLICY_SHORT[r.policy] ?? r.policy ?? '—'}</td>
+                  {(() => {
+                    const pv = paramValues(r);
+                    return PARAM_COLS.map(c => (
+                      <td key={c.key} style={tdNum}>{fmtParam(pv[c.key])}</td>
+                    ));
+                  })()}
                   <td style={tdStyle}>{r.action ?? '—'}</td>
                   <td style={tdNum}>{r.horizon ?? '—'}</td>
                   <td style={tdNum}>{r.repeat ?? '—'}</td>
