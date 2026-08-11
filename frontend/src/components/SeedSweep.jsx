@@ -67,6 +67,32 @@ function meanStd(xs) {
   const v = good.reduce((s, x) => s + (x - mean) ** 2, 0) / (good.length - 1);
   return { mean, std: Math.sqrt(v) };
 }
+// Mean of a plain list, ignoring non-finite entries. Returns null when
+// nothing finite is present (so the caller can log a dash).
+function meanOrNull(xs) {
+  const good = xs.map(Number).filter(Number.isFinite);
+  return good.length ? good.reduce((a, b) => a + b, 0) / good.length : null;
+}
+// Average the policy's landing θ across the sweep. Scalars average
+// directly; 2-D θ averages component-wise. Returns null if nothing
+// usable, so fmtTheta in RunHistory shows a dash.
+function avgTheta(rows) {
+  const first = rows.map(r => r.policyTheta).find(t => t != null);
+  if (Array.isArray(first)) {
+    const d = first.length;
+    const sums = new Array(d).fill(0);
+    let count = 0;
+    for (const r of rows) {
+      const t = r.policyTheta;
+      if (Array.isArray(t) && t.length === d && t.every(x => Number.isFinite(Number(x)))) {
+        t.forEach((x, k) => { sums[k] += Number(x); });
+        count += 1;
+      }
+    }
+    return count > 0 ? sums.map(s => s / count) : null;
+  }
+  return meanOrNull(rows.map(r => r.policyTheta));
+}
 
 export default function SeedSweep({
   session,          // { id, session_seed, initial_theta, dim, ... }
@@ -206,6 +232,15 @@ export default function SeedSweep({
     const initialTheta = Array.isArray(session.initial_theta)
       ? session.initial_theta.slice(0, dim)
       : Number(session.initial_theta ?? 0.1);
+    // Policy-parameter snapshot for the run-history columns — the same
+    // knobs the manual Run path logs. The sweep clones the session with
+    // only the seed changed, so these values apply to every sweep row.
+    const paramSnapshot = {
+      mstar:        session.m_star ?? null,
+      budget:       session.budget ?? null,
+      zalpha:       session.z_alpha ?? null,
+      sigma_greedy: session.sigma_greedy ?? null,
+    };
     try {
       const collected = [];
       for (let i = 0; i < parsedNSeeds; i++) {
@@ -233,6 +268,7 @@ export default function SeedSweep({
               repeat: parsedRep,
               theta_init: initialTheta,
               best_theta: row.policyTheta,
+              ...paramSnapshot,
               latest: row.totalProfit,
               cumulative: row.totalProfit,
               total_days: totalDays,
@@ -243,6 +279,31 @@ export default function SeedSweep({
           if (isAbortError(err)) break;
           throw err;
         }
+      }
+      // One summary row averaging the whole sweep, logged on top of the
+      // per-seed rows so Warren can read the sweep's mean profit / θ at a
+      // glance in the Run history. Seed shows a dash (no single seed) and
+      // Action reads "Sweep avg". Uses whatever completed, so a stopped
+      // sweep still gets an average of the seeds it managed to run.
+      if (onLogEntry && collected.length >= 1) {
+        const totalDays = parsedHoriz * parsedRep;
+        const avgProfit = meanOrNull(collected.map(r => r.totalProfit));
+        onLogEntry({
+          ts: new Date().toISOString(),
+          seed: null,                 // average across seeds — no single seed
+          action: 'Sweep avg',
+          app: session.app_name,
+          policy: currentPolicy,
+          horizon: parsedHoriz,
+          repeat: parsedRep,
+          theta_init: initialTheta,
+          best_theta: avgTheta(collected),
+          ...paramSnapshot,
+          latest: avgProfit,
+          cumulative: avgProfit,
+          total_days: totalDays,
+          optimal: meanOrNull(collected.map(r => r.trueOptProfit)),
+        });
       }
       const stopped = controller.signal.aborted;
       setStatus(stopped

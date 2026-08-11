@@ -166,29 +166,36 @@ export default function RunHistory({ rows = [], onClear }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r, i) => (
-                <tr key={`${r.ts}-${i}`}>
-                  <td style={tdStyle}>{fmtTime(r.ts)}</td>
-                  <td style={tdNum}>{Number.isFinite(r.seed) ? r.seed : '—'}</td>
-                  <td style={tdStyle}>{APP_SHORT[r.app] ?? r.app ?? '—'}</td>
-                  <td style={tdStyle}>{POLICY_SHORT[r.policy] ?? r.policy ?? '—'}</td>
+              {rows.map((r, i) => {
+                // Tint + bold the sweep-average summary row so it reads as
+                // a rollup, not just another per-seed entry.
+                const isAvg = r.action === 'Sweep avg';
+                const rowTd    = isAvg ? { ...tdStyle, fontWeight: 600 } : tdStyle;
+                const rowTdNum = isAvg ? { ...tdNum, fontWeight: 600 } : tdNum;
+                return (
+                <tr key={`${r.ts}-${i}`} style={isAvg ? { background: '#f1f5f9' } : undefined}>
+                  <td style={rowTd}>{fmtTime(r.ts)}</td>
+                  <td style={rowTdNum}>{Number.isFinite(r.seed) ? r.seed : '—'}</td>
+                  <td style={rowTd}>{APP_SHORT[r.app] ?? r.app ?? '—'}</td>
+                  <td style={rowTd}>{POLICY_SHORT[r.policy] ?? r.policy ?? '—'}</td>
                   {(() => {
                     const pv = paramValues(r);
                     return PARAM_COLS.map(c => (
-                      <td key={c.key} style={tdNum}>{fmtParam(pv[c.key])}</td>
+                      <td key={c.key} style={rowTdNum}>{fmtParam(pv[c.key])}</td>
                     ));
                   })()}
-                  <td style={tdStyle}>{r.action ?? '—'}</td>
-                  <td style={tdNum}>{r.horizon ?? '—'}</td>
-                  <td style={tdNum}>{r.repeat ?? '—'}</td>
-                  <td style={tdNum}>{fmtTheta(r.theta_init)}</td>
-                  <td style={tdNum}>{fmtTheta(r.best_theta)}</td>
-                  <td style={tdNum}>{fmtDollars(r.latest)}</td>
-                  <td style={tdNum}>{fmtDollars(r.cumulative)}</td>
-                  <td style={tdNum}>{fmtDollars(r.optimal)}</td>
-                  <td style={tdNum}>{r.total_days ?? '—'}</td>
+                  <td style={rowTd}>{r.action ?? '—'}</td>
+                  <td style={rowTdNum}>{r.horizon ?? '—'}</td>
+                  <td style={rowTdNum}>{r.repeat ?? '—'}</td>
+                  <td style={rowTdNum}>{fmtTheta(r.theta_init)}</td>
+                  <td style={rowTdNum}>{fmtTheta(r.best_theta)}</td>
+                  <td style={rowTdNum}>{fmtDollars(r.latest)}</td>
+                  <td style={rowTdNum}>{fmtDollars(r.cumulative)}</td>
+                  <td style={rowTdNum}>{fmtDollars(r.optimal)}</td>
+                  <td style={rowTdNum}>{r.total_days ?? '—'}</td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
