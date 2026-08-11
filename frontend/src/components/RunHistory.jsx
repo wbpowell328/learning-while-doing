@@ -78,11 +78,14 @@ function fmtTheta(t) {
 function fmtDollars(v) {
   if (v == null || !Number.isFinite(Number(v))) return '—';
   const n = Number(v);
-  const abs = Math.abs(n);
   const sign = n < 0 ? '−' : '';
-  if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(2)}M`;
-  if (abs >= 1e3) return `${sign}$${(abs / 1e3).toFixed(1)}k`;
-  return `${sign}$${abs.toFixed(0)}`;
+  // Report exact dollars (no k/M abbreviation) with cents, so small
+  // differences between policies are visible. Thousands separators keep
+  // large totals readable; the column scrolls horizontally if needed.
+  const abs = Math.abs(n);
+  return `${sign}$${abs.toLocaleString('en-US', {
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  })}`;
 }
 function fmtTime(iso) {
   if (!iso) return '—';
