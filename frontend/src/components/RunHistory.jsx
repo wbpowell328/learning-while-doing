@@ -39,11 +39,13 @@ const tdNum = { ...tdStyle, textAlign: 'right', fontVariantNumeric: 'tabular-num
 // used anywhere across the policies; each row fills only the columns its
 // policy actually uses and shows a dash everywhere else. Keeps the table
 // self-documenting without a separate legend.
+//   ρˡ     — GP bandwidth / length_scale (belief-model param, all policies)
 //   ρˡᵏʰᵈ  — KG-family lookahead multiplier (m_star)
 //   N      — Ryzhov budget (only okg_ryzhov)
 //   ρᴵᴱ    — IE exploration coefficient (z_alpha); ie_15 pins it to 1.5
 //   ρˢᵗᵈᵈᵉᵛ — Randomized-greedy θ-noise std (sigma_greedy)
 const PARAM_COLS = [
+  { key: 'rho_ell', label: 'ρˡ',      title: 'GP bandwidth ρˡ (length_scale) — belief-model smoothness; applies to every correlated-belief policy' },
   { key: 'lkhd',   label: 'ρˡᵏʰᵈ',  title: 'KG lookahead multiplier ρˡᵏʰᵈ (m*) — KG-family policies only' },
   { key: 'N',      label: 'N',       title: 'Ryzhov budget N in (N−n)·KG — Ryzhov only' },
   { key: 'ie',     label: 'ρᴵᴱ',    title: 'IE exploration coefficient ρᴵᴱ (μ ± ρᴵᴱ·σ) — IE policies only' },
@@ -52,10 +54,12 @@ const PARAM_COLS = [
 
 // Map each row to the parameter values its policy uses; unused params are
 // null so the column renders a dash. Mirrors the backend's _make_policy:
-// greedy/kg/random/human take no knob, ie_15 hard-pins ρᴵᴱ = 1.5.
+// greedy/kg/random/human take no knob, ie_15 hard-pins ρᴵᴱ = 1.5. The
+// bandwidth ρˡ is a belief-model parameter, so it's shown for every row
+// (not gated by policy).
 function paramValues(r) {
   const p = r.policy;
-  const out = { lkhd: null, N: null, ie: null, stddev: null };
+  const out = { rho_ell: r.rho_ell ?? null, lkhd: null, N: null, ie: null, stddev: null };
   if (p === 'okg' || p === 'okg_indep' || p === 'okg_ryzhov') out.lkhd = r.mstar;
   if (p === 'okg_ryzhov') out.N = r.budget;
   if (p === 'ie') out.ie = r.zalpha;
@@ -64,6 +68,11 @@ function paramValues(r) {
   return out;
 }
 function fmtParam(v) {
+  // 2-D bandwidth may arrive as [ℓ1, ℓ2]; render it like a θ tuple.
+  if (Array.isArray(v)) {
+    if (!v.length || !v.every(x => Number.isFinite(Number(x)))) return '—';
+    return `(${v.map(x => Number(x).toFixed(3).replace(/\.?0+$/, '')).join(', ')})`;
+  }
   if (v == null || !Number.isFinite(Number(v))) return '—';
   const n = Number(v);
   return Number.isInteger(n) ? String(n) : n.toFixed(3).replace(/\.?0+$/, '');

@@ -282,6 +282,7 @@ export default function SeedSweep({
       budget:       session.budget ?? null,
       zalpha:       session.z_alpha ?? null,
       sigma_greedy: session.sigma_greedy ?? null,
+      rho_ell:      session.length_scale ?? null,
     };
     try {
       const collected = [];
