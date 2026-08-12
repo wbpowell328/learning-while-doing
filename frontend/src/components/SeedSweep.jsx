@@ -185,19 +185,28 @@ export default function SeedSweep({
       if (!clonedId) throw new Error('clone_with_seed returned no session_id');
       // K = extras after iter 1 (backend contract); user-facing Repeat
       // is the total iteration count, matching ExperimentBar.
+      //
+      // Manual (human) is a special case: the user is hand-picking θ, so
+      // there is no policy to choose θ for a 2nd, 3rd, … iteration. Force
+      // K=0 (one batch at exactly the user's θ). Without this, extra
+      // iterations would fall through to RandomPolicy and simulate random
+      // θ — the opposite of "Manual = I control what's simulated".
+      const isManual = currentPolicy === 'human';
       const spec = {
         n_days: parsedHoriz,
         policy: currentPolicy,
-        K: Math.min(99, Math.max(0, parsedRep - 1)),
+        K: isManual ? 0 : Math.min(99, Math.max(0, parsedRep - 1)),
         theta_init: initialTheta,
       };
       const runResp = await runExperiment(clonedId, spec, signal);
       const history = runResp?.history ?? [];
       const totalProfit = history.reduce((s, row) => s + Number(row[1] ?? 0), 0);
-      // best_impparam is what the policy would pick next given the
-      // belief after all iterations — the natural "where did it land"
-      // summary for a converged run.
-      const policyTheta = runResp?.best_impparam;
+      // What θ to report in the "Policy θ" column. For a real policy this
+      // is best_impparam — where the policy's belief lands after the run.
+      // For Manual there IS no policy pick, so report the θ the user
+      // actually played (constant across seeds) rather than a belief
+      // argmax that would wobble seed-to-seed on one noisy observation.
+      const policyTheta = isManual ? initialTheta : runResp?.best_impparam;
       // Per-seed reveal — n_reps=50 Monte-Carlo estimate of the true
       // reward curve using THIS seed's noise draws. Different seeds
       // give slightly different estimates of the same population
@@ -497,7 +506,7 @@ export default function SeedSweep({
               <tr>
                 <th style={thStyle}>Seed</th>
                 <th style={{ ...thStyle, textAlign: 'right' }}
-                    title="Where the policy ended up after all iterations.">Policy θ</th>
+                    title="Where the policy's belief lands after the run. For Manual there is no policy pick, so this shows the θ you played — constant across seeds.">Policy θ</th>
                 <th style={{ ...thStyle, textAlign: 'right' }}
                     title="Cumulative profit the policy earned on this seed's noise draws.">Policy profit</th>
                 <th style={{ ...thStyle, textAlign: 'right' }}
