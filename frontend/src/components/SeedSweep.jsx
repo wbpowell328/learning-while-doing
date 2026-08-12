@@ -283,6 +283,10 @@ export default function SeedSweep({
       zalpha:       session.z_alpha ?? null,
       sigma_greedy: session.sigma_greedy ?? null,
       rho_ell:      session.length_scale ?? null,
+      // Shared id stamped on every row from THIS sweep (each seed plus the
+      // Sweep avg), so the Compare-sweeps panel can group them without
+      // guessing from timestamps.
+      sweep_id:     `sw_${Date.now()}`,
     };
     try {
       const collected = [];
