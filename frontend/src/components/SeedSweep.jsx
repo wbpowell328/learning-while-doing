@@ -99,6 +99,10 @@ export default function SeedSweep({
   currentPolicy,    // effective policy value in the ExperimentBar right now
   currentHorizon,   // string — Horizon input value from the ExperimentBar
   currentRepeat,    // string — Repeat input value from the ExperimentBar
+  currentTheta,     // number | [t1,t2] — Starting θ from the ExperimentBar.
+                    //   The sweep simulates THIS θ (so Manual at 0.17
+                    //   sweeps 0.17), falling back to session.initial_theta
+                    //   only if the bar hasn't published a usable value.
   disabled = false, // parent should pass loading || !session
   onSessionLost,    // () => void — called when the backend has forgotten
                     //   the current session (Render sleep/restart) so the
@@ -136,6 +140,21 @@ export default function SeedSweep({
   // hasn't fed them yet (very first render).
   const horizon = currentHorizon ?? '50';
   const repeat  = currentRepeat  ?? '1';
+  // θ the sweep will simulate: prefer the control bar's current Starting
+  // θ, fall back to the session-creation default only if the bar hasn't
+  // published a finite value yet. Every seed uses this same θ.
+  const fallbackTheta = Array.isArray(session?.initial_theta)
+    ? session.initial_theta.slice(0, dim)
+    : Number(session?.initial_theta ?? 0.1);
+  const sweepTheta = (dim === 2)
+    ? (Array.isArray(currentTheta) && currentTheta.length >= 2
+        && currentTheta.every(x => Number.isFinite(Number(x)))
+        ? currentTheta.slice(0, 2).map(Number)
+        : fallbackTheta)
+    : (Number.isFinite(Number(currentTheta)) ? Number(currentTheta) : fallbackTheta);
+  const sweepThetaText = Array.isArray(sweepTheta)
+    ? `(${sweepTheta.map(x => Number(x).toFixed(3)).join(', ')})`
+    : Number(sweepTheta).toFixed(3);
 
   const [rows, setRows]         = useState([]);   // {seed, ...} rows collected so far
   const [status, setStatus]     = useState(null); // in-progress human label
@@ -228,10 +247,9 @@ export default function SeedSweep({
     abortRef.current = controller;
     // Same starting θ every run — matches the ExperimentBar's normal
     // "Run" behaviour, so the sweep is truly measuring the same setup
-    // under different noise.
-    const initialTheta = Array.isArray(session.initial_theta)
-      ? session.initial_theta.slice(0, dim)
-      : Number(session.initial_theta ?? 0.1);
+    // under different noise. sweepTheta mirrors the Starting θ box above,
+    // so Manual at 0.17 actually sweeps 0.17 (not the creation default).
+    const initialTheta = sweepTheta;
     // Policy-parameter snapshot for the run-history columns — the same
     // knobs the manual Run path logs. The sweep clones the session with
     // only the seed changed, so these values apply to every sweep row.
@@ -400,6 +418,15 @@ export default function SeedSweep({
                onChange={e => setNSeeds(e.target.value)}
                disabled={running}
                style={{ ...boxStyle, width: 46 }} />
+        <span style={labelStyle} title="Read-only — mirrors the Starting θ box above. Every seed in the sweep is simulated at this θ (important for Manual, where you pick θ directly).">
+          · Starting θ:
+        </span>
+        <input type="text" value={sweepThetaText} disabled readOnly
+               tabIndex={-1}
+               style={{ ...boxStyle, width: dim === 2 ? 92 : 52,
+                        background: '#f1f5f9', color: '#475569',
+                        cursor: 'not-allowed' }}
+               title="Set this via the Starting θ input above the control bar." />
         <span style={labelStyle} title="Read-only — mirrors the Horizon box above so the sweep uses the same batch length as your regular Run.">
           · Horizon (days):
         </span>

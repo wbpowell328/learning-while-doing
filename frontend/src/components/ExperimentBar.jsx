@@ -188,6 +188,12 @@ export default function ExperimentBar({
                           // box, so SeedSweep can mirror it read-only
                           // instead of maintaining its own duplicate.
   onRepeatChange,         // (value) => void — same for the Repeat box.
+  onThetaChange,          // (theta) => void — publishes the current
+                          // Starting θ (scalar in 1-D, [t1, t2] in 2-D)
+                          // so the SeedSweep runs at the SAME θ the user
+                          // set here, not the stale session-creation
+                          // default. Matters most for Manual, where θ
+                          // is entirely the user's pick.
   onStop,                 // () => void — abort the in-flight Run /
                           // Repeat / Manual evaluate. Shows a Stop
                           // button in place of Restart while running.
@@ -232,6 +238,15 @@ export default function ExperimentBar({
     if (onRepeatChange) onRepeatChange(K);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [K]);
+  // Publish the Starting θ so the SeedSweep simulates the value the user
+  // actually set here (e.g. Manual at 0.17) instead of the θ baked in at
+  // session creation. Numbers only — the sweep guards against NaN and
+  // falls back to session.initial_theta if a box is mid-edit.
+  useEffect(() => {
+    if (!onThetaChange) return;
+    onThetaChange(dim === 2 ? [Number(theta1), Number(theta2)] : Number(theta1));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [theta1, theta2, dim]);
 
   // Human forces K=0 (one iteration at a time). Handled at the source:
   // the policy dropdown's onChange snaps K to '0' when switching to

@@ -239,6 +239,10 @@ export default function App() {
   // maintaining its own duplicate inputs.
   const [currentHorizon, setCurrentHorizon] = useState('50');
   const [currentRepeat,  setCurrentRepeat]  = useState('1');
+  // Starting θ currently shown in the control bar, mirrored so the
+  // SeedSweep runs at the same θ the user set (esp. Manual). null until
+  // the bar first publishes it.
+  const [currentTheta,   setCurrentTheta]   = useState(null);
   // AbortController for the CURRENT in-flight Run / Repeat / Manual
   // evaluate call. Stop button aborts it. Ref (not state) so reading
   // it from handleStop doesn't trigger a re-render, and so a stale
@@ -1238,6 +1242,7 @@ export default function App() {
         onPolicyChange={setCurrentPolicy}
         onHorizonChange={setCurrentHorizon}
         onRepeatChange={setCurrentRepeat}
+        onThetaChange={setCurrentTheta}
         onStop={handleStop}
       />
 
@@ -1249,6 +1254,7 @@ export default function App() {
         currentPolicy={currentPolicy ?? session.policy}
         currentHorizon={currentHorizon}
         currentRepeat={currentRepeat}
+        currentTheta={currentTheta}
         disabled={loading}
         onSessionSeedChange={handleSessionSeedChange}
         onSessionLost={() => {
