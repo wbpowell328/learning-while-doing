@@ -45,23 +45,50 @@ function fmtParamVal(v) {
   return Number.isInteger(n) ? String(n) : n.toFixed(3).replace(/\.?0+$/, '');
 }
 
-// Group Run-history rows into sweeps. Prefer the stamped sweep_id;
-// fall back to a params+minute key so sweeps logged before sweep_id
-// existed still chart.
+// Group Run-history rows into sweeps.
+//   Preferred: the stamped sweep_id (bulletproof).
+//   Fallback for rows logged before sweep_id existed: contiguity. A
+//   sweep's rows are logged as one unbroken block — newest first, the
+//   Sweep-avg row then its seed rows — so we cut a new group at each
+//   Sweep-avg row, parameter change, or non-sweep row. (The old
+//   timestamp-minute fallback wrongly split any sweep that crossed a
+//   clock-minute boundary, e.g. a slow 5-seed reveal spanning 19:46–48.)
 function groupSweeps(rows) {
-  const groups = new Map();
+  const groups = [];
+  const byId = new Map();
+  let cur = null;   // active contiguity group (rows without a sweep_id)
+  const sameParams = (a, b) =>
+    a.policy === b.policy && a.horizon === b.horizon && a.repeat === b.repeat &&
+    a.budget === b.budget && String(a.rho_ell) === String(b.rho_ell) && a.mstar === b.mstar;
+
   for (const r of rows) {
-    if (r.action !== 'Sweep' && r.action !== 'Sweep avg') continue;
-    const key = r.sweep_id != null
-      ? `id:${r.sweep_id}`
-      : `k:${r.policy}|${r.horizon}|${r.repeat}|${r.budget}|${r.rho_ell}|${r.mstar}|${String(r.ts ?? '').slice(0, 16)}`;
-    if (!groups.has(key)) groups.set(key, { key, seedRows: [], avgRow: null, sample: r });
-    const g = groups.get(key);
-    if (r.action === 'Sweep avg') g.avgRow = r;
-    else g.seedRows.push(r);
+    if (r.action !== 'Sweep' && r.action !== 'Sweep avg') { cur = null; continue; }
+
+    if (r.sweep_id != null) {
+      let g = byId.get(r.sweep_id);
+      if (!g) {
+        g = { key: `id:${r.sweep_id}`, seedRows: [], avgRow: null, sample: r };
+        byId.set(r.sweep_id, g); groups.push(g);
+      }
+      if (r.action === 'Sweep avg') g.avgRow = r; else g.seedRows.push(r);
+      cur = null;
+      continue;
+    }
+
+    if (r.action === 'Sweep avg') {
+      cur = { key: `c:${r.ts}`, seedRows: [], avgRow: r, sample: r };
+      groups.push(cur);
+    } else {
+      if (!cur || !sameParams(cur.sample, r)) {
+        cur = { key: `c:${r.ts}`, seedRows: [], avgRow: null, sample: r };
+        groups.push(cur);
+      }
+      cur.seedRows.push(r);
+    }
   }
+
   // Newest sweeps first (by the sample row's timestamp).
-  return [...groups.values()].sort((a, b) =>
+  return groups.sort((a, b) =>
     String(b.sample.ts ?? '').localeCompare(String(a.sample.ts ?? '')));
 }
 
