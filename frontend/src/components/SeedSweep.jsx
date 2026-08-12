@@ -73,17 +73,18 @@ function meanOrNull(xs) {
   const good = xs.map(Number).filter(Number.isFinite);
   return good.length ? good.reduce((a, b) => a + b, 0) / good.length : null;
 }
-// Average the policy's landing θ across the sweep. Scalars average
-// directly; 2-D θ averages component-wise. Returns null if nothing
-// usable, so fmtTheta in RunHistory shows a dash.
-function avgTheta(rows) {
-  const first = rows.map(r => r.policyTheta).find(t => t != null);
+// Average a θ field across the sweep rows. Scalars average directly; 2-D
+// θ averages component-wise. Returns null if nothing usable, so fmtTheta
+// in RunHistory shows a dash. `key` selects which θ to average — the
+// sampled θ (policyTheta) or the estimated optimum (estOptTheta).
+function avgTheta(rows, key = 'policyTheta') {
+  const first = rows.map(r => r[key]).find(t => t != null);
   if (Array.isArray(first)) {
     const d = first.length;
     const sums = new Array(d).fill(0);
     let count = 0;
     for (const r of rows) {
-      const t = r.policyTheta;
+      const t = r[key];
       if (Array.isArray(t) && t.length === d && t.every(x => Number.isFinite(Number(x)))) {
         t.forEach((x, k) => { sums[k] += Number(x); });
         count += 1;
@@ -91,7 +92,7 @@ function avgTheta(rows) {
     }
     return count > 0 ? sums.map(s => s / count) : null;
   }
-  return meanOrNull(rows.map(r => r.policyTheta));
+  return meanOrNull(rows.map(r => r[key]));
 }
 
 export default function SeedSweep({
@@ -155,6 +156,14 @@ export default function SeedSweep({
   const sweepThetaText = Array.isArray(sweepTheta)
     ? `(${sweepTheta.map(x => Number(x).toFixed(3)).join(', ')})`
     : Number(sweepTheta).toFixed(3);
+  // GP bandwidth ℓ (length_scale) — a belief-model parameter the user can
+  // vary; it's constant across the sweep (every seed clones the same
+  // belief config), so it's shown once per row as documentation of the
+  // setup. Scalar in 1-D; may be a scalar or [ℓ1, ℓ2] in 2-D.
+  const bandwidth = session?.length_scale ?? 0.04;
+  const bandwidthText = Array.isArray(bandwidth)
+    ? `(${bandwidth.map(x => Number(x).toFixed(3)).join(', ')})`
+    : Number(bandwidth).toFixed(3);
 
   const [rows, setRows]         = useState([]);   // {seed, ...} rows collected so far
   const [status, setStatus]     = useState(null); // in-progress human label
@@ -201,12 +210,18 @@ export default function SeedSweep({
       const runResp = await runExperiment(clonedId, spec, signal);
       const history = runResp?.history ?? [];
       const totalProfit = history.reduce((s, row) => s + Number(row[1] ?? 0), 0);
-      // What θ to report in the "Policy θ" column. For a real policy this
-      // is best_impparam — where the policy's belief lands after the run.
-      // For Manual there IS no policy pick, so report the θ the user
-      // actually played (constant across seeds) rather than a belief
-      // argmax that would wobble seed-to-seed on one noisy observation.
-      const policyTheta = isManual ? initialTheta : runResp?.best_impparam;
+      // Two distinct θ's, the classic sampling-vs-implementation split:
+      //   policyTheta — the θ actually SIMULATED on the final iteration
+      //     (the measurement decision). For Manual (K=0) this is exactly
+      //     the θ the user played; for a learning policy it's the last θ
+      //     it chose to measure.
+      //   estOptTheta — the belief's ESTIMATED optimum, best_impparam =
+      //     arg max_x μⁿ_x (the greedy / implementation decision). This is
+      //     a belief readout, so it wobbles seed-to-seed on little data —
+      //     which is exactly what makes it interesting to watch.
+      const lastRow = history.length ? history[history.length - 1] : null;
+      const policyTheta = lastRow ? lastRow[0] : initialTheta;
+      const estOptTheta = runResp?.best_impparam;
       // Per-seed reveal — n_reps=50 Monte-Carlo estimate of the true
       // reward curve using THIS seed's noise draws. Different seeds
       // give slightly different estimates of the same population
@@ -227,7 +242,7 @@ export default function SeedSweep({
         // columns as "—" so the sweep still yields the policy's
         // achieved results.
       }
-      return { seed: seedValue, policyTheta, totalProfit, trueOptTheta, trueOptProfit };
+      return { seed: seedValue, policyTheta, estOptTheta, totalProfit, trueOptTheta, trueOptProfit };
     } finally {
       // Always clean up the temp session even if we were aborted
       // mid-flight. Not passing `signal` here so the DELETE goes
@@ -294,7 +309,7 @@ export default function SeedSweep({
               horizon: parsedHoriz,
               repeat: parsedRep,
               theta_init: initialTheta,
-              best_theta: row.policyTheta,
+              best_theta: row.estOptTheta,   // "Best θ" = est. optimum (arg max μⁿ)
               ...paramSnapshot,
               latest: row.totalProfit,
               cumulative: row.totalProfit,
@@ -324,7 +339,7 @@ export default function SeedSweep({
           horizon: parsedHoriz,
           repeat: parsedRep,
           theta_init: initialTheta,
-          best_theta: avgTheta(collected),
+          best_theta: avgTheta(collected, 'estOptTheta'),
           ...paramSnapshot,
           latest: avgProfit,
           cumulative: avgProfit,
@@ -370,6 +385,9 @@ export default function SeedSweep({
   const canSummariseTheta = dim === 1 && rows.length >= 2;
   const policyThetaStats = canSummariseTheta
     ? meanStd(rows.map(r => Number(r.policyTheta)))
+    : null;
+  const estOptStats = canSummariseTheta
+    ? meanStd(rows.map(r => Number(r.estOptTheta)))
     : null;
   const profitStats = rows.length >= 2
     ? meanStd(rows.map(r => Number(r.totalProfit)))
@@ -506,7 +524,11 @@ export default function SeedSweep({
               <tr>
                 <th style={thStyle}>Seed</th>
                 <th style={{ ...thStyle, textAlign: 'right' }}
-                    title="Where the policy's belief lands after the run. For Manual there is no policy pick, so this shows the θ you played — constant across seeds.">Policy θ</th>
+                    title="GP bandwidth ρˡ (length_scale) — the belief-model smoothness parameter. Constant across the sweep; shown for reference since it affects the results.">ρˡ</th>
+                <th style={{ ...thStyle, textAlign: 'right' }}
+                    title="The θ actually simulated on the final iteration (the measurement decision). For Manual this is the θ you played — constant across seeds; for a learning policy it's the last θ it chose to measure.">Policy θ</th>
+                <th style={{ ...thStyle, textAlign: 'right' }}
+                    title="Estimated optimum: arg max μⁿ(θ) — the belief's greedy pick, i.e. the θ you'd implement if you stopped now. A belief readout, so it moves seed-to-seed on little data.">Est. opt.</th>
                 <th style={{ ...thStyle, textAlign: 'right' }}
                     title="Cumulative profit the policy earned on this seed's noise draws.">Policy profit</th>
                 <th style={{ ...thStyle, textAlign: 'right' }}
@@ -519,11 +541,19 @@ export default function SeedSweep({
               {rows.map((r, i) => (
                 <tr key={`${r.seed}-${i}`}>
                   <td style={tdStyle}>{r.seed}</td>
+                  <td style={tdNum}>{bandwidthText}</td>
                   <td style={tdNum}>
                     {dim === 1
                       ? fmt(r.policyTheta, 3)
                       : Array.isArray(r.policyTheta)
                         ? `(${r.policyTheta.map(x => fmt(x, 3)).join(', ')})`
+                        : '—'}
+                  </td>
+                  <td style={tdNum}>
+                    {dim === 1
+                      ? fmt(r.estOptTheta, 3)
+                      : Array.isArray(r.estOptTheta)
+                        ? `(${r.estOptTheta.map(x => fmt(x, 3)).join(', ')})`
                         : '—'}
                   </td>
                   <td style={tdNum}>{fmtDollars(r.totalProfit)}</td>
@@ -533,12 +563,18 @@ export default function SeedSweep({
                   <td style={tdNum}>{fmtDollars(r.trueOptProfit)}</td>
                 </tr>
               ))}
-              {(policyThetaStats || profitStats || trueThetaStats || trueProfitStats) && (
+              {(policyThetaStats || estOptStats || profitStats || trueThetaStats || trueProfitStats) && (
                 <tr style={{ background: '#f8fafc' }}>
                   <td style={{ ...tdStyle, fontWeight: 600 }}>mean ± std</td>
+                  <td style={{ ...tdNum, fontWeight: 600 }}>{bandwidthText}</td>
                   <td style={{ ...tdNum, fontWeight: 600 }}>
                     {policyThetaStats
                       ? `${fmt(policyThetaStats.mean, 3)} ± ${fmt(policyThetaStats.std, 3)}`
+                      : '—'}
+                  </td>
+                  <td style={{ ...tdNum, fontWeight: 600 }}>
+                    {estOptStats
+                      ? `${fmt(estOptStats.mean, 3)} ± ${fmt(estOptStats.std, 3)}`
                       : '—'}
                   </td>
                   <td style={{ ...tdNum, fontWeight: 600 }}>
