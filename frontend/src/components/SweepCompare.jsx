@@ -77,6 +77,10 @@ const btn = (active) => ({
   borderRadius: 4, fontSize: 12, cursor: 'pointer',
   background: active ? '#0f172a' : '#fff', color: active ? '#fff' : '#334155',
 });
+const miniBtn = {
+  padding: '2px 8px', border: '1px solid #cbd5e1', borderRadius: 4,
+  fontSize: 11.5, cursor: 'pointer', background: '#fff', color: '#334155',
+};
 
 // ── Clustered bar chart (inline SVG) ──────────────────────────────────
 function ClusteredBars({ clusters, seeds, xLabel }) {
@@ -179,6 +183,13 @@ export default function SweepCompare({ rows = [] }) {
     next.has(key) ? next.delete(key) : next.add(key);
     setSelected(next);
   }
+  // "Recent N" quick-pick — sweeps are listed newest-first, so the N most
+  // recently run are the first N keys.
+  const [recentN, setRecentN] = useState('7');
+  function applyRecent() {
+    const n = Math.max(1, Math.min(sweeps.length, Math.round(Number(recentN) || 0)));
+    setSelected(new Set(sweeps.slice(0, n).map(g => g.key)));
+  }
 
   // Build chart data from the selected sweeps.
   const allSeeds = useMemo(() => {
@@ -235,15 +246,36 @@ export default function SweepCompare({ rows = [] }) {
         <div style={{ marginTop: 12 }}>
           <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginBottom: 10 }}>
             <div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 6 }}>
-                Sweeps to plot
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>
+                  Sweeps to plot
+                </span>
+                <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                  ({sel.size} of {sweeps.length})
+                </span>
+                <button type="button" onClick={() => setSelected(new Set(sweeps.map(g => g.key)))}
+                        style={miniBtn} title="Select every sweep">All</button>
+                <button type="button" onClick={() => setSelected(new Set())}
+                        style={miniBtn} title="Clear the selection">None</button>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#475569' }}
+                      title="Select the N most recently run sweeps (top of the list).">
+                  Recent
+                  <input type="number" min={1} max={sweeps.length}
+                         value={recentN}
+                         onChange={e => setRecentN(e.target.value)}
+                         onKeyDown={e => { if (e.key === 'Enter') applyRecent(); }}
+                         style={{ width: 44, padding: '2px 4px', border: '1px solid #cbd5e1',
+                                  borderRadius: 4, fontSize: 12 }} />
+                  <button type="button" onClick={applyRecent} style={miniBtn}>Apply</button>
+                </span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 168,
                             overflowY: 'auto', paddingRight: 6 }}>
-                {sweeps.map(g => (
+                {sweeps.map((g, i) => (
                   <label key={g.key} style={{ display: 'flex', alignItems: 'center', gap: 6,
                                               fontSize: 12.5, color: '#0f172a', cursor: 'pointer' }}>
                     <input type="checkbox" checked={sel.has(g.key)} onChange={() => toggle(g.key)} />
+                    <span style={{ color: '#94a3b8', minWidth: 16, textAlign: 'right' }}>{i + 1}.</span>
                     {sweepLabel(g)}
                     <span style={{ color: '#94a3b8' }}>
                       ({g.seedRows.length} {g.seedRows.length === 1 ? 'seed' : 'seeds'})
