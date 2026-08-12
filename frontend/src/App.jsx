@@ -1270,16 +1270,17 @@ export default function App() {
         onLogEntry={logRunResult}
       />
 
+      {/* Compare sweeps — clustered bar chart of profit per seed across
+          sweeps, read straight from the Run-history log (grouped by
+          sweep_id). Lets Warren see how profit moves as Horizon (or any
+          other swept parameter) changes. Placed ABOVE the Run history so
+          it's not missed — many users will work mainly from this report. */}
+      <SweepCompare rows={historyLog} />
+
       {/* Run history — one row per Run / One-more click, persisted
           across page reloads. Warren wanted a lightweight record
           instead of screenshotting each score readout. */}
       <RunHistory rows={historyLog} onClear={clearHistoryLog} />
-
-      {/* Compare sweeps — clustered bar chart of profit per seed across
-          sweeps, read straight from the Run-history log (grouped by
-          sweep_id). Lets Warren see how profit moves as Horizon (or any
-          other swept parameter) changes. */}
-      <SweepCompare rows={historyLog} />
 
       {/* Budget bar (human only) — informational, tracks n_steps vs the
           user-picked budget. Kept as a courtesy since Human policy uses
