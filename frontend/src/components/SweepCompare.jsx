@@ -60,6 +60,22 @@ function groupRuns(rows) {
     .filter(r => r.action === 'Run')
     .map(r => ({ key: `run:${r.ts}`, seedRows: [r], avgRow: null, isRun: true, sample: r }));
 }
+// CSV helpers — quote a cell only when it contains a comma, quote, or
+// newline (RFC 4180), and round numeric profit to cents.
+function csvCell(v) {
+  if (v == null) return '';
+  const s = String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+const round2 = v => (Number.isFinite(Number(v)) ? Math.round(Number(v) * 100) / 100 : '');
+function downloadCsv(filename, text) {
+  const blob = new Blob([text], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 // Group Run-history rows into sweeps.
 //   Preferred: the stamped sweep_id (bulletproof).
@@ -333,6 +349,38 @@ export default function SweepCompare({ rows = [] }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSweeps, xKey, allSeeds, sweepNumber]);
 
+  // Export the selected items as CSV — one row per cluster (in chart
+  // order), a column per seed's profit, plus mean / std and the true-
+  // optimum average. Effectively the bar chart as a table.
+  function exportCsv() {
+    const ordered = [...selectedSweeps].sort((a, b) => {
+      const av = Number(a.sample[xKey]), bv = Number(b.sample[xKey]);
+      return (Number.isFinite(av) && Number.isFinite(bv))
+        ? av - bv
+        : fmtParamVal(a.sample[xKey]).localeCompare(fmtParamVal(b.sample[xKey]));
+    });
+    const header = ['sweep_num', 'when', 'policy', 'horizon', 'repeat', 'N', 'rho_band', 'm_star',
+      ...allSeeds.map(s => `seed_${s}`), 'mean_profit', 'std_profit', 'optimal_avg'];
+    const lines = [header.map(csvCell).join(',')];
+    for (const g of ordered) {
+      const s = g.sample;
+      const bySeed = new Map(g.seedRows.map(r => [Number(r.seed), Number(r.cumulative)]));
+      const seedVals = allSeeds.map(sd => (bySeed.has(sd) ? bySeed.get(sd) : null));
+      const st = meanStd(seedVals.filter(Number.isFinite));
+      const optimal = g.avgRow && Number.isFinite(Number(g.avgRow.optimal))
+        ? Number(g.avgRow.optimal)
+        : meanStd(g.seedRows.map(r => Number(r.optimal))).mean;
+      const rec = [
+        sweepNumber.get(g.key), s.ts, POLICY_SHORT[s.policy] ?? s.policy ?? '',
+        s.horizon ?? '', s.repeat ?? '', s.budget ?? '', fmtParamVal(s.rho_ell), s.mstar ?? '',
+        ...seedVals.map(round2), round2(st.mean), round2(st.std), round2(optimal),
+      ];
+      lines.push(rec.map(csvCell).join(','));
+    }
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    downloadCsv(`sweep-compare-${stamp}.csv`, lines.join('\r\n'));
+  }
+
   return (
     <div className="card" style={{ padding: '10px 14px', marginBottom: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -461,6 +509,11 @@ export default function SweepCompare({ rows = [] }) {
                   )}
                   {mode === 'dots' ? 'mean ± 1 std' : 'Sweep avg'}
                 </span>
+                <button type="button" onClick={exportCsv}
+                        style={{ marginLeft: 'auto', ...miniBtn }}
+                        title="Save the selected sweeps (per-seed profit, mean, std, optimal) to a CSV file.">
+                  Download CSV
+                </button>
               </div>
               <SweepChart clusters={clusters} xLabel={xMeta.label} mode={mode} />
             </>
