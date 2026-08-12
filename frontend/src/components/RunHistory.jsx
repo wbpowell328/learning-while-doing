@@ -39,13 +39,13 @@ const tdNum = { ...tdStyle, textAlign: 'right', fontVariantNumeric: 'tabular-num
 // used anywhere across the policies; each row fills only the columns its
 // policy actually uses and shows a dash everywhere else. Keeps the table
 // self-documenting without a separate legend.
-//   ρˡ     — GP bandwidth / length_scale (belief-model param, all policies)
+//   ρᵇᵃⁿᵈ  — GP bandwidth / length_scale (belief-model param, all policies)
 //   ρˡᵏʰᵈ  — KG-family lookahead multiplier (m_star)
 //   N      — Ryzhov budget (only okg_ryzhov)
 //   ρᴵᴱ    — IE exploration coefficient (z_alpha); ie_15 pins it to 1.5
 //   ρˢᵗᵈᵈᵉᵛ — Randomized-greedy θ-noise std (sigma_greedy)
 const PARAM_COLS = [
-  { key: 'rho_ell', label: 'ρˡ',      title: 'GP bandwidth ρˡ (length_scale) — belief-model smoothness; applies to every correlated-belief policy' },
+  { key: 'rho_ell', label: 'ρᵇᵃⁿᵈ',  title: 'GP bandwidth ρᵇᵃⁿᵈ (length_scale) — belief-model smoothness; applies to every correlated-belief policy' },
   { key: 'lkhd',   label: 'ρˡᵏʰᵈ',  title: 'KG lookahead multiplier ρˡᵏʰᵈ (m*) — KG-family policies only' },
   { key: 'N',      label: 'N',       title: 'Ryzhov budget N in (N−n)·KG — Ryzhov only' },
   { key: 'ie',     label: 'ρᴵᴱ',    title: 'IE exploration coefficient ρᴵᴱ (μ ± ρᴵᴱ·σ) — IE policies only' },
@@ -55,7 +55,7 @@ const PARAM_COLS = [
 // Map each row to the parameter values its policy uses; unused params are
 // null so the column renders a dash. Mirrors the backend's _make_policy:
 // greedy/kg/random/human take no knob, ie_15 hard-pins ρᴵᴱ = 1.5. The
-// bandwidth ρˡ is a belief-model parameter, so it's shown for every row
+// bandwidth ρᵇᵃⁿᵈ is a belief-model parameter, so it's shown for every row
 // (not gated by policy).
 function paramValues(r) {
   const p = r.policy;

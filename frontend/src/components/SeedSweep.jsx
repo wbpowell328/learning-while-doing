@@ -525,7 +525,7 @@ export default function SeedSweep({
               <tr>
                 <th style={thStyle}>Seed</th>
                 <th style={{ ...thStyle, textAlign: 'right' }}
-                    title="GP bandwidth ρˡ (length_scale) — the belief-model smoothness parameter. Constant across the sweep; shown for reference since it affects the results.">ρˡ</th>
+                    title="GP bandwidth ρᵇᵃⁿᵈ (length_scale) — the belief-model smoothness parameter. Constant across the sweep; shown for reference since it affects the results.">ρᵇᵃⁿᵈ</th>
                 <th style={{ ...thStyle, textAlign: 'right' }}
                     title="The θ actually simulated on the final iteration (the measurement decision). For Manual this is the θ you played — constant across seeds; for a learning policy it's the last θ it chose to measure.">Policy θ</th>
                 <th style={{ ...thStyle, textAlign: 'right' }}
