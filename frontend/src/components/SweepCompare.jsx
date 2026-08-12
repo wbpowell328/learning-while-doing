@@ -111,10 +111,10 @@ const miniBtn = {
 
 // ── Clustered bar chart (inline SVG) ──────────────────────────────────
 function ClusteredBars({ clusters, seeds, xLabel }) {
-  // clusters: [{ x, xText, bars:[{label,color,value,isAvg}] }]
+  // clusters: [{ num, xText, bars:[{label,color,value,isAvg}] }]
   const W = Math.max(560, clusters.length * 108);
-  const H = 340;
-  const m = { top: 14, right: 14, bottom: 54, left: 70 };
+  const H = 356;
+  const m = { top: 14, right: 14, bottom: 70, left: 70 };
   const pw = W - m.left - m.right;
   const ph = H - m.top - m.bottom;
 
@@ -172,11 +172,16 @@ function ClusteredBars({ clusters, seeds, xLabel }) {
                     style={{ fontVariantNumeric: 'tabular-nums' }}>
                 {c.xText}
               </text>
+              <text x={m.left + ci * clusterW + clusterW / 2} y={H - m.bottom + 34}
+                    textAnchor="middle" fontSize="12" fontWeight="600" fill="#64748b"
+                    style={{ fontVariantNumeric: 'tabular-nums' }}>
+                {c.num != null ? `(${c.num})` : ''}
+              </text>
             </g>
           );
         })}
         <text x={m.left + pw / 2} y={H - 8} textAnchor="middle" fontSize="12" fill="#475569">
-          {xLabel}
+          {xLabel}  ·  (n) = sweep number in the list
         </text>
       </svg>
     </div>
@@ -228,6 +233,14 @@ export default function SweepCompare({ rows = [] }) {
   }, [selectedSweeps]);
   const seedColor = seed => SEED_COLORS[allSeeds.indexOf(seed) % SEED_COLORS.length];
 
+  // Picker number for each sweep (1-based, in the newest-first list order)
+  // so a cluster can be labelled with the same number the checklist shows.
+  const sweepNumber = useMemo(() => {
+    const m = new Map();
+    sweeps.forEach((g, i) => m.set(g.key, i + 1));
+    return m;
+  }, [sweeps]);
+
   const clusters = useMemo(() => {
     return selectedSweeps
       .map(g => {
@@ -241,13 +254,14 @@ export default function SweepCompare({ rows = [] }) {
           bars.push({ label: 'Sweep avg', color: AVG_COLOR,
                       value: Number(g.avgRow.cumulative), isAvg: true });
         }
-        return { key: g.key, xVal: Number(xv), xText: fmtParamVal(xv), bars };
+        return { key: g.key, num: sweepNumber.get(g.key),
+                 xVal: Number(xv), xText: fmtParamVal(xv), bars };
       })
       .sort((a, b) => (Number.isFinite(a.xVal) && Number.isFinite(b.xVal))
         ? a.xVal - b.xVal
         : String(a.xText).localeCompare(String(b.xText)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSweeps, xKey, allSeeds]);
+  }, [selectedSweeps, xKey, allSeeds, sweepNumber]);
 
   return (
     <div className="card" style={{ padding: '10px 14px', marginBottom: 16 }}>
