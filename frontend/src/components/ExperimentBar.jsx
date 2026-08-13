@@ -19,16 +19,16 @@
 import { useState, useEffect } from 'react';
 
 // Ordered per Warren-2026-08: Ryzhov first (and the default), then the
-// remaining online/offline KG variants, then IE, Greedy, Randomized
-// greedy, Manual. Other policies (kg_indep, okg_indep, ie, random)
-// still exist in the backend but are intentionally hidden from the
-// dropdown — kept in code so we can bring them back without a
-// backend redeploy.
+// remaining online/offline KG variants, then IE (with a tunable ρᴵᴱ),
+// Greedy, Randomized greedy, Manual. Other policies (kg_indep,
+// okg_indep, ie_15, random) still exist in the backend but are
+// intentionally hidden from the dropdown — kept in code so we can bring
+// them back without a backend redeploy.
 const POLICY_OPTIONS_1D = [
   { value: 'okg_ryzhov',        label: 'KG online correlated — Ryzhov (μ + (N−n)·KG(ρˡᵏʰᵈ))' },
   { value: 'okg',               label: 'KG online correlated (μ + KG(ρˡᵏʰᵈ))' },
   { value: 'kg',                label: 'Offline KG' },
-  { value: 'ie_15',             label: 'IE (ρ^IE = 1.5)' },
+  { value: 'ie',                label: 'IE (μ + ρᴵᴱ·σ)' },
   { value: 'greedy',            label: 'Greedy' },
   { value: 'randomized_greedy', label: 'Randomized greedy' },
   { value: 'human',             label: 'Manual' },
@@ -87,8 +87,8 @@ function policyParamMeta(policy, values, handlers) {
   }
   if (policy === 'ie') {
     return [{
-      label: 'θᴵᴱ',
-      title: 'IE score = μ_n(θ) + θ^IE · σ_n(θ). Multiplies the std dev of μ^n_θ.',
+      label: 'ρᴵᴱ',
+      title: 'IE exploration coefficient ρᴵᴱ in the score μ_n(θ) + ρᴵᴱ·σ_n(θ). 0 = pure exploitation (greedy); larger explores more.',
       value: sessionZAlpha,
       step: 'any', min: 0, integer: false,
       onCommit: onZAlphaChange,
@@ -205,7 +205,10 @@ export default function ExperimentBar({
   const [theta1, setTheta1] = useState(String(Number.isFinite(_init1) ? _init1 : 0.1));
   const [theta2, setTheta2] = useState(String(Number.isFinite(_init2) ? _init2 : 0.1));
   const [nDays,  setNDays]  = useState('50');
-  const [policy, setPolicy] = useState(defaultPolicy || 'okg_ryzhov');
+  // Normalise the retired fixed-IE value to the tunable IE policy so a
+  // stale ?policy=ie_15 from a landing link still selects a real option.
+  const [policy, setPolicy] = useState(
+    (defaultPolicy === 'ie_15' ? 'ie' : defaultPolicy) || 'okg_ryzhov');
   // Repeat count — remembered across page reloads via localStorage so
   // the value survives the "Game parameters → Save-and-exit → fresh
   // game" round-trip. First visit (nothing saved) defaults to 1;
