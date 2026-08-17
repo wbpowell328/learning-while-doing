@@ -983,11 +983,40 @@ export default function App() {
       refreshEnriched(session.id);
       // Score bookkeeping — Manual uses this instead of Run/Repeat's
       // batch-total accounting. Each click adds one iteration's reward.
+      // Capture pre-update totals so the run-history row below records the
+      // post-click cumulative/days (setState is async).
       const reward = Number(result.total_reward ?? 0);
       const days   = Number(n_days ?? result.n_days ?? 0);
+      const newCumulative = (cumulativeScore ?? 0) + reward;
+      const newTotalDays  = totalDays + days;
       setLatestScore(reward);
-      setCumulativeScore(prev => (prev ?? 0) + reward);
-      setTotalDays(prev => prev + days);
+      setCumulativeScore(newCumulative);
+      setTotalDays(newTotalDays);
+      // Log this manual evaluation to the run history — same shape as the
+      // Run / One-more paths, so manual runs show up alongside them.
+      // Action "Manual" (policy column also reads Manual); θ used = the θ
+      // the user played, Best θ = the belief's argmax (est. opt.).
+      logRunResult({
+        ts: new Date().toISOString(),
+        seed: Number(session.session_seed),
+        action: 'Manual',
+        app: session.app_name,
+        policy: session.policy,
+        horizon: days,
+        repeat: 1,
+        theta_init: impparam,
+        best_theta: result.best_impparam,
+        mstar: session.m_star ?? null,
+        budget: session.budget ?? null,
+        zalpha: session.z_alpha ?? null,
+        sigma_greedy: session.sigma_greedy ?? null,
+        rho_ell: session.length_scale ?? null,
+        latest: reward,
+        cumulative: newCumulative,
+        total_days: newTotalDays,
+        optimal: (optimalPerDay != null && newTotalDays > 0)
+          ? optimalPerDay * newTotalDays : null,
+      });
       // Cash chart tracks the θ the user just tested.
       if (Array.isArray(impparam) && impparam.length >= 2) {
         await refreshFlowSample(impparam[0], impparam[1]);
@@ -1006,7 +1035,7 @@ export default function App() {
       abortRunRef.current = null;
       setLoading(false);
     }
-  }, [session, loading, applyResult, fetchReveal, refreshEnriched, refreshFlowSample, kgVsMSigmaEps, kgVsMMMax, kgVsMTheta, kgVsMTheta2]);
+  }, [session, loading, applyResult, fetchReveal, refreshEnriched, refreshFlowSample, kgVsMSigmaEps, kgVsMMMax, kgVsMTheta, kgVsMTheta2, cumulativeScore, totalDays, logRunResult, optimalPerDay]);
 
   // ── Automated: single step ────────────────────────────────────────────────
 

@@ -53,11 +53,12 @@ function meanStd(xs) {
   const v = g.reduce((s, x) => s + (x - mean) ** 2, 0) / (g.length - 1);
   return { mean, std: Math.sqrt(v), n: g.length };
 }
-// Individual Run rows become single-point "sweeps" so they can be dropped
-// into the comparison alongside real sweeps. One seed, no average.
+// Individual Run / Manual rows become single-point "sweeps" so they can
+// be dropped into the comparison alongside real sweeps. One seed, no
+// average.
 function groupRuns(rows) {
   return rows
-    .filter(r => r.action === 'Run')
+    .filter(r => r.action === 'Run' || r.action === 'Manual')
     .map(r => ({ key: `run:${r.ts}`, seedRows: [r], avgRow: null, isRun: true, sample: r }));
 }
 // CSV helpers — quote a cell only when it contains a comma, quote, or
