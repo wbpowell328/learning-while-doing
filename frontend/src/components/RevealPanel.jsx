@@ -21,8 +21,15 @@ export default function RevealPanel({ reveal }) {
     impparams, mean_reward,
     true_best_impparam, true_max_reward,
     player_best_impparam, player_best_reward,
-    naive_reward,
+    naive_reward, n_days_used,
   } = reveal;
+
+  // "Total reward" is summed over one run of this many trading days (the
+  // Horizon the user is running). Label the chart with it so the time
+  // period behind "reward" and "/run" is explicit.
+  const runDays = Number.isFinite(Number(n_days_used)) && n_days_used > 0
+    ? Math.round(Number(n_days_used)) : null;
+  const runLabel = runDays ? ` (${runDays} trading days)` : '';
 
   const allY = [...mean_reward, player_best_reward, naive_reward];
   const rawMin = Math.min(...allY);
@@ -53,7 +60,8 @@ export default function RevealPanel({ reveal }) {
           Session complete — true reward curve revealed
         </div>
         <div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>
-          Estimated from {impparams.length} grid points × 50 independent simulations (held-out seed)
+          Estimated from {impparams.length} grid points × 50 independent simulations (held-out seed).
+          {runDays ? ` Each run spans ${runDays} trading days; "reward" is the total over that run.` : ''}
         </div>
       </div>
 
@@ -147,7 +155,7 @@ export default function RevealPanel({ reveal }) {
         ))}
         <text
           transform={`translate(${PAD.left - 56},${PAD.top + IH / 2}) rotate(-90)`}
-          textAnchor="middle" fontSize={12} fill="#64748b">Avg. total reward</text>
+          textAnchor="middle" fontSize={12} fill="#64748b">Avg. total reward per run{runLabel}</text>
 
         {/* Legend */}
         <g transform={`translate(${W - PAD.right - 108},${PAD.top + 4})`}>
