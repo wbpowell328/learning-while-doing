@@ -268,6 +268,9 @@ class PosteriorResponse(BaseModel):
     mean: list[float]
     std: list[float]
     best_impparam: float
+    # Reference batch length the mean/std were scaled by (per-batch $).
+    # The frontend divides by this to display the curve in $/day.
+    n_days_used: int = 0
 
 
 class Posterior2DResponse(BaseModel):

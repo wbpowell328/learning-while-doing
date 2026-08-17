@@ -1423,6 +1423,7 @@ def posterior(sid: str, grid_size: int = 200) -> PosteriorResponse:
         mean=(_to_display(session, mean) * n).tolist(),
         std=(np.asarray(std, dtype=float) * n).tolist(),
         best_impparam=session.best_impparam(),
+        n_days_used=int(n),
     )
 
 

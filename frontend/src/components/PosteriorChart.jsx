@@ -11,7 +11,10 @@ const POLICY_COLOR = { random: '#2563eb', ie: '#d97706', kg: '#16a34a' };
 const X_MIN = 0.01, X_MAX = 0.20;
 
 function fmt(v) {
-  if (Math.abs(v) >= 1000) return `$${(v / 1000).toFixed(1)}k`;
+  const a = Math.abs(v);
+  if (a >= 1000) return `$${(v / 1000).toFixed(1)}k`;
+  if (a < 10)  return `$${v.toFixed(2)}`;
+  if (a < 100) return `$${v.toFixed(1)}`;
   return `$${v.toFixed(0)}`;
 }
 
@@ -24,18 +27,29 @@ export default function PosteriorChart({ posterior, history, policy }) {
     );
   }
 
-  const { impparams, mean, std } = posterior;
+  const { impparams, std: stdRaw } = posterior;
   const color = POLICY_COLOR[policy] ?? '#2563eb';
+
+  // Show the belief in $/day (its native scale), not per-batch totals, so
+  // it lines up with the belief prior signal_std and the $/day reveal.
+  // The backend scaled mean/std by n_days_used (per-batch $); divide it
+  // back out, and divide the per-batch observation dots by the same
+  // reference so the curve and the dots stay on one axis.
+  const perDay = (Number.isFinite(Number(posterior.n_days_used)) && posterior.n_days_used > 0)
+    ? Number(posterior.n_days_used) : 1;
+  const mean = posterior.mean.map((m) => m / perDay);
+  const std = stdRaw.map((s) => s / perDay);
+  const dots = history.map(([c, cost]) => [c, cost / perDay]);
 
   // Y bounds — include band and observations
   const allY = [
     ...mean.map((m, i) => m + std[i]),
     ...mean.map((m, i) => m - std[i]),
-    ...history.map(([, cost]) => cost),
+    ...dots.map(([, cost]) => cost),
   ];
   const rawMin = Math.min(...allY);
   const rawMax = Math.max(...allY);
-  const pad = (rawMax - rawMin) * 0.12 || 1000;
+  const pad = (rawMax - rawMin) * 0.12 || Math.max(1, Math.abs(rawMax) * 0.1);
   const yLo = rawMin - pad;
   const yHi = rawMax + pad;
 
@@ -82,8 +96,8 @@ export default function PosteriorChart({ posterior, history, policy }) {
         best θ={best.toFixed(3)}
       </text>
 
-      {/* Observation dots */}
-      {history.map(([c, cost], i) => (
+      {/* Observation dots (per-day, same as the GP curve) */}
+      {dots.map(([c, cost], i) => (
         <circle key={i} cx={xS(c)} cy={yS(cost)} r={5}
           fill={color} stroke="white" strokeWidth={1.5} opacity={0.9} />
       ))}
@@ -122,7 +136,7 @@ export default function PosteriorChart({ posterior, history, policy }) {
       <text
         transform={`translate(${PAD.left - 56},${PAD.top + IH / 2}) rotate(-90)`}
         textAnchor="middle" fontSize={12} fill="#64748b">
-        Total reward
+        GP mean reward ($/day)
       </text>
 
       {/* Legend */}
