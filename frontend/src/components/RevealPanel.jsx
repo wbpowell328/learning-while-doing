@@ -5,7 +5,10 @@ const IH = H - PAD.top - PAD.bottom;
 const X_MIN = 0.01, X_MAX = 0.20;
 
 function fmt(v) {
-  if (Math.abs(v) >= 1000) return `$${(v / 1000).toFixed(1)}k`;
+  const a = Math.abs(v);
+  if (a >= 1000) return `$${(v / 1000).toFixed(1)}k`;
+  if (a < 10)  return `$${v.toFixed(2)}`;
+  if (a < 100) return `$${v.toFixed(1)}`;
   return `$${v.toFixed(0)}`;
 }
 
@@ -18,23 +21,29 @@ export default function RevealPanel({ reveal }) {
   if (!reveal) return null;
 
   const {
-    impparams, mean_reward,
-    true_best_impparam, true_max_reward,
-    player_best_impparam, player_best_reward,
-    naive_reward, n_days_used,
+    impparams, mean_reward: mean_reward_total,
+    true_best_impparam, true_max_reward: true_max_reward_total,
+    player_best_impparam, player_best_reward: player_best_reward_total,
+    naive_reward: naive_reward_total, n_days_used,
   } = reveal;
 
-  // "Total reward" is summed over one run of this many trading days (the
-  // Horizon the user is running). Label the chart with it so the time
-  // period behind "reward" and "/run" is explicit.
+  // Show the profit curve PER TRADING DAY ($/day), not as a per-run total.
+  // The backend estimates reward over one run of n_days_used days (the
+  // Horizon of the last Run); dividing by that gives a $/day scale that
+  // (a) stays put as the user varies Horizon and Repeat, and (b) is
+  // directly comparable to the belief prior signal_std, which is in $/day.
   const runDays = Number.isFinite(Number(n_days_used)) && n_days_used > 0
     ? Math.round(Number(n_days_used)) : null;
-  const runLabel = runDays ? ` (${runDays} trading days)` : '';
+  const perDay = runDays || 1;
+  const mean_reward = mean_reward_total.map(v => v / perDay);
+  const true_max_reward = true_max_reward_total / perDay;
+  const player_best_reward = player_best_reward_total / perDay;
+  const naive_reward = naive_reward_total / perDay;
 
   const allY = [...mean_reward, player_best_reward, naive_reward];
   const rawMin = Math.min(...allY);
   const rawMax = Math.max(...allY);
-  const ygap = Math.max((rawMax - rawMin) * 0.15, 300);
+  const ygap = Math.max((rawMax - rawMin) * 0.15, Math.abs(rawMax) * 0.06);
   const yLo = rawMin - ygap;
   const yHi = rawMax + ygap;
 
@@ -50,6 +59,10 @@ export default function RevealPanel({ reveal }) {
 
   // Gap: how much reward the player left on the table (true - player, ≥ 0).
   const playerGap = true_max_reward - player_best_reward;
+  // Colour the gap relative to the optimum, not by an absolute $ threshold —
+  // the latter was tied to the old per-run scale and is meaningless per-day.
+  const gapFrac = Math.abs(true_max_reward) > 1e-9 ? playerGap / Math.abs(true_max_reward) : 0;
+  const gapColor = gapFrac < 0.02 ? '#16a34a' : gapFrac < 0.08 ? '#d97706' : '#dc2626';
   // vs naive: positive means the player earned more than naive.
   const vsNaive = player_best_reward - naive_reward;
 
@@ -61,7 +74,7 @@ export default function RevealPanel({ reveal }) {
         </div>
         <div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>
           Estimated from {impparams.length} grid points × 50 independent simulations (held-out seed).
-          {runDays ? ` Each run spans ${runDays} trading days; "reward" is the total over that run.` : ''}
+          Reward is shown per trading day ($/day){runDays ? `, averaged over ${runDays}-day runs` : ''}.
         </div>
       </div>
 
@@ -70,28 +83,28 @@ export default function RevealPanel({ reveal }) {
         <div className="reveal-stat">
           <span className="reveal-stat-label">Your best θ</span>
           <span className="reveal-stat-value">{player_best_impparam.toFixed(3)}</span>
-          <span className="reveal-stat-sub">~{fmt(player_best_reward)}/run</span>
+          <span className="reveal-stat-sub">~{fmt(player_best_reward)}/day</span>
         </div>
         <div className="reveal-stat">
           <span className="reveal-stat-label">True optimum</span>
           <span className="reveal-stat-value" style={{ color: '#dc2626' }}>
             {true_best_impparam.toFixed(3)}
           </span>
-          <span className="reveal-stat-sub">~{fmt(true_max_reward)}/run</span>
+          <span className="reveal-stat-sub">~{fmt(true_max_reward)}/day</span>
         </div>
         <div className="reveal-stat">
           <span className="reveal-stat-label">Gap to optimum</span>
-          <span className="reveal-stat-value" style={{ color: playerGap < 200 ? '#16a34a' : playerGap < 1000 ? '#d97706' : '#dc2626' }}>
+          <span className="reveal-stat-value" style={{ color: gapColor }}>
             −{fmt(playerGap)}
           </span>
-          <span className="reveal-stat-sub">per run</span>
+          <span className="reveal-stat-sub">per day</span>
         </div>
         <div className="reveal-stat">
           <span className="reveal-stat-label">vs. naive 10%</span>
           <span className="reveal-stat-value" style={{ color: vsNaive >= 0 ? '#16a34a' : '#dc2626' }}>
             {vsNaive >= 0 ? `+${fmt(vsNaive)}` : `−${fmt(-vsNaive)}`}
           </span>
-          <span className="reveal-stat-sub">{fmt(naive_reward)}/run at 10%</span>
+          <span className="reveal-stat-sub">{fmt(naive_reward)}/day at 10%</span>
         </div>
       </div>
 
@@ -155,7 +168,7 @@ export default function RevealPanel({ reveal }) {
         ))}
         <text
           transform={`translate(${PAD.left - 56},${PAD.top + IH / 2}) rotate(-90)`}
-          textAnchor="middle" fontSize={12} fill="#64748b">Avg. total reward per run{runLabel}</text>
+          textAnchor="middle" fontSize={12} fill="#64748b">Avg. reward ($/day)</text>
 
         {/* Legend */}
         <g transform={`translate(${W - PAD.right - 108},${PAD.top + 4})`}>
