@@ -538,8 +538,16 @@ export default function SessionForm({
   // Advanced parameters — kept as strings during typing.
   const [adv, setAdv] = useState({ ...ADV_DEFAULTS, ...(savedAdv.adv ?? {}) });
   const setField     = (k, v) => setAdv(prev => ({ ...prev, [k]: v }));
-  const canonicalize = (k) => setField(k, String(Number(adv[k]) || Number(ADV_DEFAULTS[k])));
-  const numeric = (k) => Number(adv[k]) || Number(ADV_DEFAULTS[k]);
+  // Parse an advanced field, falling back to its default ONLY when the box
+  // is empty or non-numeric — never for a legitimate 0 (a `|| default`
+  // here wrongly reset e.g. Return on cash = 0 back to 0.04).
+  const parseAdv = (k) => {
+    const s = String(adv[k] ?? '').trim();
+    if (s !== '') { const n = Number(s); if (Number.isFinite(n)) return n; }
+    return Number(ADV_DEFAULTS[k]);
+  };
+  const canonicalize = (k) => setField(k, String(parseAdv(k)));
+  const numeric = (k) => parseAdv(k);
 
   // Selected app metadata.
   const appMeta = APPS.find(a => a.value === appName) ?? APPS[0];
