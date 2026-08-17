@@ -16,7 +16,7 @@
 // Advanced Parameters panel at session-create time; it lives on the
 // session state and is *not* re-sent per Restart from this bar.
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 // Ordered per Warren-2026-08: Ryzhov first (and the default), then the
 // remaining online/offline KG variants, then IE (with a tunable ρᴵᴱ),
@@ -292,11 +292,42 @@ export default function ExperimentBar({
   // Resolve the tunable parameters for the current policy — an empty
   // array if this policy has none, one input for most, two for
   // Ryzhov (ρˡᵏʰᵈ + N).
+  // Live values of the policy-parameter boxes, so a Run can send the
+  // parameter INSIDE the /experiment request instead of relying on a
+  // separate /z_alpha (etc.) call landing at the server first — which,
+  // under HTTP/2, it may not. Seeded from the session values; a box
+  // commit (fires on blur, i.e. before the Run click) updates the
+  // matching entry synchronously.
+  const liveParamsRef = useRef({
+    m_star: sessionMStar, z_alpha: sessionZAlpha, sigma_greedy: sessionSigmaGreedy,
+  });
+  useEffect(() => {
+    liveParamsRef.current = {
+      m_star: sessionMStar, z_alpha: sessionZAlpha, sigma_greedy: sessionSigmaGreedy,
+    };
+  }, [sessionMStar, sessionZAlpha, sessionSigmaGreedy]);
+  const liftAndPersist = (key, handler) => (v) => {
+    liveParamsRef.current = { ...liveParamsRef.current, [key]: v };
+    if (handler) handler(v);   // still POST it so peer views stay in sync
+  };
   const paramMetas = policyParamMeta(
     policy,
     { sessionMStar, sessionZAlpha, sessionSigmaGreedy, sessionBudget },
-    { onMStarChange, onZAlphaChange, onSigmaGreedyChange, onBudgetChange },
+    { onMStarChange:      liftAndPersist('m_star', onMStarChange),
+      onZAlphaChange:     liftAndPersist('z_alpha', onZAlphaChange),
+      onSigmaGreedyChange: liftAndPersist('sigma_greedy', onSigmaGreedyChange),
+      onBudgetChange },
   );
+  // The tunable parameter to send inline with a Run/Repeat/One-more so it
+  // takes effect atomically. Empty for policies with no per-request knob.
+  function policyParamSpec() {
+    if (policy === 'ie') return { z_alpha: liveParamsRef.current.z_alpha };
+    if (policy === 'okg' || policy === 'okg_indep' || policy === 'okg_ryzhov')
+      return { m_star: liveParamsRef.current.m_star };
+    if (policy === 'randomized_greedy')
+      return { sigma_greedy: liveParamsRef.current.sigma_greedy };
+    return {};
+  }
 
   // Input validity — used to disable Run so the user can't fire off a
   // malformed request (empty θ silently becomes 0 via Number("")=0,
@@ -321,9 +352,11 @@ export default function ExperimentBar({
       // Repeat=100 → K=99 → backend runs iter1 + 99 more = 100 iterations.
       K: isHuman ? 0 : Math.min(99, Math.max(0, Math.round(Number(K) || 1) - 1)),
       theta_init: dim === 2 ? [t1Num, t2Num] : t1Num,
+      // Send the current policy parameter (ρᴵᴱ / ρˡᵏʰᵈ / ρˢᵗᵈᵈᵉᵛ) in the
+      // request so it applies atomically — no reliance on a prior
+      // /z_alpha etc. call reaching the server first.
+      ...policyParamSpec(),
     };
-    // m_star / z_alpha are session-level (set in Advanced parameters);
-    // Restart intentionally does NOT override them per-request.
     onRun(spec);
   }
 
@@ -341,6 +374,7 @@ export default function ExperimentBar({
       // Backend's K = extras after the first iteration, so we subtract 1.
       // Repeat=100 → K=99 → backend runs iter1 + 99 more = 100 iterations.
       K: isHuman ? 0 : Math.min(99, Math.max(0, Math.round(Number(K) || 1) - 1)),
+      ...policyParamSpec(),
     };
     onOneMore(spec);
   }
