@@ -204,11 +204,36 @@ export default function ExperimentBar({
   const _init2 = Array.isArray(initialTheta) ? Number(initialTheta[1]) : Number(initialTheta);
   const [theta1, setTheta1] = useState(String(Number.isFinite(_init1) ? _init1 : 0.1));
   const [theta2, setTheta2] = useState(String(Number.isFinite(_init2) ? _init2 : 0.1));
-  const [nDays,  setNDays]  = useState('50');
-  // Normalise the retired fixed-IE value to the tunable IE policy so a
-  // stale ?policy=ie_15 from a landing link still selects a real option.
-  const [policy, setPolicy] = useState(
-    (defaultPolicy === 'ie_15' ? 'ie' : defaultPolicy) || 'okg_ryzhov');
+  // Horizon — remembered across reloads (localStorage) so the "Game
+  // parameters → Save and exit → fresh game" round-trip keeps the value
+  // the user set instead of snapping back to the default.
+  const [nDays, setNDays] = useState(() => {
+    try {
+      const raw = localStorage.getItem('lwd_horizon_v1');
+      const n = Number(raw);
+      if (Number.isFinite(n) && n >= 1 && n <= 500) return String(Math.round(n));
+    } catch (_) { /* private mode / quota — fall through to default */ }
+    return '50';
+  });
+  useEffect(() => {
+    try { localStorage.setItem('lwd_horizon_v1', String(nDays)); } catch (_) { /* ignore */ }
+  }, [nDays]);
+  // Policy — also remembered across reloads. Prefer the last policy the
+  // user chose in this control bar over the fresh session's default, so
+  // the choice survives Save-and-exit. Validated against the current app's
+  // option list; the retired ie_15 value normalises to the tunable ie.
+  const [policy, setPolicy] = useState(() => {
+    const valid = (dim === 2 ? POLICY_OPTIONS_2D : POLICY_OPTIONS_1D).map(o => o.value);
+    try {
+      const saved = localStorage.getItem('lwd_policy_v1');
+      if (saved && valid.includes(saved)) return saved;
+    } catch (_) { /* private mode / quota — fall through to default */ }
+    const seed = defaultPolicy === 'ie_15' ? 'ie' : defaultPolicy;
+    return valid.includes(seed) ? seed : 'okg_ryzhov';
+  });
+  useEffect(() => {
+    try { localStorage.setItem('lwd_policy_v1', policy); } catch (_) { /* ignore */ }
+  }, [policy]);
   // Repeat count — remembered across page reloads via localStorage so
   // the value survives the "Game parameters → Save-and-exit → fresh
   // game" round-trip. First visit (nothing saved) defaults to 1;
