@@ -120,6 +120,27 @@ def test_z_alpha_endpoint_on_non_ie_policy_is_stored():
     assert _sessions[sid]._acq_config.z_alpha == pytest.approx(1.5)
 
 
+def test_clone_inherits_mid_session_param_changes():
+    """A clone (seed-sweep panel) must inherit control-bar param changes,
+    not just the creation-time config. Regression: mid-session /z_alpha,
+    /m_star, /budget, /sigma_greedy were lost when cloning, so the sweep
+    silently used stale values."""
+    r = client.post("/sessions", json={"policy": "ie", "session_seed": 42})
+    sid = r.json()["session_id"]
+    client.post(f"/sessions/{sid}/z_alpha", json={"z_alpha": 2.0})
+    client.post(f"/sessions/{sid}/m_star", json={"m_star": 4})
+    client.post(f"/sessions/{sid}/budget", json={"budget": 7})
+    client.post(f"/sessions/{sid}/sigma_greedy", json={"sigma_greedy": 0.05})
+
+    cl = client.post(f"/sessions/{sid}/clone_with_seed", json={"session_seed": 99})
+    assert cl.status_code == 201
+    clone = _sessions[cl.json()["session_id"]]
+    assert clone._acq_config.z_alpha == pytest.approx(2.0)
+    assert clone.m_star == 4
+    assert clone._budget == 7
+    assert clone._acq_config.sigma_greedy == pytest.approx(0.05)
+
+
 def test_kg_endpoint_reflects_session_m_star():
     """
     The /sessions/{sid}/kg endpoint feeds the KG(x) chart on the frontend.

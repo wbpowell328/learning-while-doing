@@ -282,6 +282,23 @@ def clone_with_seed(sid: str, body: CloneWithSeedRequest) -> CreateSessionRespon
     return create_session(cloned)
 
 
+def _patch_create_req(sid: str, *, top=None, acq=None, belief=None) -> None:
+    """Mirror a mid-session parameter change onto the stored create-request
+    so clone_with_seed (the seed-sweep panel) inherits it. Without this,
+    clones use the creation-time value and mid-game changes made from the
+    control bar (ρᴵᴱ, ρˡᵏʰᵈ, N, ρˢᵗᵈᵈᵉᵛ, bandwidth) silently don't reach
+    the sweep. No-op if the request wasn't stored (older process)."""
+    req = _session_create_reqs.get(sid)
+    if req is None:
+        return
+    update = dict(top or {})
+    if acq:
+        update["acq_config"] = req.acq_config.model_copy(update=acq)
+    if belief:
+        update["belief_config"] = req.belief_config.model_copy(update=belief)
+    _session_create_reqs[sid] = req.model_copy(update=update)
+
+
 @app.post("/sessions/{sid}/session_seed")
 def set_session_seed(sid: str, body: SetSessionSeedRequest) -> SetSessionSeedResponse:
     """
@@ -310,6 +327,7 @@ def set_m_star(sid: str, body: SetMStarRequest) -> SetMStarResponse:
     """
     session = _get_or_404(sid)
     session.set_m_star(int(body.m_star))
+    _patch_create_req(sid, top={"m_star": int(session.m_star)})
     return SetMStarResponse(m_star=session.m_star)
 
 
@@ -330,6 +348,7 @@ def set_z_alpha(sid: str, body: SetZAlphaRequest) -> SetZAlphaResponse:
         _policy_name_from_class(session._policy),
         session._acq_config, budget=session._budget,
     ))
+    _patch_create_req(sid, acq={"z_alpha": float(session._acq_config.z_alpha)})
     return SetZAlphaResponse(z_alpha=float(session._acq_config.z_alpha))
 
 
@@ -349,6 +368,7 @@ def set_sigma_greedy(sid: str, body: SetSigmaGreedyRequest) -> SetSigmaGreedyRes
         _policy_name_from_class(session._policy),
         session._acq_config, budget=session._budget,
     ))
+    _patch_create_req(sid, acq={"sigma_greedy": float(session._acq_config.sigma_greedy)})
     return SetSigmaGreedyResponse(sigma_greedy=float(session._acq_config.sigma_greedy))
 
 
@@ -368,6 +388,7 @@ def set_budget(sid: str, body: SetBudgetRequest) -> SetBudgetResponse:
         _policy_name_from_class(session._policy),
         session._acq_config, budget=session._budget,
     ))
+    _patch_create_req(sid, top={"budget": int(session._budget)})
     return SetBudgetResponse(budget=int(session._budget))
 
 
@@ -416,6 +437,7 @@ def set_length_scale(sid: str, body: SetLengthScaleRequest) -> SetLengthScaleRes
             raise HTTPException(status_code=400,
                 detail=f"length_scale must be positive and finite; got {ls}")
     session.set_length_scale(ls)
+    _patch_create_req(sid, belief={"length_scale": session.belief.config.length_scale})
     return SetLengthScaleResponse(length_scale=session.belief.config.length_scale)
 
 
