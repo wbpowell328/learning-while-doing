@@ -41,7 +41,10 @@ const ADV_DEFAULTS = {
   // the conversion below has to change too.
   jump_rate_annual:  '12',
   jump_median_dollars: '11000',   // median jump = $11k on $1M AUM  ~1.1% AUM (exp(-4.5))
-  jump_std_log:      '0.5',
+  // Spread expressed in dollars: the 90th-percentile ("large") jump.
+  // Converted on submit to jump_std_log = ln(p90$/median$)/z90 (z90≈1.2816).
+  // $21k with median $11k ≈ log-std 0.5 (the old default).
+  jump_p90_dollars:  '21000',
   sigma_net_annual:  '0.02',
   r_borrow_annual:   '0.10',
   // θ search-box bounds (1-D uses first component only; 2-D uses both)
@@ -63,7 +66,9 @@ const ADV_DEFAULTS = {
   // on submit using aum_inst = initial_aum × initial_aum_ind_fraction
   // complement = $500k by default). exp(-2.5) × $500k ≈ $41k.
   jump_median_dollars_inst: '41000',
-  jump_std_log_inst:        '0.6',
+  // 90th-percentile ("large") institutional jump in $. Converted to
+  // jump_std_log_inst = ln(p90$/median$)/z90. $88k with median $41k ≈ 0.6.
+  jump_p90_dollars_inst:    '88000',
   r_borrow_inst_annual:     '0.02',   // 2% redemption fee on forced institutional liquidation
 };
 
@@ -239,10 +244,10 @@ const ROWS_1D = [
     source: 'adv:jump_median_dollars', step: 'any', min: 1,
     range: '$1k – $500k',
     desc: 'Dollar size of the "typical" (50th-percentile) jump. On a $1M fund, $11k is ~1.1% of AUM; $50k is ~5%. This is what makes low-θ shortfalls likely — bigger median jumps mean bigger cash buffers are worth holding.' },
-  { kind: 'number', label: 'Jump-size spread (log std)',
-    source: 'adv:jump_std_log', step: 'any', min: 0,
-    range: '0.1 – 2',
-    desc: 'Spread of jump sizes on a log scale. sd = 0.5 → the 84th-percentile jump is ≈ 1.65 × median; sd = 1.5 → ≈ 4.5 × median (fat tail).' },
+  { kind: 'number', label: 'Large jump size (90th pct, $)',
+    source: 'adv:jump_p90_dollars', step: 'any', min: 1,
+    range: '$1k – $1M',
+    desc: 'Dollar size of a "large" jump — about 1 in 10 jumps is bigger than this (90th percentile). Set it above the median; the further above, the fatter the tail of rare big shocks. E.g. median $11k with a $21k large jump is a moderate spread, $50k is a fat tail.' },
 
   { kind: 'section', label: 'Session' },
   { kind: 'int', label: 'Random number seed', source: 'seed', min: 0, max: 9999,
@@ -333,10 +338,10 @@ const ROWS_2D = [
     source: 'adv:jump_median_dollars_inst', step: 'any', min: 1,
     range: '$1k – $250k',
     desc: 'Dollar size of the "typical" (50th-percentile) institutional jump. On $500k institutional AUM, $41k is ~8%.' },
-  { kind: 'number', label: 'Jump-size spread (log std)',
-    source: 'adv:jump_std_log_inst', step: 'any', min: 0,
-    range: '0.1 – 2',
-    desc: 'Spread on a log scale. sd = 0.6 → the 84th-percentile jump ≈ 1.8 × median.' },
+  { kind: 'number', label: 'Large jump size (90th pct, $)',
+    source: 'adv:jump_p90_dollars_inst', step: 'any', min: 1,
+    range: '$1k – $500k',
+    desc: 'Dollar size of a "large" institutional jump — about 1 in 10 jumps exceeds it (90th percentile). Set it above the median; further above = fatter tail.' },
   { kind: 'number', label: 'Institutional redemption fee',
     source: 'adv:r_borrow_inst_annual', step: 'any', min: 0,
     range: '0.01 – 0.20',
@@ -594,6 +599,19 @@ export default function SessionForm({
     const md  = (raw > 0) ? raw : Number(ADV_DEFAULTS[key]);
     return Math.log(md / aum);
   };
+  // Derive the backend's log-space jump std from the two dollar anchors:
+  // the median and the 90th-percentile ("large") jump. Both are in $, so
+  // the ratio is scale-free (AUM cancels): σ = ln(p90/median)/z90.
+  // z90 = Φ⁻¹(0.90). Falls back to defaults on empty/invalid, and floors
+  // σ so a p90 ≤ median doesn't produce a zero/negative spread.
+  const _std_from_p90 = (p90Key, medianKey) => {
+    const Z90 = 1.2815515655;
+    const medRaw = Number(adv[medianKey]);
+    const med = (medRaw > 0) ? medRaw : Number(ADV_DEFAULTS[medianKey]);
+    const p90Raw = Number(adv[p90Key]);
+    const p90 = (Number.isFinite(p90Raw) && p90Raw > med) ? p90Raw : med;
+    return Math.max(0.001, Math.log(p90 / med) / Z90);
+  };
 
   // sim_config payload — field names are app-specific. Unknown fields are
   // dropped server-side; we just include everything the target app understands.
@@ -619,7 +637,7 @@ export default function SessionForm({
         // Institutional investor process
         jump_rate_inst_annual: numeric('jump_rate_inst_annual'),
         jump_mean_log_inst:    _log_from_median('jump_median_dollars_inst', _aum_inst_2d),
-        jump_std_log_inst:     numeric('jump_std_log_inst'),
+        jump_std_log_inst:     _std_from_p90('jump_p90_dollars_inst', 'jump_median_dollars_inst'),
         r_borrow_inst_annual:  numeric('r_borrow_inst_annual'),
       }
     : {
@@ -629,7 +647,7 @@ export default function SessionForm({
         r_cash_annual:    numeric('r_cash_annual'),
         jump_rate_annual: numeric('jump_rate_annual'),
         jump_mean_log:    _log_from_median('jump_median_dollars', _initial_aum),
-        jump_std_log:     numeric('jump_std_log'),
+        jump_std_log:     _std_from_p90('jump_p90_dollars', 'jump_median_dollars'),
         sigma_net_annual: numeric('sigma_net_annual'),
         r_borrow_annual:  numeric('r_borrow_annual'),
         impparam_min:     impparamMin,
