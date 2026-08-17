@@ -940,6 +940,20 @@ export default function SessionForm({
     }
   }
 
+  // Leave without saving or recomputing — for a quick "jump in, check a
+  // value, jump back out". Skips persistAdvanced() and precomputeReveal()
+  // (the slow "Computing true curve…" step) and just navigates back to
+  // wherever we came from — the running game (restored from history) or
+  // the landing page. Any edits made on this page are discarded.
+  function handleExitWithoutSaving() {
+    try { sessionStorage.removeItem('lwd_from_game'); } catch (_) { /* ignore */ }
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      window.location.href = LANDING_URL;
+    }
+  }
+
   // Auto-submit on mount when the landing page's Play button was hit
   // (URL had ?auto=1). Only fires once — subsequent renders of this
   // form (e.g. after a New session click) will not re-fire because
@@ -1109,6 +1123,12 @@ export default function SessionForm({
                       title="Save the current form values under a new panel name (leaves you on this page).">
                 {precomputing ? 'Computing…' : 'Save as new…'}
               </button>
+              <button type="button" className="btn btn-outline"
+                      onClick={handleExitWithoutSaving}
+                      style={{ padding: '7px 14px', fontSize: 13 }}
+                      title="Leave without saving changes or recomputing — for a quick look. Discards any edits made here.">
+                Exit without saving
+              </button>
             </div>
           </div>
           {/* One-line legend under the admin bar so newcomers can
@@ -1118,6 +1138,8 @@ export default function SessionForm({
             to the landing page (precomputes the true-reward curve so the
             in-game <b>Reveal truth</b> click is instant — adds a few seconds).
             &nbsp;·&nbsp; <b>Save as new</b> creates a separate named panel.
+            &nbsp;·&nbsp; <b>Exit without saving</b> returns to the game right away,
+            discarding edits and skipping the true-curve recompute — for a quick look.
             &nbsp;·&nbsp; <b>Rename</b>/<b>Delete</b> act on the panel currently
             in the dropdown (Default is protected).
           </p>

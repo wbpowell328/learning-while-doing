@@ -116,6 +116,11 @@ export default function FlowSampleChart({ sample }) {
           </text>
         </g>
       ))}
+      {/* Y-axis label. Dollars, not $/day: the deposit/redemption series are
+          per-day flow amounts, but the green cash-balance line is a running
+          level ($), so a plain dollar label covers both. */}
+      <text transform={`translate(${PAD.left - 56},${PAD.top + IH / 2}) rotate(-90)`}
+            textAnchor="middle" fontSize={12} fill="#64748b">Dollars ($)</text>
 
       {/* Legend — three rows above the plot area to keep the plot clean. */}
       <g transform={`translate(${PAD.left},4)`}>
