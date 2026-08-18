@@ -344,6 +344,35 @@ export default function App() {
     }
   }, [session, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2]);
 
+  // Mirror a mid-session parameter change into the ACTIVE Game-parameters
+  // panel (and the legacy single-blob), so control-bar edits persist across
+  // the Save-and-exit reload, show up on the parameters page, and are
+  // captured when the panel is saved — i.e. a saved panel fully replicates
+  // the run. `top` patches top-level blob keys (mStar, zAlpha, sigmaGreedy);
+  // `adv` patches keys inside the panel's adv object (ryzhov_budget, …).
+  const patchActivePanel = useCallback((appName, { top = {}, adv = {} }) => {
+    try {
+      const rawStore = window.localStorage.getItem('lwd_panels_v1');
+      if (rawStore) {
+        const store = JSON.parse(rawStore);
+        const entry = store[appName];
+        const panel = entry?.panels?.[entry?.active];
+        if (panel) {
+          Object.assign(panel, top);
+          if (Object.keys(adv).length) panel.adv = { ...(panel.adv ?? {}), ...adv };
+          window.localStorage.setItem('lwd_panels_v1', JSON.stringify(store));
+        }
+      }
+      const rawLegacy = window.localStorage.getItem('lwd_advanced_v2');
+      if (rawLegacy) {
+        const legacy = JSON.parse(rawLegacy);
+        Object.assign(legacy, top);
+        if (Object.keys(adv).length) legacy.adv = { ...(legacy.adv ?? {}), ...adv };
+        window.localStorage.setItem('lwd_advanced_v2', JSON.stringify(legacy));
+      }
+    } catch (_) { /* private mode / quota — silently accept */ }
+  }, []);
+
   // Policy m* (a.k.a. ρ^lkhd, "noise factor"): POST to
   // /sessions/{sid}/m_star and mirror the new value on session.m_star.
   // KG values everywhere the belief is displayed depend on m*, so
@@ -355,6 +384,7 @@ export default function App() {
     try {
       const resp = await setMStar(session.id, newMStar);
       setSession(prev => prev ? { ...prev, m_star: resp.m_star } : prev);
+      patchActivePanel(session.app_name, { top: { mStar: String(resp.m_star) } });
       const refetches = [refreshEnriched(session.id)];
       if (session.dim === 1) {
         refetches.push(getKGComparison(session.id, 0.01, 50, 10).then(setKgComparison));
@@ -366,7 +396,7 @@ export default function App() {
     } catch (e) {
       setError(String(e));
     }
-  }, [session, refreshEnriched, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2]);
+  }, [session, refreshEnriched, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2, patchActivePanel]);
 
   // z_alpha (IE) — mid-session tunable via the ExperimentBar's
   // "policy parameter" slot. IE's argmin score = μ - z_alpha·σ, so the
@@ -376,10 +406,11 @@ export default function App() {
     try {
       const resp = await setZAlpha(session.id, newZAlpha);
       setSession(prev => prev ? { ...prev, z_alpha: resp.z_alpha } : prev);
+      patchActivePanel(session.app_name, { top: { zAlpha: String(resp.z_alpha) } });
     } catch (e) {
       setError(String(e));
     }
-  }, [session]);
+  }, [session, patchActivePanel]);
 
   // σ_greedy (RandomizedGreedy) — same story: doesn't affect displayed
   // KG or posterior; only the next proposal.
@@ -388,10 +419,11 @@ export default function App() {
     try {
       const resp = await setSigmaGreedy(session.id, newSigmaGreedy);
       setSession(prev => prev ? { ...prev, sigma_greedy: resp.sigma_greedy } : prev);
+      patchActivePanel(session.app_name, { top: { sigmaGreedy: String(resp.sigma_greedy) } });
     } catch (e) {
       setError(String(e));
     }
-  }, [session]);
+  }, [session, patchActivePanel]);
 
   // Ryzhov N — mid-session tunable. Rebuilds the OKGRyzhov policy on
   // the backend so the (N−n) weight for the next propose() reflects
@@ -402,6 +434,7 @@ export default function App() {
     try {
       const resp = await setBudget(session.id, newBudget);
       setSession(prev => prev ? { ...prev, budget: resp.budget } : prev);
+      patchActivePanel(session.app_name, { adv: { ryzhov_budget: String(resp.budget) } });
       if (session.dim === 1) {
         try {
           const kg = await getKGComparison(session.id, 0.01, 50, resp.budget);
@@ -411,7 +444,7 @@ export default function App() {
     } catch (e) {
       setError(String(e));
     }
-  }, [session]);
+  }, [session, patchActivePanel]);
 
   // /experiment endpoint — one click, reset + K+1 iterations. Full
   // refresh of everything on the page afterwards. Belief config

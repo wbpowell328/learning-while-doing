@@ -197,6 +197,14 @@ const ROWS_1D = [
     source: 'adv:ryzhov_budget', min: 1, max: 500,
     range: '1 – 500',
     desc: 'Total experiment budget used by the classical Ryzhov online-KG policy (μ − (N−n)·KG). The exploration bonus is largest at n=0 and decays to 0 as n approaches N. Ignored by every other policy.' },
+  { kind: 'number', label: 'IE exploration coefficient (ρᴵᴱ)',
+    source: 'zAlphaStr', min: 0, step: 'any',
+    range: '[0 – 3]',
+    desc: 'IE score = μ + ρᴵᴱ·σ. 0 = pure exploitation (greedy); larger explores more. Used only by the IE policy.' },
+  { kind: 'number', label: 'Randomized-greedy noise std (ρˢᵗᵈᵈᵉᵛ)',
+    source: 'sigmaGreedyStr', min: 0, step: 'any',
+    range: '≥ 0 (θ units)',
+    desc: 'Standard deviation of the Gaussian noise added to the greedy θ pick. 0 = pure greedy. Used only by the Randomized greedy policy.' },
 
   { kind: 'section', label: 'Parameters controlling belief about the profit function (all per day)' },
   { kind: 'number', label: 'Length scale (ℓ)',
@@ -297,6 +305,14 @@ const ROWS_2D = [
     source: 'adv:ryzhov_budget', min: 1, max: 500,
     range: '1 – 500',
     desc: 'Total experiment budget used by the classical Ryzhov online-KG policy (μ − (N−n)·KG). Ignored by every other policy.' },
+  { kind: 'number', label: 'IE exploration coefficient (ρᴵᴱ)',
+    source: 'zAlphaStr', min: 0, step: 'any',
+    range: '[0 – 3]',
+    desc: 'IE score = μ + ρᴵᴱ·σ. 0 = pure exploitation (greedy); larger explores more. Used only by the IE policy.' },
+  { kind: 'number', label: 'Randomized-greedy noise std (ρˢᵗᵈᵈᵉᵛ)',
+    source: 'sigmaGreedyStr', min: 0, step: 'any',
+    range: '≥ 0 (θ units)',
+    desc: 'Standard deviation of the Gaussian noise added to the greedy θ pick. 0 = pure greedy. Used only by the Randomized greedy policy.' },
 
   { kind: 'section', label: 'Parameters controlling belief about the profit function (all per day)' },
   { kind: 'number', label: 'Length scale (ℓ)',
@@ -748,10 +764,12 @@ export default function SessionForm({
     setPrecomputing(true);
     let sid = null;
     try {
-      const acqConfigPayload =
-        isIE               ? { z_alpha: zAlpha } :
-        isRandomizedGreedy ? { sigma_greedy: sigmaGreedy } :
-        {};
+      // Always send both policy coefficients so the session carries them
+      // regardless of the starting policy — switching to IE / Randomized
+      // greedy later then uses the saved value, and a saved panel fully
+      // replicates the run. The backend ignores the one the active policy
+      // doesn't use.
+      const acqConfigPayload = { z_alpha: zAlpha, sigma_greedy: sigmaGreedy };
       const resp = await createSession({
         app_name: appName,
         policy: effectivePolicy,
@@ -860,10 +878,12 @@ export default function SessionForm({
       // acq_config carries the IE's z_alpha (θ^IE) or RandomizedGreedy's
       // sigma_greedy — server-side defaults are 0, so we only send the
       // one that applies to the selected policy.
-      const acqConfigPayload =
-        isIE               ? { z_alpha: zAlpha } :
-        isRandomizedGreedy ? { sigma_greedy: sigmaGreedy } :
-        {};
+      // Always send both policy coefficients so the session carries them
+      // regardless of the starting policy — switching to IE / Randomized
+      // greedy later then uses the saved value, and a saved panel fully
+      // replicates the run. The backend ignores the one the active policy
+      // doesn't use.
+      const acqConfigPayload = { z_alpha: zAlpha, sigma_greedy: sigmaGreedy };
       await onCreate({
         app_name: appName,
         policy: effectivePolicy,
@@ -1043,6 +1063,8 @@ export default function SessionForm({
     if (src === 'reportLevel') return reportLevel;
     if (src === 'seed')        return String(seed);
     if (src === 'mStarStr')    return mStarStr;
+    if (src === 'zAlphaStr')      return zAlphaStr;
+    if (src === 'sigmaGreedyStr') return sigmaGreedyStr;
     return '';
   };
   const setVal = (src, v) => {
@@ -1050,12 +1072,16 @@ export default function SessionForm({
     if (src === 'reportLevel') return setReportLevel(v);
     if (src === 'seed')        return setSeed(Number(v) || 0);
     if (src === 'mStarStr')    return setMStarStr(v);
+    if (src === 'zAlphaStr')      return setZAlphaStr(v);
+    if (src === 'sigmaGreedyStr') return setSigmaGreedyStr(v);
   };
   // Canonicalize on blur: for adv fields, snap to numeric; for seed, coerce int.
   const blurVal = (src) => {
     if (src.startsWith('adv:')) return canonicalize(src.slice(4));
     if (src === 'seed')        return setSeed(Math.max(0, Math.min(9999, Math.round(Number(seed) || 0))));
     if (src === 'mStarStr')    return setMStarStr(String(Math.max(1, Math.min(100, Math.round(Number(mStarStr) || 1)))));
+    if (src === 'zAlphaStr')      return setZAlphaStr(String(Math.max(0, Number(zAlphaStr) || 0)));
+    if (src === 'sigmaGreedyStr') return setSigmaGreedyStr(String(Math.max(0, Number(sigmaGreedyStr) || 0)));
   };
 
   return (
