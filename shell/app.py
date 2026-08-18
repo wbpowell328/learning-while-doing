@@ -912,6 +912,13 @@ def _reveal_cache_key(cfg, sc, session_seed: int, grid_size: int,
 def reveal(sid: str, grid_size: int = 30, n_reps: int = 50) -> RevealResponse:
     session = _get_or_404(sid)
     cfg = session._sim_config
+    # The reveal estimates the TRUE reward curve E[reward | θ]. Transaction
+    # noise (σ^trans) is mean-0, so it doesn't change that curve or its
+    # argmax — it would only add Monte-Carlo variance to the 50-rep
+    # estimate. Compute the reveal noise-free so the ground-truth optimum
+    # is stable and independent of σ^trans.
+    from dataclasses import replace as _replace
+    cfg = _replace(cfg, sigma_trans=0.0) if hasattr(cfg, "sigma_trans") else cfg
     sc = session._sc
     base_seed = session._session_seed + 999_000
     # Match the batch length the user is currently running so the true
