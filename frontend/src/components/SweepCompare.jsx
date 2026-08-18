@@ -1,4 +1,19 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+
+// Persist the panel's view state (which items, dots/bars, include-runs,
+// x-axis, open) across reloads — so editing a parameter (which relaunches
+// the app) doesn't reset the graph you were looking at. Keyed in
+// localStorage; the run-history log persists too, so the saved item keys
+// still match after a reload.
+const LS = {
+  open: 'lwd_cmp_open_v1', mode: 'lwd_cmp_mode_v1', runs: 'lwd_cmp_runs_v1',
+  sel: 'lwd_cmp_sel_v1', xparam: 'lwd_cmp_xparam_v1',
+};
+const lsGet = (k) => { try { return localStorage.getItem(k); } catch (_) { return null; } };
+const lsSet = (k, v) => {
+  try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); }
+  catch (_) { /* private mode / quota — ignore */ }
+};
 
 // Compare-sweeps panel — a chart view over the Run-history log. Every
 // seed sweep already persists its per-seed rows plus a Sweep-avg row,
@@ -276,9 +291,12 @@ function SweepChart({ clusters, xLabel, mode }) {
 }
 
 export default function SweepCompare({ rows = [] }) {
-  const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState('bars');          // 'bars' | 'dots'
-  const [includeRuns, setIncludeRuns] = useState(false);
+  const [open, setOpen] = useState(() => lsGet(LS.open) === '1');
+  useEffect(() => { lsSet(LS.open, open ? '1' : '0'); }, [open]);
+  const [mode, setMode] = useState(() => (lsGet(LS.mode) === 'dots' ? 'dots' : 'bars'));  // 'bars' | 'dots'
+  useEffect(() => { lsSet(LS.mode, mode); }, [mode]);
+  const [includeRuns, setIncludeRuns] = useState(() => lsGet(LS.runs) === '1');
+  useEffect(() => { lsSet(LS.runs, includeRuns ? '1' : '0'); }, [includeRuns]);
   const sweeps = useMemo(() => groupSweeps(rows), [rows]);
   const runs = useMemo(() => groupRuns(rows), [rows]);
 
@@ -290,13 +308,27 @@ export default function SweepCompare({ rows = [] }) {
       String(b.sample.ts ?? '').localeCompare(String(a.sample.ts ?? '')));
   }, [sweeps, runs, includeRuns]);
 
-  // Selection: which items to plot. Default to all once opened.
-  const [selected, setSelected] = useState(null);   // null = "not yet initialised"
+  // Selection: which items to plot. null = "not yet chosen" → all. Restored
+  // from localStorage so a chosen subset survives a parameter-edit reload.
+  const [selected, setSelected] = useState(() => {
+    const raw = lsGet(LS.sel);
+    if (raw) {
+      try { const arr = JSON.parse(raw); if (Array.isArray(arr)) return new Set(arr); } catch (_) { /* bad JSON */ }
+    }
+    return null;
+  });
+  useEffect(() => {
+    lsSet(LS.sel, selected ? JSON.stringify([...selected]) : null);
+  }, [selected]);
   const sel = selected ?? new Set(items.map(g => g.key));
 
-  // X-axis parameter: default to the first param that actually varies
-  // across the selected items.
-  const [xParam, setXParam] = useState(null);
+  // X-axis parameter: default (null) to the first param that varies across
+  // the selection. Restored from localStorage if the user set one.
+  const [xParam, setXParam] = useState(() => {
+    const v = lsGet(LS.xparam);
+    return X_PARAMS.some(p => p.key === v) ? v : null;
+  });
+  useEffect(() => { lsSet(LS.xparam, xParam); }, [xParam]);
   const selectedSweeps = items.filter(g => sel.has(g.key));
   const autoX = useMemo(() => {
     for (const p of X_PARAMS) {
