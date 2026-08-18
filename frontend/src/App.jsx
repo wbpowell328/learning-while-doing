@@ -1457,19 +1457,12 @@ export default function App() {
           {session.dim === 1 && (
             <>
               <div className="card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <div style={{ marginBottom: 4 }}>
                   <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
-                    KG(x) — 1% grid
-                  </span>
-                  <span style={{ fontSize: 12, color: '#94a3b8' }}>
-                    correlated (analytic vs MC) vs independent beliefs
+                    KG(x)
                   </span>
                 </div>
-                <KGChart
-                  kg={kgComparison}
-                  sessionMStar={session.m_star ?? 1}
-                  onMStarChange={handleMStarChange}
-                />
+                <KGChart kg={kgComparison} />
                 {isHuman && (
                   <ImpparamSlider
                     impparam={impparam}

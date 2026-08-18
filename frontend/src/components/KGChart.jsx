@@ -1,5 +1,3 @@
-import { useState, useEffect } from 'react';
-
 // Five decision-value curves side by side, so the user can see how the
 // candidate policies pick their next θ:
 //
@@ -75,42 +73,7 @@ function argExtremum(impparams, values, mode /* 'max' | 'min' */) {
   return bestI < 0 ? null : impparams[bestI];
 }
 
-// Small controlled integer input for the lookahead / noise-factor.
-// Only fires onCommit on blur or Enter — avoids one request per
-// keystroke while the user types 100.
-function NoiseFactorInput({ value, onCommit }) {
-  const [str, setStr] = useState(String(value));
-  useEffect(() => { setStr(String(value)); }, [value]);
-  const commit = () => {
-    const v = Math.round(Number(str));
-    if (!Number.isFinite(v) || v < 1 || v > 100) { setStr(String(value)); return; }
-    if (v === value) return;
-    onCommit(v);
-  };
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8,
-                  fontSize: 12, color: '#475569' }}>
-      <label style={{ fontWeight: 600 }}>Noise factor ρ<sup>lkhd</sup>:</label>
-      <input
-        type="number"
-        value={str}
-        min={1}
-        max={100}
-        step={1}
-        onChange={e => setStr(e.target.value)}
-        onBlur={commit}
-        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }}
-        style={{ width: 64, padding: '3px 6px', border: '1px solid #cbd5e1',
-                 borderRadius: 4, fontSize: 12 }}
-      />
-      <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>
-        multiplies the precision of the measurement noise in KG (1–100 · default 1 for offline)
-      </span>
-    </div>
-  );
-}
-
-export default function KGChart({ kg, sessionMStar = 1, onMStarChange }) {
+export default function KGChart({ kg }) {
   if (!kg) {
     return (
       <div style={{ height: H, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -154,10 +117,6 @@ export default function KGChart({ kg, sessionMStar = 1, onMStarChange }) {
     .join('');
 
   return (
-    <>
-    {onMStarChange && (
-      <NoiseFactorInput value={sessionMStar} onCommit={onMStarChange} />
-    )}
     <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible' }}>
       {/* Horizontal gridlines from the LEFT axis */}
       {offTicks.map((v, i) => (
@@ -299,6 +258,5 @@ export default function KGChart({ kg, sessionMStar = 1, onMStarChange }) {
         })}
       </g>
     </svg>
-    </>
   );
 }
