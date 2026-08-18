@@ -182,7 +182,7 @@ export default function SeedSweep({
 
   const parsedBase   = Number(baseSeed);
   const parsedNSeeds = Math.max(2, Math.min(20, Math.round(Number(nSeeds)  || 0)));
-  const parsedHoriz  = Math.max(1, Math.min(500, Math.round(Number(horizon) || 0)));
+  const parsedHoriz  = Math.max(1, Math.min(1000, Math.round(Number(horizon) || 0)));
   const parsedRep    = Math.max(1, Math.min(100, Math.round(Number(repeat) || 0)));
   const canRun = !running && !disabled && Number.isFinite(parsedBase);
 

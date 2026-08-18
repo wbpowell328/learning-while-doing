@@ -211,7 +211,7 @@ export default function ExperimentBar({
     try {
       const raw = localStorage.getItem('lwd_horizon_v1');
       const n = Number(raw);
-      if (Number.isFinite(n) && n >= 1 && n <= 500) return String(Math.round(n));
+      if (Number.isFinite(n) && n >= 1 && n <= 1000) return String(Math.round(n));
     } catch (_) { /* private mode / quota — fall through to default */ }
     return '50';
   });
@@ -468,16 +468,14 @@ export default function ExperimentBar({
       })()}
 
       <span style={labelStyle}>Horizon</span>
-      <input type="number" min={1} max={100} step={1} value={nDays}
+      <input type="number" min={1} max={1000} step={1} value={nDays}
              placeholder="N"
              style={{ ...numStyleShort, width: 55 }}
-             title="Days per iteration (1–100). Horizon=50 with Repeat=100 → 5000 simulated days per Run."
+             title="Days per iteration (1–1000). Horizon=50 with Repeat=100 → 5000 simulated days per Run."
              onChange={e => setNDays(e.target.value)}
              onBlur={e => {
-               // Snap out-of-range typos into [1, 100] so a stray
-               // "500" doesn't push the top bar layout wider than
-               // it can hold on one line.
-               const v = Math.max(1, Math.min(100, Math.round(Number(e.target.value) || 0)));
+               // Snap out-of-range typos into [1, 1000].
+               const v = Math.max(1, Math.min(1000, Math.round(Number(e.target.value) || 0)));
                setNDays(String(v));
              }} />
       <span style={labelStyle}>days. Then update using policy</span>
