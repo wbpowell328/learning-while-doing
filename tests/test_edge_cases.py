@@ -72,3 +72,40 @@ def test_shortfall_series_nonnegative():
     """Pre-rebalance shortfall must never be negative."""
     r = simulate(CFG, impparam=0.01, horizon_weeks=26, session_seed=10, experiment_index=0)
     assert np.all(r.shortfall_series >= 0.0)
+
+
+# ---------------------------------------------------------------------------
+# Transaction noise (σ^trans): mean-0 $/day noise on profit only.
+# ---------------------------------------------------------------------------
+from dataclasses import replace
+
+
+def test_transaction_noise_touches_profit_not_cash():
+    """σ^trans perturbs total_reward only; the cash/flow path is unchanged,
+    the noise is reported separately, and it's reproducible per seed."""
+    quiet = replace(CFG, sigma_trans=0.0)
+    noisy = replace(CFG, sigma_trans=750.0)
+    a = simulate(quiet, 0.10, 0, 42, 0, n_days=100)
+    b = simulate(noisy, 0.10, 0, 42, 0, n_days=100)
+    assert np.array_equal(a.cash_series, b.cash_series)
+    assert np.array_equal(a.flow_series, b.flow_series)
+    assert a.transaction_noise == 0.0
+    assert b.transaction_noise != 0.0
+    assert b.total_reward == pytest.approx(
+        b.market_gain + b.cash_gain - b.shortfall_penalty + b.transaction_noise
+    )
+    # Reproducible for the same (seed, experiment_index).
+    assert simulate(noisy, 0.10, 0, 42, 0, n_days=100).transaction_noise == pytest.approx(
+        b.transaction_noise
+    )
+
+
+def test_transaction_noise_mean_zero_std_inflated():
+    """Across seeds the mean reward is ~unchanged (mean-0 noise) but the
+    std is clearly inflated."""
+    quiet = replace(CFG, sigma_trans=0.0)
+    noisy = replace(CFG, sigma_trans=750.0)
+    rq = np.array([simulate(quiet, 0.10, 0, s, 0, n_days=100).total_reward for s in range(300)])
+    rn = np.array([simulate(noisy, 0.10, 0, s, 0, n_days=100).total_reward for s in range(300)])
+    assert abs(rn.mean() - rq.mean()) < 0.15 * abs(rq.mean())
+    assert rn.std() > 3 * rq.std()

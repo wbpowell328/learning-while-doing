@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import numpy as np
+
 from .config import SimConfig
 from .costs import compute_costs, compute_rewards
 from .dynamics import run_path
@@ -57,7 +59,23 @@ def simulate(
         invested_series=invested_series,
         shortfall_series=shortfall_series,
     )
-    total_reward = market_gain + cash_gain - shortfall_penalty
+
+    # Transaction noise: independent, mean-0 $/day noise on the PROFIT only.
+    # One draw per day (so it scales with the horizon like the belief's
+    # per-day noise), summed into the reward. Drawn from a separate RNG
+    # stream keyed on (session_seed, experiment_index) so it's reproducible
+    # and does NOT perturb the cash/flow path draws. The cash app maximises,
+    # so the belief learns on total_reward (as −reward); total_cost is the
+    # legacy cost-frame decomposition and is left untouched (identity holds).
+    sigma_trans = float(getattr(config, "sigma_trans", 0.0) or 0.0)
+    transaction_noise = 0.0
+    if sigma_trans > 0.0:
+        noise_rng = np.random.default_rng(
+            np.random.SeedSequence(entropy=session_seed, spawn_key=(0x7A2C5, experiment_index))
+        )
+        transaction_noise = float(np.sum(noise_rng.normal(0.0, sigma_trans, size=n_days)))
+
+    total_reward = market_gain + cash_gain - shortfall_penalty + transaction_noise
 
     return SimResult(
         impparam=impparam,
@@ -67,6 +85,7 @@ def simulate(
         market_gain=market_gain,
         cash_gain=cash_gain,
         shortfall_penalty=shortfall_penalty,
+        transaction_noise=transaction_noise,
         total_cost=total_cost,
         opportunity_cost=opportunity_cost,
         shortfall_cost=shortfall_cost,

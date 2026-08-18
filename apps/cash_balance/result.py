@@ -19,7 +19,7 @@ class SimResult:
     experiment_index: int
 
     # --- Reward breakdown (user-facing; app is a MAXIMISATION problem) ---
-    total_reward: float        # = market_gain + cash_gain - shortfall_penalty
+    total_reward: float        # = market_gain + cash_gain - shortfall_penalty + transaction_noise
     market_gain: float         # r_market × Σ invested × dt
     cash_gain: float           # r_cash   × Σ cash     × dt
     shortfall_penalty: float   # r_borrow × Σ shortfall (proportional, per D8)
@@ -43,6 +43,11 @@ class SimResult:
 
     # --- Metadata ---
     days: int  # length of all series
+
+    # Σ of the mean-0 $/day transaction noise (σ^trans) folded into
+    # total_reward; 0.0 when the noise is disabled. Kept as its own field
+    # so total_reward's composition stays inspectable/testable.
+    transaction_noise: float = 0.0
 
     # --- Future belief-model consumer hook ---
     # Populated by a batch helper; None for a single run.

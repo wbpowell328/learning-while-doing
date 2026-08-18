@@ -45,6 +45,7 @@ const ADV_DEFAULTS = {
   // Converted on submit to jump_std_log = ln(p90$/median$)/z90 (z90≈1.2816).
   // $21k with median $11k ≈ log-std 0.5 (the old default).
   jump_p90_dollars:  '21000',
+  sigma_trans:       '750',        // σ^trans — mean-0 daily profit noise ($/day)
   sigma_net_annual:  '0.02',
   r_borrow_annual:   '0.10',
   // θ search-box bounds (1-D uses first component only; 2-D uses both)
@@ -248,6 +249,10 @@ const ROWS_1D = [
     source: 'adv:jump_p90_dollars', step: 'any', min: 1,
     range: '$1k – $1M',
     desc: 'Dollar size of a "large" jump — about 1 in 10 jumps is bigger than this (90th percentile). Set it above the median; the further above, the fatter the tail of rare big shocks. E.g. median $11k with a $21k large jump is a moderate spread, $50k is a fat tail.' },
+  { kind: 'number', label: 'Transaction noise (σᵗʳᵃⁿˢ, $/day)',
+    source: 'adv:sigma_trans', step: 'any', min: 0,
+    range: '$0 – $5,000 / day',
+    desc: 'Variations in profits due to transaction errors.' },
 
   { kind: 'section', label: 'Session' },
   { kind: 'int', label: 'Random number seed', source: 'seed', min: 0, max: 9999,
@@ -648,6 +653,7 @@ export default function SessionForm({
         jump_rate_annual: numeric('jump_rate_annual'),
         jump_mean_log:    _log_from_median('jump_median_dollars', _initial_aum),
         jump_std_log:     _std_from_p90('jump_p90_dollars', 'jump_median_dollars'),
+        sigma_trans:      numeric('sigma_trans'),
         sigma_net_annual: numeric('sigma_net_annual'),
         r_borrow_annual:  numeric('r_borrow_annual'),
         impparam_min:     impparamMin,
