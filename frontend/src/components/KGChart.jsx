@@ -73,7 +73,7 @@ function argExtremum(impparams, values, mode /* 'max' | 'min' */) {
   return bestI < 0 ? null : impparams[bestI];
 }
 
-export default function KGChart({ kg }) {
+export default function KGChart({ kg, nextTheta }) {
   if (!kg) {
     return (
       <div style={{ height: H, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -86,15 +86,21 @@ export default function KGChart({ kg }) {
   const { impparams } = kg;
 
   // "Next θ" per policy — everything's a maximisation, so argmax across
-  // every curve.
+  // every curve. These drive the small argmax rings on each curve.
   const nextByKey = Object.fromEntries(
     [...OFFLINE_SERIES, ...ONLINE_SERIES].map(s =>
       [s.key, argExtremum(impparams, kg[s.key], 'max')]
     )
   );
-  // The primary KG policy used by session.policy='kg' is offline analytic
-  // correlated — its argmax is what a "next step" click would sample.
-  const primaryNext = nextByKey.analytic_correlated;
+  // The prominent green "next θ" vertical marks where the ACTIVE policy
+  // will actually sample next — the backend's authoritative next_theta
+  // preview (deterministic for the KG family and IE). This is keyed to
+  // whatever policy the user is running, NOT hard-wired to offline KG,
+  // so on (say) Ryzhov the line lands on the Ryzhov pick instead of the
+  // offline-KG exploration point. Falls back to nothing (e.g. Manual /
+  // Human, which propose no θ).
+  const _nt = Array.isArray(nextTheta) ? nextTheta[0] : nextTheta;
+  const primaryNext = (typeof _nt === 'number' && Number.isFinite(_nt)) ? _nt : null;
 
   // Offline axis (left)
   const offVals = OFFLINE_SERIES.flatMap(s => kg[s.key]);

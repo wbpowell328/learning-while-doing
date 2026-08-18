@@ -1462,7 +1462,7 @@ export default function App() {
                     Policy value vs θ
                   </span>
                 </div>
-                <KGChart kg={kgComparison} />
+                <KGChart kg={kgComparison} nextTheta={nextTheta} />
                 {isHuman && (
                   <ImpparamSlider
                     impparam={impparam}
