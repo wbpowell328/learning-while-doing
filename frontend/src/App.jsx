@@ -1462,7 +1462,9 @@ export default function App() {
                     Policy value vs θ
                   </span>
                 </div>
-                <KGChart kg={kgComparison} nextTheta={nextTheta} />
+                <KGChart kg={kgComparison} nextTheta={nextTheta}
+                  lastTheta={Array.isArray(history) && history.length
+                    ? history[history.length - 1][0] : null} />
                 {isHuman && (
                   <ImpparamSlider
                     impparam={impparam}

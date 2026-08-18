@@ -73,7 +73,7 @@ function argExtremum(impparams, values, mode /* 'max' | 'min' */) {
   return bestI < 0 ? null : impparams[bestI];
 }
 
-export default function KGChart({ kg, nextTheta }) {
+export default function KGChart({ kg, nextTheta, lastTheta }) {
   if (!kg) {
     return (
       <div style={{ height: H, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -101,6 +101,14 @@ export default function KGChart({ kg, nextTheta }) {
   // Human, which propose no θ).
   const _nt = Array.isArray(nextTheta) ? nextTheta[0] : nextTheta;
   const primaryNext = (typeof _nt === 'number' && Number.isFinite(_nt)) ? _nt : null;
+
+  // The θ the LAST experiment actually sampled. Drawn as a separate
+  // slate marker so the user can see past-vs-future at a glance: the
+  // chart already folds in this observation, so after sampling here the
+  // acquisition value drops and the argmax (next θ) generally moves —
+  // that's why "next θ" sits away from "last θ" on exploration steps.
+  const _lt = Array.isArray(lastTheta) ? lastTheta[0] : lastTheta;
+  const lastSampled = (typeof _lt === 'number' && Number.isFinite(_lt)) ? _lt : null;
 
   // Offline axis (left)
   const offVals = OFFLINE_SERIES.flatMap(s => kg[s.key]);
@@ -134,7 +142,26 @@ export default function KGChart({ kg, nextTheta }) {
       <line x1={PAD.left} x2={W - PAD.right} y1={y0Off} y2={y0Off}
             stroke="#94a3b8" strokeWidth={1} />
 
-      {/* "Next θ" vertical for the primary offline KG policy (analytic correlated). */}
+      {/* "Last θ" — where the most recent experiment actually sampled.
+          Slate, label pinned to the bottom so it never collides with the
+          green "next θ" label at the top. Seeing both makes the temporal
+          story explicit: we sampled HERE, the belief updated, so the
+          policy's NEXT pick (green) is generally somewhere else. */}
+      {lastSampled != null && (
+        <>
+          <line x1={xS(lastSampled)} x2={xS(lastSampled)}
+                y1={PAD.top} y2={H - PAD.bottom}
+                stroke="#64748b" strokeWidth={1.5}
+                strokeDasharray="2,3" opacity={0.7} />
+          <text x={xS(lastSampled) + 5} y={H - PAD.bottom - 6}
+                fill="#64748b" fontSize={11} fontWeight={600}>
+            last θ={lastSampled.toFixed(3)}
+          </text>
+        </>
+      )}
+
+      {/* "Next θ" vertical — the ACTIVE policy's next pick (backend
+          next_theta preview). */}
       {primaryNext != null && (
         <>
           <line x1={xS(primaryNext)} x2={xS(primaryNext)}
