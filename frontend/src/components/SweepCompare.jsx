@@ -165,10 +165,21 @@ function SweepChart({ clusters, xLabel, mode }) {
       if (Number.isFinite(c.st.std)) vals.push(c.st.mean + c.st.std, c.st.mean - c.st.std);
     }
   });
-  let lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
-  if (lo === hi) hi = lo + 1;
-  const pad = (hi - lo) * 0.08;
-  lo -= (lo < 0 ? pad : 0); hi += pad;
+  // Bars need a zero baseline; dots don't — so in dots mode zoom the axis
+  // to the data range instead of anchoring at 0, otherwise a tight cluster
+  // of large values gets squashed against the top.
+  let lo, hi;
+  if (mode === 'bars') {
+    lo = Math.min(0, ...vals); hi = Math.max(0, ...vals);
+    if (lo === hi) hi = lo + 1;
+    const pad = (hi - lo) * 0.08;
+    lo -= (lo < 0 ? pad : 0); hi += pad;
+  } else {
+    lo = Math.min(...vals); hi = Math.max(...vals);
+    if (lo === hi) { const d = Math.max(1, Math.abs(lo) * 0.05); lo -= d; hi += d; }
+    const pad = (hi - lo) * 0.08;
+    lo -= pad; hi += pad;
+  }
   const y = v => m.top + ph - ((v - lo) / (hi - lo)) * ph;
   const y0 = y(0);
 
