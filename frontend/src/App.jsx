@@ -882,6 +882,13 @@ export default function App() {
       ...(acq_config && Object.keys(acq_config).length ? { acq_config } : {}),
       // KG-family m* (θ^KGm*): applies to KG variants; harmless for others.
       ...(m_star != null ? { m_star } : {}),
+      // Ryzhov N — MUST be sent at create time so the OKGRyzhov policy is
+      // built with the right (N−n) weight. If omitted, the backend session
+      // keeps _budget=None and the policy defaults to N=10, while the KG
+      // chart falls back to the frontend's N as a query param — so the
+      // plotted Ryzhov curve (large N) and the policy's actual pick (N=10)
+      // silently disagree until the user happens to edit the N box.
+      ...(budget != null ? { budget } : {}),
     });
     const session_id = created.session_id;
     const dim = created.dim ?? 1;

@@ -1209,8 +1209,22 @@ def kg_comparison(
     # Ryzhov: N = session.budget (fall back to query param), n = steps used.
     # max(0, N-n) keeps the weight nonneg once the "measurement budget" is
     # exhausted; past that point Ryzhov collapses to pure exploitation μ.
-    N = int(session.budget) if getattr(session, "budget", None) is not None else int(budget)
-    n_used = int(session.n_steps)
+    # Prefer the ACTIVE Ryzhov policy's own N and the belief's observation
+    # count — the exact (N, n) that propose() uses — so the plotted curve's
+    # argmax always equals the θ the policy actually samples. Only fall back
+    # to session.budget / the query param when Ryzhov isn't the active policy
+    # (the curve is still drawn for side-by-side comparison). This closes a
+    # silent split: if the session was created without a budget, _budget is
+    # None, the policy defaults to N=10, but the chart used to fall back to
+    # the frontend's N query param — so the curve (large N) and the pick
+    # (N=10) disagreed.
+    pol = session._policy
+    if isinstance(pol, OKGRyzhovCorrelatedPolicy):
+        N = int(pol._N)
+        n_used = int(session.belief.n_observations)
+    else:
+        N = int(session.budget) if getattr(session, "budget", None) is not None else int(budget)
+        n_used = int(session.n_steps)
     ryzhov_weight = max(0, N - n_used)
     ryzhov = (mu_display + ryzhov_weight * ana_display).tolist()
 

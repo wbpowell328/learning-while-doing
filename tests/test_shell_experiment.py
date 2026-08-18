@@ -221,3 +221,27 @@ def test_kg_chart_ryzhov_argmax_matches_policy_pick():
                         json={"n_days": 10, "policy": "okg_ryzhov", "K": 0}).json()
         played = float(b["history"][-1][0])
         assert abs(chart_argmax - played) < 1e-9, (chart_argmax, played)
+
+
+def test_kg_chart_ryzhov_matches_policy_when_session_has_no_budget():
+    """Regression: a Ryzhov session created WITHOUT a budget keeps _budget=None
+    and the policy defaults to N=10. The KG chart must still reflect that N — it
+    must NOT fall back to the frontend's `budget` query param, or the plotted
+    curve (large N) and the policy's pick (N=10) silently disagree. The chart
+    now reads N from the active Ryzhov policy, so the marked argmax matches the
+    θ actually sampled even when the query param lies (here budget=20)."""
+    import numpy as np
+    sid = make_session(policy="okg_ryzhov", m_star=10)  # note: no budget sent
+    client.post(f"/sessions/{sid}/experiment",
+                json={"theta_init": 0.09, "n_days": 10, "policy": "okg_ryzhov",
+                      "K": 0, "m_star": 10})
+    for _ in range(8):
+        # Query param deliberately disagrees with the policy's actual N (10).
+        kg = client.get(f"/sessions/{sid}/kg?spacing=0.01&budget=20").json()
+        probes = np.array(kg["impparams"]); ry = np.array(kg["ryzhov"])
+        chart_argmax = float(probes[int(np.argmax(ry))])
+        b = client.post(f"/sessions/{sid}/one_more",
+                        json={"n_days": 10, "policy": "okg_ryzhov", "K": 0,
+                              "m_star": 10}).json()
+        played = float(b["history"][-1][0])
+        assert abs(chart_argmax - played) < 1e-9, (chart_argmax, played)
