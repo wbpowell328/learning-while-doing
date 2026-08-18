@@ -1459,7 +1459,7 @@ export default function App() {
               <div className="card">
                 <div style={{ marginBottom: 4 }}>
                   <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
-                    KG(x)
+                    Policy value vs θ
                   </span>
                 </div>
                 <KGChart kg={kgComparison} />
