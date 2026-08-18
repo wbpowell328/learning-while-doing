@@ -202,3 +202,22 @@ def test_one_more_rejects_bad_n_days():
                 json={"theta_init": 0.05, "n_days": 20, "policy": "kg", "K": 1})
     r = client.post(f"/sessions/{sid}/one_more", json={"n_days": 0})
     assert r.status_code == 400
+
+
+def test_kg_chart_ryzhov_argmax_matches_policy_pick():
+    """Regression: the KG chart's Ryzhov curve must be evaluated on the same
+    grid the policy picks over, so the marked argmax equals the θ actually
+    sampled. Previously the chart used a coarse probe grid and, on a bimodal
+    curve, could mark a different peak than the policy chose."""
+    import numpy as np
+    sid = make_session(policy="okg_ryzhov", budget=10, m_star=1)
+    client.post(f"/sessions/{sid}/experiment",
+                json={"theta_init": 0.10, "n_days": 10, "policy": "okg_ryzhov", "K": 0})
+    for _ in range(8):
+        kg = client.get(f"/sessions/{sid}/kg?spacing=0.01&budget=10").json()
+        probes = np.array(kg["impparams"]); ry = np.array(kg["ryzhov"])
+        chart_argmax = float(probes[int(np.argmax(ry))])
+        b = client.post(f"/sessions/{sid}/one_more",
+                        json={"n_days": 10, "policy": "okg_ryzhov", "K": 0}).json()
+        played = float(b["history"][-1][0])
+        assert abs(chart_argmax - played) < 1e-9, (chart_argmax, played)

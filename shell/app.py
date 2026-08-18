@@ -1174,16 +1174,14 @@ def kg_comparison(
     session = _get_or_404(sid)
     cfg = session._acq_config
 
-    # Build probe grid: multiples of `spacing` inside [impparam_min, impparam_max].
-    first = float(np.ceil(cfg.impparam_min / spacing) * spacing)
-    if first < cfg.impparam_min - 1e-9:
-        first += spacing
-    probes = np.arange(first, cfg.impparam_max + spacing * 1e-6, spacing)
-    if probes.size == 0:
-        probes = np.array([0.5 * (cfg.impparam_min + cfg.impparam_max)])
-
-    # Search grid: the same 100-point grid the KG policy uses.
+    # Evaluate the curves on the SAME fine grid the KG policies pick over
+    # (cfg.grid_size points), so the chart's marked argmax ("next θ")
+    # matches the θ the policy actually samples. Previously the curves used
+    # a coarse `spacing` probe grid, so the marker and the real observation
+    # disagreed whenever the true peak fell between probes. `spacing` is
+    # still accepted (URL back-compat) but no longer changes the grid.
     search_grid = np.linspace(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
+    probes = search_grid
 
     # ρ^lkhd (a.k.a. m*): scales the effective precision of the
     # hypothetical observation KG integrates over. The "noise factor"

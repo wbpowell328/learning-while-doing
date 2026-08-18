@@ -149,7 +149,9 @@ export default function KGChart({ kg }) {
                 stroke={color} strokeWidth={width}
                 strokeDasharray={dash ?? undefined}
                 opacity={0.9} />
-          {impparams.map((c, i) => (
+          {/* Per-point dots only when the grid is coarse; on the fine
+              policy grid (~100 pts) the line alone reads cleaner. */}
+          {impparams.length <= 40 && impparams.map((c, i) => (
             <circle key={i} cx={xS(c)} cy={yOff(kg[key][i])} r={2.3}
                     fill={color} opacity={0.9} />
           ))}
