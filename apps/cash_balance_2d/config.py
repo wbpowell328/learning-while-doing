@@ -35,6 +35,11 @@ class SimConfig:
     jump_std_log_inst: float = 0.6
     jump_inflow_prob_inst: float = 0.5
 
+    # --- Profit noise (does NOT affect cash dynamics) ---
+    # Independent mean-0, $/day noise added to the daily profit only, to
+    # model transaction errors. Mirrors the 1-D cash_balance app.
+    sigma_trans: float = 750.0              # σ^trans — std of daily profit noise ($/day)
+
     # --- Market regime (same 2-state HMM as 1D version) ---
     stationary: bool = False
     mu_regime_annual: tuple[float, float] = (0.001, -0.001)

@@ -85,3 +85,24 @@ def test_aum_and_portfolio_agree_at_end():
     assert abs(aum_sum - portfolio) < 1e-6 * max(abs(aum_sum), 1.0), (
         f"AUM sum {aum_sum:.2f} != portfolio {portfolio:.2f}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Transaction noise (σ^trans): mean-0 $/day profit noise, cash path unchanged.
+# ---------------------------------------------------------------------------
+from dataclasses import replace
+
+
+def test_transaction_noise_2d_touches_profit_not_cash():
+    quiet = replace(CFG, sigma_trans=0.0)
+    noisy = replace(CFG, sigma_trans=750.0)
+    th = [0.10, 0.15]
+    a = simulate(quiet, th, 0, 42, 0, n_days=100)
+    b = simulate(noisy, th, 0, 42, 0, n_days=100)
+    assert np.array_equal(a.cash_series, b.cash_series)
+    assert a.transaction_noise == 0.0 and b.transaction_noise != 0.0
+    assert b.total_reward == pytest.approx(
+        b.market_gain + b.cash_gain
+        - b.shortfall_ind_penalty - b.shortfall_inst_penalty
+        + b.transaction_noise
+    )

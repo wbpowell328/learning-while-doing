@@ -56,3 +56,8 @@ class SimResult:
 
     # --- Metadata ---
     days: int  # length of all series
+
+    # Σ of mean-0 $/day transaction noise (σ^trans) folded into
+    # total_reward; 0.0 when disabled. Kept separate so total_reward's
+    # composition stays inspectable.
+    transaction_noise: float = 0.0

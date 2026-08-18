@@ -351,6 +351,10 @@ const ROWS_2D = [
     source: 'adv:r_borrow_inst_annual', step: 'any', min: 0,
     range: '0.01 – 0.20',
     desc: 'Cost per $ of forced liquidation to meet an institutional withdrawal.' },
+  { kind: 'number', label: 'Transaction noise (σᵗʳᵃⁿˢ, $/day)',
+    source: 'adv:sigma_trans', step: 'any', min: 0,
+    range: '$0 – $5,000 / day',
+    desc: 'Variations in profits due to transaction errors.' },
 
   { kind: 'section', label: 'Session' },
   { kind: 'int', label: 'Random number seed', source: 'seed', min: 0, max: 9999,
@@ -644,6 +648,7 @@ export default function SessionForm({
         jump_mean_log_inst:    _log_from_median('jump_median_dollars_inst', _aum_inst_2d),
         jump_std_log_inst:     _std_from_p90('jump_p90_dollars_inst', 'jump_median_dollars_inst'),
         r_borrow_inst_annual:  numeric('r_borrow_inst_annual'),
+        sigma_trans:           numeric('sigma_trans'),
       }
     : {
         stationary,
