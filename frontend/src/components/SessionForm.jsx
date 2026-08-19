@@ -1,5 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { createSession, getReveal, deleteSession } from '../api';
+import {
+  fetchPublicIndex, fetchPublicPanel, isAdminOn, getAdminToken, setAdminToken,
+  publishPanel, renamePublicPanel, deletePublicPanel, PAT_HELP_URL,
+} from '../publicLibrary';
 
 // Defaults must match backend Pydantic defaults (shell/models.py) so the
 // initial UI state is consistent with what the API would use for an empty
@@ -557,6 +561,20 @@ export default function SessionForm({
   // Basic = core charts only; Advanced also shows the KG(x;m) card.
   const [reportLevel, setReportLevel] = useState(savedAdv.reportLevel ?? 'basic');
 
+  // Public parameter-panel library (read from warrenpowell.org; admin can
+  // publish via GitHub). `pubPanels` holds the full manifest; we filter to
+  // the current app at render. `adminOn` gates the publish/rename/delete UI.
+  const [pubPanels, setPubPanels] = useState([]);
+  const [pubSel, setPubSel]       = useState('');
+  const [pubMsg, setPubMsg]       = useState('');
+  const [adminOn]                 = useState(() => isAdminOn());
+  const [tokenTick, setTokenTick] = useState(0);   // bump to re-render token status
+  useEffect(() => {
+    let alive = true;
+    fetchPublicIndex().then(list => { if (alive) setPubPanels(list); });
+    return () => { alive = false; };
+  }, []);
+
   // Advanced parameters — kept as strings during typing.
   const [adv, setAdv] = useState({ ...ADV_DEFAULTS, ...(savedAdv.adv ?? {}) });
   const setField     = (k, v) => setAdv(prev => ({ ...prev, [k]: v }));
@@ -719,9 +737,10 @@ export default function SessionForm({
   // Load a named panel: populate every form field from its saved
   // values (falling back to ADV_DEFAULTS for anything missing so old
   // panels get new fields automatically) and mark it active.
-  function loadPanel(name) {
-    const blob = panelsStore?.[initialAppName]?.panels?.[name];
-    if (!blob) return;
+  // Populate every form field from a panel blob (falling back to
+  // ADV_DEFAULTS for anything missing so old / imported panels pick up
+  // new fields automatically). Does NOT touch the panels store.
+  function applyBlob(blob) {
     setSeed(blob.seed ?? 42);
     setStationary(blob.stationary ?? true);
     setMStarStr(blob.mStar       != null ? String(blob.mStar)       : '1');
@@ -730,6 +749,12 @@ export default function SessionForm({
     setFlowHorizonStr(blob.flowHorizon != null ? String(blob.flowHorizon) : '200');
     setReportLevel(blob.reportLevel ?? 'basic');
     setAdv({ ...ADV_DEFAULTS, ...(blob.adv ?? {}) });
+  }
+
+  function loadPanel(name) {
+    const blob = panelsStore?.[initialAppName]?.panels?.[name];
+    if (!blob) return;
+    applyBlob(blob);
     setPanelsStore(prev => {
       const nextStore = {
         ...prev,
@@ -738,6 +763,109 @@ export default function SessionForm({
       writePanelsStore(nextStore);
       return nextStore;
     });
+  }
+
+  // Import a blob (e.g. from the public library) as a NEW private panel
+  // named `name`, make it active, and load it into the form. Overwrites a
+  // private panel of the same name.
+  function importBlobAsPanel(blob, name) {
+    applyBlob(blob);
+    setPanelsStore(prev => {
+      const nextForApp = {
+        active: name,
+        panels: { ...(prev?.[initialAppName]?.panels ?? {}), [name]: blob },
+      };
+      const nextStore = { ...prev, [initialAppName]: nextForApp };
+      writePanelsStore(nextStore);
+      return nextStore;
+    });
+    writeSavedAdvanced(blob);
+  }
+
+  // ── Public library handlers ───────────────────────────────────────────────
+  const pubForApp = pubPanels.filter(p => (p.app ?? 'cash_balance') === appName);
+
+  async function reloadPublicIndex() {
+    setPubPanels(await fetchPublicIndex());
+  }
+
+  // Load a public panel into a private panel of the same title, then load it.
+  async function handleLoadPublic() {
+    const entry = pubForApp.find(p => p.file === pubSel);
+    if (!entry) { setPubMsg('Pick a library panel first.'); return; }
+    try {
+      setPubMsg('Loading "' + entry.title + '"…');
+      const file = await fetchPublicPanel(entry.file);
+      const blob = file?.blob ?? file;            // tolerate a flat blob
+      importBlobAsPanel(blob, entry.title);
+      setPubSel('');
+      setPubMsg('Loaded "' + entry.title + '" into a private panel — tweak it, then Save and exit.');
+    } catch (e) { setPubMsg(String(e?.message || e)); }
+  }
+
+  function promptForToken() {
+    const cur = getAdminToken();
+    const note = cur ? ' (a token is already set — leave blank to keep it)' : '';
+    const tok = window.prompt(
+      'Paste a GitHub fine-grained PAT with Contents: Read and write on sda-website.' + note, '');
+    if (tok == null) return;
+    const trimmed = tok.trim();
+    if (!trimmed) return;
+    setAdminToken(trimmed);
+    setTokenTick(t => t + 1);
+    setPubMsg('Token saved to this browser only.');
+  }
+  function clearToken() {
+    if (!getAdminToken()) return;
+    if (!window.confirm('Clear the stored GitHub token from this browser?')) return;
+    setAdminToken('');
+    setTokenTick(t => t + 1);
+    setPubMsg('Token cleared.');
+  }
+
+  async function handlePublish() {
+    if (!getAdminToken()) { promptForToken(); if (!getAdminToken()) return; }
+    const title = window.prompt('Public title (shown in the library):', activePanelName);
+    if (title == null) return;
+    const t = title.trim();
+    if (!t) { setPubMsg('Title cannot be empty.'); return; }
+    const description = window.prompt('One-line description:', '') ?? '';
+    try {
+      setPubMsg('Publishing to GitHub… (a rebuild takes ~90s)');
+      await publishPanel({ app: appName, title: t, description: description.trim(),
+                           blob: currentFormBlob() });
+      setPubMsg('Published "' + t + '". It appears in the library after GitHub Pages rebuilds (~90s).');
+      setTimeout(reloadPublicIndex, 4000);
+    } catch (e) { setPubMsg(String(e?.message || e)); }
+  }
+
+  async function handleRenamePublic() {
+    const entry = pubForApp.find(p => p.file === pubSel);
+    if (!entry) { setPubMsg('Pick a library panel to rename.'); return; }
+    if (!getAdminToken()) { promptForToken(); if (!getAdminToken()) return; }
+    const title = window.prompt('New title:', entry.title);
+    if (title == null || !title.trim()) return;
+    const description = window.prompt('New description:', entry.description ?? '') ?? '';
+    try {
+      setPubMsg('Renaming…');
+      await renamePublicPanel(entry.file, title.trim(), description.trim());
+      setPubMsg('Renamed. Live after the ~90s rebuild.');
+      setTimeout(reloadPublicIndex, 4000);
+    } catch (e) { setPubMsg(String(e?.message || e)); }
+  }
+
+  async function handleDeletePublic() {
+    const entry = pubForApp.find(p => p.file === pubSel);
+    if (!entry) { setPubMsg('Pick a library panel to delete.'); return; }
+    if (!getAdminToken()) { promptForToken(); if (!getAdminToken()) return; }
+    if (!window.confirm('Delete public panel "' + entry.title + '" from the library? This commits a deletion to GitHub.')) return;
+    try {
+      setPubMsg('Deleting…');
+      await deletePublicPanel(entry.file);
+      setPubSel('');
+      setPubMsg('Deleted "' + entry.title + '". Live after the ~90s rebuild.');
+      setTimeout(reloadPublicIndex, 4000);
+    } catch (e) { setPubMsg(String(e?.message || e)); }
   }
 
   // Warm the backend reveal cache for the current form values.
@@ -1172,6 +1300,82 @@ export default function SessionForm({
             &nbsp;·&nbsp; <b>Rename</b>/<b>Delete</b> act on the panel currently
             in the dropdown (Default is protected).
           </p>
+
+          {/* Public library — curated panels shared through the sda-website
+              repo. Anyone can Load one (it becomes a private panel you can
+              edit). With ?admin=1 you can Publish / Rename / Delete via a
+              GitHub token stored only in this browser. */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
+                        margin: '0 0 16px 2px', padding: '8px 10px',
+                        border: '1px solid #e2e8f0', borderRadius: 6, background: '#f8fafc' }}>
+            <span style={{ color: '#64748b', fontSize: 13, fontWeight: 600 }}>Public library:</span>
+            <select value={pubSel} onChange={e => { setPubSel(e.target.value); setPubMsg(''); }}
+                    style={{ padding: '3px 6px', border: '1px solid #cbd5e1', borderRadius: 4,
+                             fontSize: 13, background: '#fff', maxWidth: 340 }}>
+              <option value="">{pubForApp.length ? '— choose a shared panel —' : '(none published yet)'}</option>
+              {pubForApp.map(p => (
+                <option key={p.file} value={p.file}>{p.title}</option>
+              ))}
+            </select>
+            <button type="button" onClick={handleLoadPublic} disabled={!pubSel}
+                    style={{ padding: '3px 12px', border: '1px solid #cbd5e1', borderRadius: 4,
+                             fontSize: 12, background: '#fff',
+                             cursor: pubSel ? 'pointer' : 'not-allowed', opacity: pubSel ? 1 : 0.5 }}
+                    title="Load the selected shared panel into a new private panel you can edit.">
+              Load
+            </button>
+            {(() => {
+              const e = pubForApp.find(p => p.file === pubSel);
+              return e?.description
+                ? <span style={{ fontSize: 11.5, color: '#94a3b8', maxWidth: 360 }}>{e.description}</span>
+                : null;
+            })()}
+
+            {adminOn && (
+              <>
+                <span style={{ width: 1, height: 20, background: '#e2e8f0' }} />
+                <span style={{ fontSize: 11, color: getAdminToken() ? '#15803d' : '#b45309' }}
+                      data-token-tick={tokenTick}>
+                  {getAdminToken() ? 'admin · token ' + getAdminToken().slice(0, 7) + '…' : 'admin · no token'}
+                </span>
+                <button type="button" onClick={promptForToken}
+                        style={{ padding: '3px 10px', border: '1px solid #cbd5e1', borderRadius: 4,
+                                 fontSize: 12, background: '#fff', cursor: 'pointer' }}>
+                  Set / change token
+                </button>
+                {getAdminToken() && (
+                  <button type="button" onClick={clearToken}
+                          style={{ padding: '3px 10px', border: '1px solid #cbd5e1', borderRadius: 4,
+                                   fontSize: 12, background: '#fff', cursor: 'pointer' }}>
+                    Clear token
+                  </button>
+                )}
+                <button type="button" onClick={handlePublish}
+                        style={{ padding: '3px 12px', border: '1px solid #2563eb', borderRadius: 4,
+                                 fontSize: 12, background: '#2563eb', color: '#fff', cursor: 'pointer' }}
+                        title="Publish the CURRENT form values to the public library.">
+                  Publish current panel…
+                </button>
+                <button type="button" onClick={handleRenamePublic} disabled={!pubSel}
+                        style={{ padding: '3px 10px', border: '1px solid #cbd5e1', borderRadius: 4,
+                                 fontSize: 12, background: '#fff',
+                                 cursor: pubSel ? 'pointer' : 'not-allowed', opacity: pubSel ? 1 : 0.5 }}>
+                  Rename public
+                </button>
+                <button type="button" onClick={handleDeletePublic} disabled={!pubSel}
+                        style={{ padding: '3px 10px', border: '1px solid #cbd5e1', borderRadius: 4,
+                                 fontSize: 12, background: '#fff', color: '#b91c1c',
+                                 cursor: pubSel ? 'pointer' : 'not-allowed', opacity: pubSel ? 1 : 0.5 }}>
+                  Delete public
+                </button>
+                <a href={PAT_HELP_URL} target="_blank" rel="noreferrer"
+                   style={{ fontSize: 11, color: '#2563eb' }}>token help</a>
+              </>
+            )}
+            {pubMsg && (
+              <span style={{ fontSize: 11.5, color: '#475569', flexBasis: '100%' }}>{pubMsg}</span>
+            )}
+          </div>
 
           <table style={{
             width: '100%', borderCollapse: 'collapse',
