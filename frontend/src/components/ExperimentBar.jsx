@@ -25,8 +25,8 @@ import { useState, useEffect, useRef } from 'react';
 // intentionally hidden from the dropdown — kept in code so we can bring
 // them back without a backend redeploy.
 const POLICY_OPTIONS_1D = [
-  { value: 'okg_ryzhov',        label: 'KG online correlated — Ryzhov (μ + (N−n)·KG(ρˡᵏʰᵈ))' },
-  { value: 'okg',               label: 'KG online correlated (μ + KG(ρˡᵏʰᵈ))' },
+  { value: 'okg_ryzhov',        label: 'KG online correlated — Ryzhov (μ + (N−n)·KG)' },
+  { value: 'okg',               label: 'KG online correlated (μ + KG(Hᵒⁿ))' },
   { value: 'kg',                label: 'Offline KG' },
   { value: 'ie',                label: 'IE (μ + ρᴵᴱ·σ)' },
   { value: 'greedy',            label: 'Greedy' },
@@ -53,8 +53,8 @@ const labelStyle = { color: '#475569', fontSize: 13 };
 
 // Per-policy tunable-parameter descriptors. Returns an array so a
 // policy can expose more than one knob on the control bar — Ryzhov
-// (okg_ryzhov) needs BOTH ρˡᵏʰᵈ and N; every other policy has at
-// most one.
+// (okg_ryzhov) exposes only N (its KG is single-shot); the online-
+// correlated policy exposes only Hᵒⁿ; every other policy has at most one.
 function policyParamMeta(policy, values, handlers) {
   const {
     sessionMStar, sessionZAlpha, sessionSigmaGreedy, sessionBudget,
@@ -62,20 +62,19 @@ function policyParamMeta(policy, values, handlers) {
   const {
     onMStarChange, onZAlphaChange, onSigmaGreedyChange, onBudgetChange,
   } = handlers;
-  const rhoLkhd = {
-    label: 'ρˡᵏʰᵈ',
-    title: 'Lookahead parameter — multiplies the precision of the KG measurement noise',
+  const hOnline = {
+    label: 'Hᵒⁿ',
+    title: 'Online lookahead horizon — the KG assumes Hᵒⁿ replications at the candidate θ, reducing the observation noise. Used by the online-correlated policy only (Ryzhov always uses single-shot KG).',
     value: sessionMStar,
     step: 1, min: 1, integer: true,
     onCommit: onMStarChange,
   };
   if (policy === 'okg' || policy === 'okg_indep') {
-    return [rhoLkhd];
+    return [hOnline];
   }
   if (policy === 'okg_ryzhov') {
-    // Ryzhov uses μ + (N−n)·KG(ρˡᵏʰᵈ), so both knobs matter.
+    // Ryzhov's only knob is N — its KG is always single-shot (m=1).
     return [
-      rhoLkhd,
       {
         label: 'N',
         title: 'Ryzhov budget — the N in (N−n)·KG. Higher N → more exploration; drops to pure exploitation when n reaches N.',
@@ -315,8 +314,8 @@ export default function ExperimentBar({
   const policyOptions = dim === 2 ? POLICY_OPTIONS_2D : POLICY_OPTIONS_1D;
 
   // Resolve the tunable parameters for the current policy — an empty
-  // array if this policy has none, one input for most, two for
-  // Ryzhov (ρˡᵏʰᵈ + N).
+  // array if this policy has none, one input for most (Ryzhov: N;
+  // online-correlated: Hᵒⁿ).
   // Live values of the policy-parameter boxes, so a Run can send the
   // parameter INSIDE the /experiment request instead of relying on a
   // separate /z_alpha (etc.) call landing at the server first — which,
@@ -347,7 +346,9 @@ export default function ExperimentBar({
   // takes effect atomically. Empty for policies with no per-request knob.
   function policyParamSpec() {
     if (policy === 'ie') return { z_alpha: liveParamsRef.current.z_alpha };
-    if (policy === 'okg' || policy === 'okg_indep' || policy === 'okg_ryzhov')
+    // Ryzhov has no lookahead knob (single-shot KG), so it sends nothing
+    // here — leaving the online policy's Hᵒⁿ (session m*) untouched.
+    if (policy === 'okg' || policy === 'okg_indep')
       return { m_star: liveParamsRef.current.m_star };
     if (policy === 'randomized_greedy')
       return { sigma_greedy: liveParamsRef.current.sigma_greedy };
@@ -377,7 +378,7 @@ export default function ExperimentBar({
       // Repeat=100 → K=99 → backend runs iter1 + 99 more = 100 iterations.
       K: isHuman ? 0 : Math.min(99, Math.max(0, Math.round(Number(K) || 1) - 1)),
       theta_init: dim === 2 ? [t1Num, t2Num] : t1Num,
-      // Send the current policy parameter (ρᴵᴱ / ρˡᵏʰᵈ / ρˢᵗᵈᵈᵉᵛ) in the
+      // Send the current policy parameter (ρᴵᴱ / Hᵒⁿ / ρˢᵗᵈᵈᵉᵛ) in the
       // request so it applies atomically — no reliance on a prior
       // /z_alpha etc. call reaching the server first.
       ...policyParamSpec(),
@@ -573,7 +574,7 @@ export default function ExperimentBar({
       {/* Policy-parameter slot(s): one editable input per tunable knob
           for the currently selected policy, or nothing when the policy
           has none. Value lives on session state (mid-session edits
-          propagate). Ryzhov shows two — ρˡᵏʰᵈ then N. */}
+          propagate). Ryzhov shows N; online-correlated shows Hᵒⁿ. */}
       {paramMetas.map((m) => (
         <PolicyParamInput key={m.label} meta={m} />
       ))}

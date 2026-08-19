@@ -40,13 +40,13 @@ const tdNum = { ...tdStyle, textAlign: 'right', fontVariantNumeric: 'tabular-num
 // policy actually uses and shows a dash everywhere else. Keeps the table
 // self-documenting without a separate legend.
 //   ρᵇᵃⁿᵈ  — GP bandwidth / length_scale (belief-model param, all policies)
-//   ρˡᵏʰᵈ  — KG-family lookahead multiplier (m_star)
+//   Hᵒⁿ    — online-correlated lookahead horizon (m_star); NOT Ryzhov
 //   N      — Ryzhov budget (only okg_ryzhov)
 //   ρᴵᴱ    — IE exploration coefficient (z_alpha); ie_15 pins it to 1.5
 //   ρˢᵗᵈᵈᵉᵛ — Randomized-greedy θ-noise std (sigma_greedy)
 const PARAM_COLS = [
   { key: 'rho_ell', label: 'ρᵇᵃⁿᵈ',  title: 'GP bandwidth ρᵇᵃⁿᵈ (length_scale) — belief-model smoothness; applies to every correlated-belief policy' },
-  { key: 'lkhd',   label: 'ρˡᵏʰᵈ',  title: 'KG lookahead multiplier ρˡᵏʰᵈ (m*) — KG-family policies only' },
+  { key: 'lkhd',   label: 'Hᵒⁿ',    title: 'Online-correlated lookahead horizon Hᵒⁿ (m*) — online-correlated policy only (Ryzhov uses single-shot KG)' },
   { key: 'N',      label: 'N',       title: 'Ryzhov budget N in (N−n)·KG — Ryzhov only' },
   { key: 'ie',     label: 'ρᴵᴱ',    title: 'IE exploration coefficient ρᴵᴱ (μ ± ρᴵᴱ·σ) — IE policies only' },
   { key: 'stddev', label: 'ρˢᵗᵈᵈᵉᵛ', title: 'Randomized-greedy θ-noise std — Randomized greedy only' },
@@ -60,7 +60,9 @@ const PARAM_COLS = [
 function paramValues(r) {
   const p = r.policy;
   const out = { rho_ell: r.rho_ell ?? null, lkhd: null, N: null, ie: null, stddev: null };
-  if (p === 'okg' || p === 'okg_indep' || p === 'okg_ryzhov') out.lkhd = r.mstar;
+  // Hᵒⁿ applies to the online-correlated policies only; Ryzhov's KG is
+  // single-shot (m=1), so it shows a dash here — its only knob is N.
+  if (p === 'okg' || p === 'okg_indep') out.lkhd = r.mstar;
   if (p === 'okg_ryzhov') out.N = r.budget;
   if (p === 'ie') out.ie = r.zalpha;
   if (p === 'ie_15') out.ie = 1.5;

@@ -1183,12 +1183,19 @@ def kg_comparison(
     search_grid = np.linspace(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
     probes = search_grid
 
-    # ρ^lkhd (a.k.a. m*): scales the effective precision of the
-    # hypothetical observation KG integrates over. The "noise factor"
-    # editor on the chart mutates this via /sessions/{sid}/m_star.
+    # Hᵒⁿ (a.k.a. m*): the online-correlated lookahead — scales the
+    # effective precision of the hypothetical observation KG integrates
+    # over. Set via /sessions/{sid}/m_star. Drives the Offline KG(x) and
+    # Online μ+KG curves. Ryzhov does NOT use it (see ana_rz below).
     m_star = max(1, int(getattr(session, "_m_star", 1)))
     ana = kg_analytic_correlated_at(
         session.belief, search_grid, probes, m_star=m_star,
+    )
+    # Ryzhov's KG is always single-shot (m=1) — its only knob is N — so the
+    # plotted Ryzhov curve must use m=1, independent of Hᵒⁿ, to match the
+    # policy's actual pick.
+    ana_rz = kg_analytic_correlated_at(
+        session.belief, search_grid, probes, m_star=1,
     )
 
     # μ and σ of the belief at the probe points (both in per-day frame).
@@ -1201,7 +1208,8 @@ def kg_comparison(
     n = _display_n_days(session)
     mu_display    = _to_display(session, mu_probes) * n           # μ_reward per batch
     sigma_display = np.asarray(sigma_probes, dtype=float) * n     # σ_reward per batch
-    ana_display   = np.asarray(ana, dtype=float) * n              # offline KG per batch
+    ana_display   = np.asarray(ana, dtype=float) * n              # offline KG(Hᵒⁿ) per batch
+    ana_rz_display = np.asarray(ana_rz, dtype=float) * n          # single-shot KG for Ryzhov
 
     # Warren-2026 online KG in display frame: μ_reward + KG (both display-scaled).
     online_ana = (mu_display + ana_display).tolist()
@@ -1226,7 +1234,7 @@ def kg_comparison(
         N = int(session.budget) if getattr(session, "budget", None) is not None else int(budget)
         n_used = int(session.n_steps)
     ryzhov_weight = max(0, N - n_used)
-    ryzhov = (mu_display + ryzhov_weight * ana_display).tolist()
+    ryzhov = (mu_display + ryzhov_weight * ana_rz_display).tolist()
 
     # IE — sign matches the app's optimisation direction so the plotted
     # curve is the one the IE policy would maximise (or minimise). Game

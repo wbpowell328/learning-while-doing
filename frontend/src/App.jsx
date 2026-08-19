@@ -548,8 +548,9 @@ export default function App() {
         best_theta: resp.best_impparam,
         // Policy parameters in play for this run. We log ALL of them on
         // every row (plenty of storage) and let RunHistory blank out the
-        // ones the active policy doesn't use — e.g. Ryzhov shows ρˡᵏʰᵈ and
-        // N, everything else shows a dash in the columns it ignores.
+        // ones the active policy doesn't use — e.g. Ryzhov shows only N,
+        // the online-correlated policy shows Hᵒⁿ, and everything else shows
+        // a dash in the columns it ignores.
         mstar: session.m_star ?? null,
         budget: session.budget ?? null,
         zalpha: session.z_alpha ?? null,

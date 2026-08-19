@@ -753,17 +753,17 @@ class OKGCorrelatedPolicy:
 
 class OKGRyzhovCorrelatedPolicy:
     """
-    Ryzhov-style online KG (correlated beliefs) with the (N − n)
-    multiplier AND the ρ^lkhd lookahead scaling on the offline term:
+    Classical Ryzhov online KG (correlated beliefs) with the (N − n)
+    multiplier on the single-shot offline KG term:
 
-        OKG_ryzhov(x) = μ_n(x) − (N − n) · offline_correlated_KG(x; ρ^lkhd)  [cost frame]
-        argmax_x [ μ_reward(x) + (N − n) · offline_correlated_KG(x; ρ^lkhd) ] [reward frame]
+        OKG_ryzhov(x) = μ_n(x) − (N − n) · offline_correlated_KG(x; m=1)  [cost frame]
+        argmax_x [ μ_reward(x) + (N − n) · offline_correlated_KG(x; m=1) ] [reward frame]
 
-    ρ^lkhd = 1 recovers the pure classical Ryzhov formula (offline KG
-    at the classical single-shot precision). Larger ρ^lkhd inflates
-    the KG term the same way it does in OKGCorrelatedPolicy — Warren
-    wants both schemes independently tunable, and this policy lets
-    him crank both knobs at once.
+    The lookahead multiplier is fixed at m=1 (single-shot KG) — Ryzhov's
+    only tuning knob is N. (The separate lookahead knob Hᵒⁿ lives on the
+    online-correlated policy OKGCorrelatedPolicy, not here.) set_m_star is
+    kept as an accepted no-op so generic KG-policy plumbing that pushes a
+    lookahead value doesn't have to special-case Ryzhov.
 
     N is the session's `budget`; n comes from BeliefModel.n_observations
     at propose time.
@@ -774,16 +774,20 @@ class OKGRyzhovCorrelatedPolicy:
         # Default N=10 if the caller didn't supply one — matches the
         # legacy /kg endpoint's default_budget for display continuity.
         self._N = max(1, int(budget)) if budget is not None else 10
-        self._m_star = max(1, int(m_star))
+        # Fixed at 1 by design; kept as an attribute only so introspection
+        # (e.g. the KG chart reading pol._m_star) sees a consistent value.
+        self._m_star = 1
         cfg = self.config
         self._grid = _make_grid(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
 
     def set_m_star(self, m_star: int) -> None:
-        self._m_star = max(1, int(m_star))
+        # No-op: Ryzhov always uses single-shot KG (m=1). Accepting the call
+        # keeps set_policy()/Session.__init__ plumbing uniform across policies.
+        self._m_star = 1
 
     def propose(self, model: BeliefModel, rng: np.random.Generator):
         mu, _ = model.posterior(self._grid)
-        kg = kg_analytic_correlated_at(model, self._grid, self._grid, m_star=self._m_star)
+        kg = kg_analytic_correlated_at(model, self._grid, self._grid, m_star=1)
         n = int(model.n_observations)
         remaining = max(0, self._N - n)
         okg = mu - remaining * kg

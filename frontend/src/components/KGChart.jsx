@@ -2,7 +2,7 @@
 // candidate policies pick their next θ:
 //
 // Left axis  — offline value of information (per-batch dollars):
-//   analytic_correlated   — solid green — offline KG(x; ρˡᵏʰᵈ)
+//   analytic_correlated   — solid green — offline KG(x; Hᵒⁿ)
 //
 // Right axis — reward-frame per-batch dollars (μ plus/minus a policy term):
 //   online_correlated     — solid dark green   — μ + KG              (Warren-2026)

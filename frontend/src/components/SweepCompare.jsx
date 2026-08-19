@@ -43,7 +43,7 @@ const X_PARAMS = [
   { key: 'repeat',  label: 'Repeat' },
   { key: 'budget',  label: 'N (Ryzhov)' },
   { key: 'rho_ell', label: 'ρᵇᵃⁿᵈ (bandwidth)' },
-  { key: 'mstar',   label: 'ρˡᵏʰᵈ (lookahead)' },
+  { key: 'mstar',   label: 'Hᵒⁿ (lookahead)' },
 ];
 
 function fmtDollars(v) {

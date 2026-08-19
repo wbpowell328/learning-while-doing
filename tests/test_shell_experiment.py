@@ -223,6 +223,34 @@ def test_kg_chart_ryzhov_argmax_matches_policy_pick():
         assert abs(chart_argmax - played) < 1e-9, (chart_argmax, played)
 
 
+def test_ryzhov_ignores_online_lookahead_hon():
+    """Ryzhov's KG is single-shot (m=1); its only knob is N. Changing the
+    online lookahead Hᵒⁿ (session m*) must NOT change Ryzhov's picks or its
+    plotted curve. Two identical Ryzhov runs, one with Hᵒⁿ=1 and one with
+    Hᵒⁿ=50, must produce byte-identical Ryzhov curves and sampled θ."""
+    import numpy as np
+
+    def run(hon):
+        sid = make_session(policy="okg_ryzhov", budget=20, m_star=hon)
+        client.post(f"/sessions/{sid}/experiment",
+                    json={"theta_init": 0.09, "n_days": 10,
+                          "policy": "okg_ryzhov", "K": 0})
+        thetas, curves = [], []
+        for _ in range(6):
+            kg = client.get(f"/sessions/{sid}/kg?spacing=0.01&budget=20").json()
+            curves.append(np.array(kg["ryzhov"]))
+            b = client.post(f"/sessions/{sid}/one_more",
+                            json={"n_days": 10, "policy": "okg_ryzhov", "K": 0}).json()
+            thetas.append(float(b["history"][-1][0]))
+        return thetas, curves
+
+    t1, c1 = run(1)
+    t50, c50 = run(50)
+    assert t1 == t50, (t1, t50)
+    for a, b in zip(c1, c50):
+        assert np.allclose(a, b, atol=1e-9)
+
+
 def test_kg_chart_ryzhov_matches_policy_when_session_has_no_budget():
     """Regression: a Ryzhov session created WITHOUT a budget keeps _budget=None
     and the policy defaults to N=10. The KG chart must still reflect that N — it
