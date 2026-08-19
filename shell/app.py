@@ -30,6 +30,7 @@ from .models import (
     RevealResponse, KGComparisonResponse,
     BatchRequest, BatchResponse, BatchPolicyResult,
     SetMStarRequest, SetMStarResponse,
+    SetKgMultRequest, SetKgMultResponse,
     CloneWithSeedRequest,
     SetSessionSeedRequest, SetSessionSeedResponse,
     SetZAlphaRequest, SetZAlphaResponse,
@@ -243,6 +244,7 @@ def create_session(req: CreateSessionRequest) -> CreateSessionResponse:
         minimize=bool(app_mod.MINIMIZE),
         m_star=max(1, int(req.m_star or 1)),
         budget=req.budget,          # Ryzhov N; used only by OKGRyzhov policies
+        kg_mult=float(req.kg_mult if req.kg_mult is not None else 1.0),
     )
     sid = str(uuid4())
     _sessions[sid] = session
@@ -258,6 +260,7 @@ def create_session(req: CreateSessionRequest) -> CreateSessionResponse:
         impparam_min=lo,
         impparam_max=hi,
         m_star=session.m_star,
+        kg_mult=session.kg_mult,
         session_seed=int(req.session_seed),
     )
 
@@ -329,6 +332,19 @@ def set_m_star(sid: str, body: SetMStarRequest) -> SetMStarResponse:
     session.set_m_star(int(body.m_star))
     _patch_create_req(sid, top={"m_star": int(session.m_star)})
     return SetMStarResponse(m_star=session.m_star)
+
+
+@app.post("/sessions/{sid}/kg_mult")
+def set_kg_mult(sid: str, body: SetKgMultRequest) -> SetKgMultResponse:
+    """
+    TEMP research knob M — linear multiplier on the KG term for the online-
+    correlated policy: μ + M·KG(θ, Hᵒⁿ). Effective on the NEXT propose();
+    no-op for policies that don't use it.
+    """
+    session = _get_or_404(sid)
+    session.set_kg_mult(float(body.kg_mult))
+    _patch_create_req(sid, top={"kg_mult": float(session.kg_mult)})
+    return SetKgMultResponse(kg_mult=session.kg_mult)
 
 
 @app.post("/sessions/{sid}/z_alpha")
@@ -467,6 +483,8 @@ def experiment(sid: str, body: ExperimentRequest) -> ExperimentResponse:
     # so the new policy inherits it via set_policy.
     if body.m_star is not None:
         session.set_m_star(int(body.m_star))
+    if body.kg_mult is not None:
+        session.set_kg_mult(float(body.kg_mult))
     new_policy = _make_policy(body.policy, session._acq_config, budget=session._budget)
     session.set_policy(new_policy)
     # z_alpha lives on the AcquisitionConfig. For IE, mutate it in place
@@ -542,6 +560,8 @@ def one_more(sid: str, body: OneMoreRequest) -> ExperimentResponse:
     # Optional policy swap.
     if body.m_star is not None:
         session.set_m_star(int(body.m_star))
+    if body.kg_mult is not None:
+        session.set_kg_mult(float(body.kg_mult))
     if body.z_alpha is not None and (body.policy or session._policy.__class__.__name__ == "IEPolicy"):
         from dataclasses import replace as _replace
         session._acq_config = _replace(session._acq_config, z_alpha=float(body.z_alpha))
@@ -1211,8 +1231,14 @@ def kg_comparison(
     ana_display   = np.asarray(ana, dtype=float) * n              # offline KG(Hᵒⁿ) per batch
     ana_rz_display = np.asarray(ana_rz, dtype=float) * n          # single-shot KG for Ryzhov
 
-    # Warren-2026 online KG in display frame: μ_reward + KG (both display-scaled).
-    online_ana = (mu_display + ana_display).tolist()
+    # Warren-2026 online KG in display frame: μ_reward + M·KG (both display-
+    # scaled). M is the TEMP research multiplier — read it from the ACTIVE
+    # online-correlated policy when that's what's running (so the plotted
+    # curve's argmax matches the policy's actual pick), else the session value.
+    _pol = session._policy
+    kg_mult_online = (float(_pol._kg_mult) if isinstance(_pol, OKGCorrelatedPolicy)
+                      else float(getattr(session, "_kg_mult", 1.0)))
+    online_ana = (mu_display + kg_mult_online * ana_display).tolist()
 
     # Ryzhov: N = session.budget (fall back to query param), n = steps used.
     # max(0, N-n) keeps the weight nonneg once the "measurement budget" is

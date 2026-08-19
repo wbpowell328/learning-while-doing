@@ -123,6 +123,13 @@ export const setMStar = (sid, mStar) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ m_star: Math.max(1, Math.round(mStar)) }),
   });
+// TEMP research knob M — online-correlated KG multiplier.
+export const setKgMult = (sid, kgMult) =>
+  call(`/sessions/${sid}/kg_mult`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kg_mult: Math.max(0, Number(kgMult)) }),
+  });
 export const setZAlpha = (sid, zAlpha) =>
   call(`/sessions/${sid}/z_alpha`, {
     method: 'POST',

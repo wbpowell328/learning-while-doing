@@ -57,10 +57,10 @@ const labelStyle = { color: '#475569', fontSize: 13 };
 // correlated policy exposes only Hᵒⁿ; every other policy has at most one.
 function policyParamMeta(policy, values, handlers) {
   const {
-    sessionMStar, sessionZAlpha, sessionSigmaGreedy, sessionBudget,
+    sessionMStar, sessionKgMult, sessionZAlpha, sessionSigmaGreedy, sessionBudget,
   } = values;
   const {
-    onMStarChange, onZAlphaChange, onSigmaGreedyChange, onBudgetChange,
+    onMStarChange, onKgMultChange, onZAlphaChange, onSigmaGreedyChange, onBudgetChange,
   } = handlers;
   const hOnline = {
     label: 'Hᵒⁿ',
@@ -69,8 +69,16 @@ function policyParamMeta(policy, values, handlers) {
     step: 1, min: 1, integer: true,
     onCommit: onMStarChange,
   };
+  // TEMP research knob M — linear multiplier on the KG term: μ + M·KG.
+  const mMult = {
+    label: 'M',
+    title: 'TEMP research knob — linear multiplier on the KG term: μ + M·KG. A second way (besides Hᵒⁿ) to weight information vs μ. M=1 is the standard online-KG policy; M=0 is pure greedy.',
+    value: sessionKgMult,
+    step: 'any', min: 0, integer: false,
+    onCommit: onKgMultChange,
+  };
   if (policy === 'okg' || policy === 'okg_indep') {
-    return [hOnline];
+    return [hOnline, mMult];
   }
   if (policy === 'okg_ryzhov') {
     // Ryzhov's only knob is N — its KG is always single-shot (m=1).
@@ -168,10 +176,12 @@ export default function ExperimentBar({
   // Current session values for the tunable policy parameters — one
   // and only one is shown at a time based on the selected policy.
   sessionMStar       = 1,
+  sessionKgMult      = 1,   // TEMP research knob M — online-correlated only
   sessionZAlpha      = 0,
   sessionSigmaGreedy = 0,
   sessionBudget      = 10,   // Ryzhov N — appears only when okg_ryzhov is selected
   onMStarChange,          // async (n) => void
+  onKgMultChange,         // async (m) => void — TEMP research knob M
   onZAlphaChange,         // async (x) => void
   onSigmaGreedyChange,    // async (x) => void
   onBudgetChange,         // async (n) => void
@@ -323,21 +333,24 @@ export default function ExperimentBar({
   // commit (fires on blur, i.e. before the Run click) updates the
   // matching entry synchronously.
   const liveParamsRef = useRef({
-    m_star: sessionMStar, z_alpha: sessionZAlpha, sigma_greedy: sessionSigmaGreedy,
+    m_star: sessionMStar, kg_mult: sessionKgMult,
+    z_alpha: sessionZAlpha, sigma_greedy: sessionSigmaGreedy,
   });
   useEffect(() => {
     liveParamsRef.current = {
-      m_star: sessionMStar, z_alpha: sessionZAlpha, sigma_greedy: sessionSigmaGreedy,
+      m_star: sessionMStar, kg_mult: sessionKgMult,
+      z_alpha: sessionZAlpha, sigma_greedy: sessionSigmaGreedy,
     };
-  }, [sessionMStar, sessionZAlpha, sessionSigmaGreedy]);
+  }, [sessionMStar, sessionKgMult, sessionZAlpha, sessionSigmaGreedy]);
   const liftAndPersist = (key, handler) => (v) => {
     liveParamsRef.current = { ...liveParamsRef.current, [key]: v };
     if (handler) handler(v);   // still POST it so peer views stay in sync
   };
   const paramMetas = policyParamMeta(
     policy,
-    { sessionMStar, sessionZAlpha, sessionSigmaGreedy, sessionBudget },
+    { sessionMStar, sessionKgMult, sessionZAlpha, sessionSigmaGreedy, sessionBudget },
     { onMStarChange:      liftAndPersist('m_star', onMStarChange),
+      onKgMultChange:     liftAndPersist('kg_mult', onKgMultChange),
       onZAlphaChange:     liftAndPersist('z_alpha', onZAlphaChange),
       onSigmaGreedyChange: liftAndPersist('sigma_greedy', onSigmaGreedyChange),
       onBudgetChange },
@@ -349,7 +362,8 @@ export default function ExperimentBar({
     // Ryzhov has no lookahead knob (single-shot KG), so it sends nothing
     // here — leaving the online policy's Hᵒⁿ (session m*) untouched.
     if (policy === 'okg' || policy === 'okg_indep')
-      return { m_star: liveParamsRef.current.m_star };
+      return { m_star: liveParamsRef.current.m_star,
+               kg_mult: liveParamsRef.current.kg_mult };   // M = TEMP research knob
     if (policy === 'randomized_greedy')
       return { sigma_greedy: liveParamsRef.current.sigma_greedy };
     return {};

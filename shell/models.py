@@ -97,6 +97,9 @@ class CreateSessionRequest(BaseModel):
     # (scales noise variance by 1/m_star), even though we only run one.
     # Default 1 (classical single-shot KG). Ignored by non-KG policies.
     m_star: int = 1
+    # TEMP research knob: linear multiplier M on the KG term in the online-
+    # correlated policy — μ + M·KG(θ, Hᵒⁿ). Default 1 = current behavior.
+    kg_mult: float = 1.0
     session_seed: int = 42
 
 
@@ -113,6 +116,7 @@ class CreateSessionResponse(BaseModel):
     impparam_min: list[float] # always returned as a list (length dim)
     impparam_max: list[float]
     m_star: int = 1           # batch-size-trick multiplier for KG-family policies
+    kg_mult: float = 1.0      # TEMP research knob M — online-correlated KG multiplier
     session_seed: int = 0     # base seed the session was created with (used by the seed-sweep panel)
 
 
@@ -136,6 +140,15 @@ class SetSessionSeedResponse(BaseModel):
 
 class SetMStarResponse(BaseModel):
     m_star: int
+
+
+class SetKgMultRequest(BaseModel):
+    """Body for POST /sessions/{sid}/kg_mult — TEMP research knob M."""
+    kg_mult: float
+
+
+class SetKgMultResponse(BaseModel):
+    kg_mult: float
 
 
 class SetZAlphaRequest(BaseModel):
@@ -185,6 +198,7 @@ class ExperimentRequest(BaseModel):
     K: int = 0                   # number of policy-driven iterations after iter 1
     # Policy parameters — only the one that applies to `policy` is used.
     m_star: int | None = None    # KG-family batch-size trick multiplier
+    kg_mult: float | None = None # TEMP research knob M — online-correlated KG multiplier
     z_alpha: float | None = None # IE upper-confidence-bound coefficient
     sigma_greedy: float | None = None   # RandomizedGreedy θ-noise std
 
@@ -210,6 +224,7 @@ class OneMoreRequest(BaseModel):
     K: int = 0
     policy: str | None = None
     m_star: int | None = None
+    kg_mult: float | None = None   # TEMP research knob M — online-correlated KG multiplier
     z_alpha: float | None = None
     sigma_greedy: float | None = None
 

@@ -731,23 +731,33 @@ class OKGCorrelatedPolicy:
     hypothetical replicate). m* scales the effective precision of a
     hypothetical measurement inside KG, so the info-value bonus grows
     with m* without depending on (N,n).
+
+        argmax_x [mu^n(x) + M·KG(x; m*)]
+
+    TEMP research knob M (`kg_mult`, default 1): a LINEAR multiplier on the
+    KG term, a second way (besides m*) to weight information vs μ. Warren is
+    comparing the two to decide which single knob to keep.
     """
     def __init__(self, config: AcquisitionConfig,
-                 m_star: int = 1, **_unused) -> None:
+                 m_star: int = 1, kg_mult: float = 1.0, **_unused) -> None:
         # `**_unused` swallows legacy kwargs (e.g. budget=...) from any
         # caller that hasn't been migrated yet — safe no-op.
         self.config = config
         self._m_star = max(1, int(m_star))
+        self._kg_mult = max(0.0, float(kg_mult))
         cfg = self.config
         self._grid = _make_grid(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
 
     def set_m_star(self, m_star: int) -> None:
         self._m_star = max(1, int(m_star))
 
+    def set_kg_mult(self, kg_mult: float) -> None:
+        self._kg_mult = max(0.0, float(kg_mult))
+
     def propose(self, model: BeliefModel, rng: np.random.Generator):
         mu, _ = model.posterior(self._grid)
         kg = kg_analytic_correlated_at(model, self._grid, self._grid, m_star=self._m_star)
-        okg = mu - kg
+        okg = mu - self._kg_mult * kg
         return _grid_pick(self._grid, int(np.argmin(okg)))
 
 

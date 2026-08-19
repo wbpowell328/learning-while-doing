@@ -251,6 +251,36 @@ def test_ryzhov_ignores_online_lookahead_hon():
         assert np.allclose(a, b, atol=1e-9)
 
 
+def test_online_kg_mult_M_scales_exploration_and_chart_matches():
+    """TEMP research knob M on the online-correlated policy: μ + M·KG.
+    M=0 collapses to greedy (argmax μ); larger M explores more. In every
+    case the chart's Online μ+KG curve argmax must equal the policy's pick."""
+    import numpy as np
+
+    def one_pick(M):
+        sid = make_session(policy="okg", m_star=5, kg_mult=M)
+        client.post(f"/sessions/{sid}/experiment",
+                    json={"theta_init": 0.09, "n_days": 10, "policy": "okg",
+                          "K": 0, "m_star": 5, "kg_mult": M})
+        kg = client.get(f"/sessions/{sid}/kg?spacing=0.01&budget=10").json()
+        imp = np.array(kg["impparams"]); on = np.array(kg["online_correlated"])
+        chart_argmax = float(imp[int(np.argmax(on))])
+        nt = client.get(f"/sessions/{sid}/next_theta").json()["theta"]
+        # Greedy θ (argmax μ) for the M=0 reference.
+        mu = np.array(kg["posterior_mean"])
+        greedy = float(imp[int(np.argmax(mu))])
+        return chart_argmax, float(nt), greedy
+
+    c0, n0, g0 = one_pick(0.0)
+    assert abs(c0 - n0) < 1e-9 and abs(n0 - g0) < 1e-9   # M=0 → greedy, chart==policy
+    c1, n1, _ = one_pick(1.0)
+    assert abs(c1 - n1) < 1e-9
+    c8, n8, _ = one_pick(8.0)
+    assert abs(c8 - n8) < 1e-9
+    # Larger M pushes exploration away from the greedy μ-peak.
+    assert abs(c8 - g0) > abs(c0 - g0)
+
+
 def test_kg_chart_ryzhov_matches_policy_when_session_has_no_budget():
     """Regression: a Ryzhov session created WITHOUT a budget keeps _budget=None
     and the policy defaults to N=10. The KG chart must still reflect that N — it

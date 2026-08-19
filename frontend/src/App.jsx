@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, getKGvsM, setMStar, setZAlpha, setSigmaGreedy, setBudget, setSessionSeed, setLengthScale, getObservationsEnriched, getFlowSample, getNextTheta, runExperiment, runOneMore, resetSession, deleteSession } from './api';
+import { createSession, runStep, evaluateC, getPosterior, getPosterior2D, getKG2D, getReveal, getKGComparison, getKGvsM, setMStar, setKgMult, setZAlpha, setSigmaGreedy, setBudget, setSessionSeed, setLengthScale, getObservationsEnriched, getFlowSample, getNextTheta, runExperiment, runOneMore, resetSession, deleteSession } from './api';
 import SessionForm from './components/SessionForm';
 import PosteriorChart from './components/PosteriorChart';
 import Belief3DChart from './components/Belief3DChart';
@@ -397,6 +397,24 @@ export default function App() {
       setError(String(e));
     }
   }, [session, refreshEnriched, kgVsMMMax, kgVsMSigmaEps, kgVsMTheta, kgVsMTheta2, patchActivePanel]);
+
+  // TEMP research knob M — online-correlated KG multiplier (μ + M·KG).
+  // Mid-session tunable via the ExperimentBar box next to Hᵒⁿ. Refetch the
+  // KG chart so the Online μ+KG curve reflects the new M. Not persisted to
+  // the parameter panel yet (research scaffolding).
+  const handleKgMultChange = useCallback(async (newM) => {
+    if (!session) return;
+    try {
+      const resp = await setKgMult(session.id, newM);
+      setSession(prev => prev ? { ...prev, kg_mult: resp.kg_mult } : prev);
+      if (session.dim === 1) {
+        const kg = await getKGComparison(session.id, 0.01, 50, session.budget ?? 10);
+        setKgComparison(kg);
+      }
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [session]);
 
   // z_alpha (IE) — mid-session tunable via the ExperimentBar's
   // "policy parameter" slot. IE's argmin score = μ - z_alpha·σ, so the
@@ -908,6 +926,7 @@ export default function App() {
         : session_seed,
       budget: budget ?? null,
       m_star: created.m_star ?? 1,
+      kg_mult: created.kg_mult ?? 1,   // TEMP research knob M
       // θ search-box bounds from the backend — used to clamp the
       // ExperimentBar's Test-point spinner so up-arrow can't blow
       // past the max and down-arrow can't dip below the min.
@@ -1291,10 +1310,12 @@ export default function App() {
         totalDays={totalDays}
         lastTheta={history.length > 0 ? history[history.length - 1][0] : null}
         sessionMStar={session.m_star ?? 1}
+        sessionKgMult={session.kg_mult ?? 1}
         sessionZAlpha={session.z_alpha ?? 0}
         sessionSigmaGreedy={session.sigma_greedy ?? 0}
         sessionBudget={session.budget ?? 10}
         onMStarChange={handleMStarChange}
+        onKgMultChange={handleKgMultChange}
         onZAlphaChange={handleZAlphaChange}
         onSigmaGreedyChange={handleSigmaGreedyChange}
         onBudgetChange={handleBudgetChange}

@@ -69,6 +69,7 @@ class Session:
         minimize: bool = True,
         m_star: int = 1,
         budget: int | None = None,
+        kg_mult: float = 1.0,
     ) -> None:
         self._sim_config = sim_config
         self._acq_config = acq_config
@@ -83,9 +84,14 @@ class Session:
         # policy swaps can reconstruct the Ryzhov policy without losing
         # N (create-time is the only place req.budget is available).
         self._budget = budget
+        # TEMP research knob M — linear KG multiplier for the online-
+        # correlated policy. Kept on the Session so policy swaps preserve it.
+        self._kg_mult = max(0.0, float(kg_mult))
         # Push m_star into the policy if it supports it (all KG variants do).
         if hasattr(policy, "set_m_star"):
             policy.set_m_star(self._m_star)
+        if hasattr(policy, "set_kg_mult"):
+            policy.set_kg_mult(self._kg_mult)
 
         self._dim = _dim_of(acq_config)
 
@@ -305,6 +311,18 @@ class Session:
         if hasattr(self._policy, "set_m_star"):
             self._policy.set_m_star(self._m_star)
 
+    def set_kg_mult(self, kg_mult: float) -> None:
+        """TEMP research knob M — linear KG multiplier for the online-
+        correlated policy. Effective on the next propose(); no-op for
+        policies that don't support it."""
+        self._kg_mult = max(0.0, float(kg_mult))
+        if hasattr(self._policy, "set_kg_mult"):
+            self._policy.set_kg_mult(self._kg_mult)
+
+    @property
+    def kg_mult(self) -> float:
+        return self._kg_mult
+
     def reset(self) -> None:
         """
         Clear observations and refit the belief from scratch using the
@@ -330,6 +348,8 @@ class Session:
         self._policy = policy
         if hasattr(policy, "set_m_star"):
             policy.set_m_star(self._m_star)
+        if hasattr(policy, "set_kg_mult"):
+            policy.set_kg_mult(self._kg_mult)
 
     def set_length_scale(self, length_scale) -> None:
         """
