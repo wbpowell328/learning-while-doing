@@ -40,14 +40,14 @@ const tdNum = { ...tdStyle, textAlign: 'right', fontVariantNumeric: 'tabular-num
 // policy actually uses and shows a dash everywhere else. Keeps the table
 // self-documenting without a separate legend.
 //   ρᵇᵃⁿᵈ  — GP bandwidth / length_scale (belief-model param, all policies)
-//   Hᵒⁿ    — online-correlated lookahead horizon (m_star); NOT Ryzhov
-//   N      — Ryzhov budget (only okg_ryzhov)
+//   M      — exploration weight in μ + M·KG (infinite-horizon online policy)
+//   N      — Ryzhov / finite-horizon budget (only okg_ryzhov)
 //   ρᴵᴱ    — IE exploration coefficient (z_alpha); ie_15 pins it to 1.5
 //   ρˢᵗᵈᵈᵉᵛ — Randomized-greedy θ-noise std (sigma_greedy)
 const PARAM_COLS = [
   { key: 'rho_ell', label: 'ρᵇᵃⁿᵈ',  title: 'GP bandwidth ρᵇᵃⁿᵈ (length_scale) — belief-model smoothness; applies to every correlated-belief policy' },
-  { key: 'lkhd',   label: 'Hᵒⁿ',    title: 'Online-correlated lookahead horizon Hᵒⁿ (m*) — online-correlated policy only (Ryzhov uses single-shot KG)' },
-  { key: 'N',      label: 'N',       title: 'Ryzhov budget N in (N−n)·KG — Ryzhov only' },
+  { key: 'M',      label: 'M',       title: 'Exploration weight M in μ + M·KG — infinite-horizon online policy only' },
+  { key: 'N',      label: 'N',       title: 'Finite-horizon (Ryzhov) budget N in (N−n)·KG — finite-horizon online policy only' },
   { key: 'ie',     label: 'ρᴵᴱ',    title: 'IE exploration coefficient ρᴵᴱ (μ ± ρᴵᴱ·σ) — IE policies only' },
   { key: 'stddev', label: 'ρˢᵗᵈᵈᵉᵛ', title: 'Randomized-greedy θ-noise std — Randomized greedy only' },
 ];
@@ -59,10 +59,11 @@ const PARAM_COLS = [
 // (not gated by policy).
 function paramValues(r) {
   const p = r.policy;
-  const out = { rho_ell: r.rho_ell ?? null, lkhd: null, N: null, ie: null, stddev: null };
-  // Hᵒⁿ applies to the online-correlated policies only; Ryzhov's KG is
-  // single-shot (m=1), so it shows a dash here — its only knob is N.
-  if (p === 'okg' || p === 'okg_indep') out.lkhd = r.mstar;
+  const out = { rho_ell: r.rho_ell ?? null, M: null, N: null, ie: null, stddev: null };
+  // M is the infinite-horizon online policy's exploration weight; the
+  // finite-horizon (Ryzhov) policy uses N instead, so each shows a dash
+  // in the other's column.
+  if (p === 'okg' || p === 'okg_indep') out.M = r.kgmult;
   if (p === 'okg_ryzhov') out.N = r.budget;
   if (p === 'ie') out.ie = r.zalpha;
   if (p === 'ie_15') out.ie = 1.5;

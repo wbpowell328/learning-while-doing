@@ -21,13 +21,13 @@ const IH = H - PAD.top - PAD.bottom;
 const X_MIN = 0.01, X_MAX = 0.20;
 
 const OFFLINE_SERIES = [
-  { key: 'analytic_correlated', label: 'Offline: KG(x)', color: '#16a34a', dash: null, width: 2.2 },
+  { key: 'analytic_correlated', label: 'KG offline: KG(x)', color: '#16a34a', dash: null, width: 2.2 },
 ];
 
 const ONLINE_SERIES = [
-  { key: 'online_correlated', label: 'Online: μ + KG',                  color: '#14532d', dash: null,   width: 1.8 },
-  { key: 'ryzhov',            label: 'Online: μ + (N−n)·KG (Ryzhov)',   color: '#c2410c', dash: null,   width: 1.8 },
-  { key: 'ie_0',              label: 'Greedy',                          color: '#2563eb', dash: '4,3',  width: 1.6 },
+  { key: 'online_correlated', label: 'Online ∞-horizon: μ + M·KG',       color: '#14532d', dash: null,   width: 1.8 },
+  { key: 'ryzhov',            label: 'Online finite-horizon: μ + (N−n)·KG', color: '#c2410c', dash: null, width: 1.8 },
+  { key: 'ie_0',              label: 'Greedy (μ)',                       color: '#2563eb', dash: '4,3',  width: 1.6 },
   { key: 'ie_1_5',            label: 'IE (ρ^IE = 1.5) = μ + 1.5·σ',     color: '#1e3a8a', dash: '4,3',  width: 1.6 },
 ];
 

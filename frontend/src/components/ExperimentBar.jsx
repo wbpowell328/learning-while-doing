@@ -25,11 +25,10 @@ import { useState, useEffect, useRef } from 'react';
 // intentionally hidden from the dropdown — kept in code so we can bring
 // them back without a backend redeploy.
 const POLICY_OPTIONS_1D = [
-  { value: 'okg_ryzhov',        label: 'KG online correlated — Ryzhov (μ + (N−n)·KG)' },
-  { value: 'okg',               label: 'KG online correlated (μ + M·KG(Hᵒⁿ))' },
-  { value: 'kg',                label: 'Offline KG' },
+  { value: 'okg_ryzhov',        label: 'KG online — finite horizon (μ + (N−n)·KG)' },
+  { value: 'okg',               label: 'KG online — infinite horizon (μ + M·KG)' },
+  { value: 'kg',                label: 'KG offline' },
   { value: 'ie',                label: 'IE (μ + ρᴵᴱ·σ)' },
-  { value: 'greedy',            label: 'Greedy' },
   { value: 'randomized_greedy', label: 'Randomized greedy' },
   { value: 'human',             label: 'Manual' },
 ];
@@ -57,28 +56,23 @@ const labelStyle = { color: '#475569', fontSize: 13 };
 // correlated policy exposes only Hᵒⁿ; every other policy has at most one.
 function policyParamMeta(policy, values, handlers) {
   const {
-    sessionMStar, sessionKgMult, sessionZAlpha, sessionSigmaGreedy, sessionBudget,
+    sessionKgMult, sessionZAlpha, sessionSigmaGreedy, sessionBudget,
   } = values;
   const {
-    onMStarChange, onKgMultChange, onZAlphaChange, onSigmaGreedyChange, onBudgetChange,
+    onKgMultChange, onZAlphaChange, onSigmaGreedyChange, onBudgetChange,
   } = handlers;
-  const hOnline = {
-    label: 'Hᵒⁿ',
-    title: 'Online lookahead horizon — the KG assumes Hᵒⁿ replications at the candidate θ, reducing the observation noise. Used by the online-correlated policy only (Ryzhov always uses single-shot KG).',
-    value: sessionMStar,
-    step: 1, min: 1, integer: true,
-    onCommit: onMStarChange,
-  };
-  // TEMP research knob M — linear multiplier on the KG term: μ + M·KG.
+  // M — linear multiplier on the KG term for the infinite-horizon online
+  // policy: μ + M·KG. This is the online policy's single exploration knob
+  // (the old Hᵒⁿ lookahead was retired; KG is single-shot).
   const mMult = {
     label: 'M',
-    title: 'TEMP research knob — linear multiplier on the KG term: μ + M·KG. A second way (besides Hᵒⁿ) to weight information vs μ. M=1 is the standard online-KG policy; M=0 is pure greedy.',
+    title: 'Exploration weight — linear multiplier on the KG term: μ + M·KG. M=1 is the standard online-KG policy; larger M explores more; M=0 is pure greedy.',
     value: sessionKgMult,
     step: 'any', min: 0, integer: false,
     onCommit: onKgMultChange,
   };
   if (policy === 'okg' || policy === 'okg_indep') {
-    return [hOnline, mMult];
+    return [mMult];
   }
   if (policy === 'okg_ryzhov') {
     // Ryzhov's only knob is N — its KG is always single-shot (m=1).
@@ -359,11 +353,10 @@ export default function ExperimentBar({
   // takes effect atomically. Empty for policies with no per-request knob.
   function policyParamSpec() {
     if (policy === 'ie') return { z_alpha: liveParamsRef.current.z_alpha };
-    // Ryzhov has no lookahead knob (single-shot KG), so it sends nothing
-    // here — leaving the online policy's Hᵒⁿ (session m*) untouched.
+    // Ryzhov (finite-horizon) has no per-request knob — N comes from the
+    // session budget. The infinite-horizon online policy sends only M.
     if (policy === 'okg' || policy === 'okg_indep')
-      return { m_star: liveParamsRef.current.m_star,
-               kg_mult: liveParamsRef.current.kg_mult };   // M = TEMP research knob
+      return { kg_mult: liveParamsRef.current.kg_mult };   // M = exploration weight
     if (policy === 'randomized_greedy')
       return { sigma_greedy: liveParamsRef.current.sigma_greedy };
     return {};

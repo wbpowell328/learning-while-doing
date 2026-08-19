@@ -1203,20 +1203,14 @@ def kg_comparison(
     search_grid = np.linspace(cfg.impparam_min, cfg.impparam_max, cfg.grid_size)
     probes = search_grid
 
-    # Hᵒⁿ (a.k.a. m*): the online-correlated lookahead — scales the
-    # effective precision of the hypothetical observation KG integrates
-    # over. Set via /sessions/{sid}/m_star. Drives the Offline KG(x) and
-    # Online μ+KG curves. Ryzhov does NOT use it (see ana_rz below).
-    m_star = max(1, int(getattr(session, "_m_star", 1)))
+    # KG is single-shot (m=1) for every KG curve now — the Hᵒⁿ lookahead
+    # knob was retired. Offline KG(x), Online μ+KG (× M), and Ryzhov
+    # (× (N−n)) all build on the same m=1 KG, so the plotted curves match
+    # each policy's actual pick.
     ana = kg_analytic_correlated_at(
-        session.belief, search_grid, probes, m_star=m_star,
-    )
-    # Ryzhov's KG is always single-shot (m=1) — its only knob is N — so the
-    # plotted Ryzhov curve must use m=1, independent of Hᵒⁿ, to match the
-    # policy's actual pick.
-    ana_rz = kg_analytic_correlated_at(
         session.belief, search_grid, probes, m_star=1,
     )
+    ana_rz = ana   # Ryzhov uses the same single-shot KG
 
     # μ and σ of the belief at the probe points (both in per-day frame).
     mu_probes, sigma_probes = session.belief.posterior(probes)

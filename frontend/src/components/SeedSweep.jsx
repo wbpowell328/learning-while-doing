@@ -285,6 +285,7 @@ export default function SeedSweep({
     // only the seed changed, so these values apply to every sweep row.
     const paramSnapshot = {
       mstar:        session.m_star ?? null,
+      kgmult:       session.kg_mult ?? null,
       budget:       session.budget ?? null,
       zalpha:       session.z_alpha ?? null,
       sigma_greedy: session.sigma_greedy ?? null,

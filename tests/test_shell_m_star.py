@@ -141,17 +141,16 @@ def test_clone_inherits_mid_session_param_changes():
     assert clone._acq_config.sigma_greedy == pytest.approx(0.05)
 
 
-def test_kg_endpoint_reflects_session_m_star():
+def test_kg_endpoint_curves_are_single_shot_after_hon_retired():
     """
-    The /sessions/{sid}/kg endpoint feeds the KG(x) chart on the frontend.
-    It must respect the session's current m_star so the noise-factor editor
-    on that chart actually changes what the user sees. Post an observation
-    so the KG has structure, snapshot the curve at m*=1, bump m*, snapshot
-    again, and check the analytic KG values grew monotonically per probe.
+    The Hᵒⁿ lookahead knob was retired: the online policy's only knob is now
+    M, and every KG curve on the "Policy value vs θ" chart is single-shot
+    (m=1). So changing the session m_star must NOT change the /kg curves —
+    they're decoupled from m_star. (The separate KG(x;m) S-curve diagnostic
+    still uses m_star; this endpoint does not.)
     """
     r = client.post("/sessions", json={"policy": "kg", "session_seed": 42})
     sid = r.json()["session_id"]
-    # Give the belief a couple of observations so KG > 0 somewhere.
     client.post(f"/sessions/{sid}/experiment", json={
         "theta_init": 0.05, "n_days": 20, "policy": "kg", "K": 2,
     })
@@ -162,10 +161,7 @@ def test_kg_endpoint_reflects_session_m_star():
 
     assert boosted["impparams"] == base["impparams"]
     for a, b in zip(base["analytic_correlated"], boosted["analytic_correlated"]):
-        assert b + 1e-9 >= a, f"m*=10 must not lower KG at any probe (a={a}, b={b})"
-    diffs = [b - a for a, b in zip(base["analytic_correlated"],
-                                   boosted["analytic_correlated"])]
-    assert max(diffs) > 1e-6, (
-        "m*=10 must raise KG somewhere on the probe grid; the endpoint is "
-        "not passing m_star to kg_analytic_correlated_at."
-    )
+        assert b == pytest.approx(a, abs=1e-12), (
+            "KG curves must be single-shot (m=1) and independent of session "
+            f"m_star now that Hᵒⁿ is retired (a={a}, b={b})"
+        )

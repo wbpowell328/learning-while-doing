@@ -755,8 +755,10 @@ class OKGCorrelatedPolicy:
         self._kg_mult = max(0.0, float(kg_mult))
 
     def propose(self, model: BeliefModel, rng: np.random.Generator):
+        # KG is single-shot (m=1): the Hᵒⁿ lookahead knob was retired, so M
+        # is the online policy's only exploration weight. μ + M·KG(θ; m=1).
         mu, _ = model.posterior(self._grid)
-        kg = kg_analytic_correlated_at(model, self._grid, self._grid, m_star=self._m_star)
+        kg = kg_analytic_correlated_at(model, self._grid, self._grid, m_star=1)
         okg = mu - self._kg_mult * kg
         return _grid_pick(self._grid, int(np.argmin(okg)))
 

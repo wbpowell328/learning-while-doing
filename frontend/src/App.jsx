@@ -570,6 +570,7 @@ export default function App() {
         // the online-correlated policy shows Hᵒⁿ, and everything else shows
         // a dash in the columns it ignores.
         mstar: session.m_star ?? null,
+        kgmult: session.kg_mult ?? null,
         budget: session.budget ?? null,
         zalpha: session.z_alpha ?? null,
         sigma_greedy: session.sigma_greedy ?? null,
@@ -766,6 +767,7 @@ export default function App() {
         // Same policy-parameter snapshot as the Run path — RunHistory
         // decides which columns to fill vs dash based on the policy.
         mstar: session.m_star ?? null,
+        kgmult: session.kg_mult ?? null,
         budget: session.budget ?? null,
         zalpha: session.z_alpha ?? null,
         sigma_greedy: session.sigma_greedy ?? null,
@@ -1067,6 +1069,7 @@ export default function App() {
         theta_init: impparam,
         best_theta: result.best_impparam,
         mstar: session.m_star ?? null,
+        kgmult: session.kg_mult ?? null,
         budget: session.budget ?? null,
         zalpha: session.z_alpha ?? null,
         sigma_greedy: session.sigma_greedy ?? null,

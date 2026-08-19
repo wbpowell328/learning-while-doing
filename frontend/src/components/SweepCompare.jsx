@@ -41,9 +41,9 @@ const POLICY_SHORT = {
 const X_PARAMS = [
   { key: 'horizon', label: 'Horizon' },
   { key: 'repeat',  label: 'Repeat' },
-  { key: 'budget',  label: 'N (Ryzhov)' },
+  { key: 'budget',  label: 'N (finite horizon)' },
   { key: 'rho_ell', label: 'ρᵇᵃⁿᵈ (bandwidth)' },
-  { key: 'mstar',   label: 'Hᵒⁿ (lookahead)' },
+  { key: 'kgmult',  label: 'M (exploration weight)' },
 ];
 
 function fmtDollars(v) {
