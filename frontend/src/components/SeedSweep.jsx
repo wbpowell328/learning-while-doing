@@ -173,6 +173,12 @@ export default function SeedSweep({
   // clear visual space; the rows stay in state so Open restores the
   // same table. A fresh sweep re-opens it automatically.
   const [showReport, setShowReport] = useState(true);
+  // Collapse the WHOLE pane (controls + results) to a one-line header,
+  // matching the Open/Close on Compare sweeps and Run history. After a
+  // sweep the results push the main graphs below the fold; closing the
+  // pane brings them back. Default open so the sweep controls are
+  // visible on load.
+  const [open, setOpen] = useState(true);
   // Abort plumbing — a fresh controller per sweep; Stop calls
   // .abort() so the in-flight fetch throws AbortError and we can
   // break out of the loop without waiting for the current seed to
@@ -406,12 +412,27 @@ export default function SeedSweep({
 
   return (
     <div className="card" style={{ padding: '12px 16px', marginBottom: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline',
-                    justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center',
+                    gap: 12, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>
           Seed variability sweep
         </div>
-        <div style={{ fontSize: 11.5, color: '#64748b', maxWidth: 520 }}>
+        <button type="button"
+                onClick={() => setOpen(v => !v)}
+                style={{ marginLeft: 'auto', padding: '3px 10px',
+                         border: '1px solid #cbd5e1', borderRadius: 4,
+                         fontSize: 12, background: '#fff', cursor: 'pointer' }}
+                title={open
+                  ? 'Collapse this pane to free up screen space (results stay saved)'
+                  : 'Show the sweep controls and results'}>
+          {open ? 'Close' : 'Open'}
+        </button>
+      </div>
+
+      {open && (
+        <>
+        <div style={{ fontSize: 11.5, color: '#64748b', maxWidth: 520,
+                      marginTop: 6 }}>
           Runs the current policy N times on independent noise draws
           (seed = base, base + 1, …), each starting from a fresh
           belief and the same initial θ, and reveals the per-seed
@@ -419,7 +440,6 @@ export default function SeedSweep({
           the policy achieved. Sequential — Render free-tier is
           single-worker.
         </div>
-      </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10,
                     flexWrap: 'wrap', marginTop: 10 }}>
@@ -602,6 +622,8 @@ export default function SeedSweep({
             </tbody>
           </table>
         </div>
+      )}
+        </>
       )}
     </div>
   );
