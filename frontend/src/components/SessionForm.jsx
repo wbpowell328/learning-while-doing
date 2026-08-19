@@ -1021,7 +1021,7 @@ export default function SessionForm({
     randomized_greedy: 'Randomized greedy',
     kg: 'Offline KG',
     kg_indep: 'KG — offline independent',
-    okg: 'KG — online correlated (μ + KG(Hᵒⁿ))',
+    okg: 'KG — online correlated (μ + M·KG(Hᵒⁿ))',
     okg_indep: 'KG — online independent',
     okg_ryzhov: 'KG — online correlated — Ryzhov (μ + (N−n)·KG)',
     ie: 'IE',

@@ -26,7 +26,7 @@ import { useState, useEffect, useRef } from 'react';
 // them back without a backend redeploy.
 const POLICY_OPTIONS_1D = [
   { value: 'okg_ryzhov',        label: 'KG online correlated — Ryzhov (μ + (N−n)·KG)' },
-  { value: 'okg',               label: 'KG online correlated (μ + KG(Hᵒⁿ))' },
+  { value: 'okg',               label: 'KG online correlated (μ + M·KG(Hᵒⁿ))' },
   { value: 'kg',                label: 'Offline KG' },
   { value: 'ie',                label: 'IE (μ + ρᴵᴱ·σ)' },
   { value: 'greedy',            label: 'Greedy' },
