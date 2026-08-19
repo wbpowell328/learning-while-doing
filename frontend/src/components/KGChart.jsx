@@ -20,15 +20,16 @@ const IH = H - PAD.top - PAD.bottom;
 
 const X_MIN = 0.01, X_MAX = 0.20;
 
+// Legend labels use the SAME policy names as the control-bar dropdown.
 const OFFLINE_SERIES = [
-  { key: 'analytic_correlated', label: 'KG offline: KG(x)', color: '#16a34a', dash: null, width: 2.2 },
+  { key: 'analytic_correlated', label: 'KG offline', color: '#16a34a', dash: null, width: 2.2 },
 ];
 
 const ONLINE_SERIES = [
-  { key: 'online_correlated', label: 'Online ∞-horizon: μ + M·KG',       color: '#14532d', dash: null,   width: 1.8 },
-  { key: 'ryzhov',            label: 'Online finite-horizon: μ + (N−n)·KG', color: '#c2410c', dash: null, width: 1.8 },
-  { key: 'ie_0',              label: 'Greedy (μ)',                       color: '#2563eb', dash: '4,3',  width: 1.6 },
-  { key: 'ie_1_5',            label: 'IE (ρ^IE = 1.5) = μ + 1.5·σ',     color: '#1e3a8a', dash: '4,3',  width: 1.6 },
+  { key: 'online_correlated', label: 'KG online — infinite horizon', color: '#14532d', dash: null,   width: 1.8 },
+  { key: 'ryzhov',            label: 'KG online — finite horizon',   color: '#c2410c', dash: null,   width: 1.8 },
+  { key: 'ie_0',              label: 'Randomized greedy',            color: '#2563eb', dash: '4,3',  width: 1.6 },
+  { key: 'ie_1_5',            label: 'IE (ρᴵᴱ = 1.5)',               color: '#1e3a8a', dash: '4,3',  width: 1.6 },
 ];
 
 // Explicit legend layout — decoupled from the OFFLINE/ONLINE split so
@@ -38,8 +39,8 @@ const _SERIES_BY_KEY = Object.fromEntries(
   [...OFFLINE_SERIES, ...ONLINE_SERIES].map(s => [s.key, s])
 );
 const LEGEND_ROWS = [
-  ['ryzhov', 'online_correlated', 'analytic_correlated'],
-  ['ie_1_5', 'ie_0'],
+  ['ryzhov', 'online_correlated'],
+  ['analytic_correlated', 'ie_1_5', 'ie_0'],
 ].map(row => row.map(k => _SERIES_BY_KEY[k]));
 
 function fmt(v) {
