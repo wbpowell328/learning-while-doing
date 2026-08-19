@@ -431,14 +431,9 @@ export default function SeedSweep({
 
       {open && (
         <>
-        <div style={{ fontSize: 11.5, color: '#64748b', maxWidth: 520,
-                      marginTop: 6 }}>
-          Runs the current policy N times on independent noise draws
-          (seed = base, base + 1, …), each starting from a fresh
-          belief and the same initial θ, and reveals the per-seed
-          true-optimum estimate (n=50 replications) alongside what
-          the policy achieved. Sequential — Render free-tier is
-          single-worker.
+        <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 6 }}>
+          Simulates the policy on multiple seeds, starting with the same
+          belief and initial conditions.
         </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10,
